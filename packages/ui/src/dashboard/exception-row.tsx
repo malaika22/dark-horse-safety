@@ -22,7 +22,7 @@ export function DashboardExceptionRow({
   return (
     <li
       className={cn(
-        "flex items-end justify-between gap-4 divider-row py-3.5",
+        "flex flex-col gap-2.5 divider-row py-3.5 md:flex-row md:items-end md:justify-between md:gap-4",
         className,
       )}
     >
@@ -30,7 +30,7 @@ export function DashboardExceptionRow({
         <DashboardBadge variant={tagVariant} pill>
           {tag}
         </DashboardBadge>
-        <p className="mt-2 font-sans text-[14px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF]">
+        <p className="mt-2 font-sans text-[12px] font-normal uppercase leading-snug tracking-[-0.02em] text-[#FDFDFF] md:text-[14px] md:leading-none">
           {title}
         </p>
       </div>
@@ -38,7 +38,7 @@ export function DashboardExceptionRow({
         <button
           type="button"
           onClick={onAction}
-          className="mb-0.5 shrink-0 font-sans text-[14px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] underline decoration-[#FDFDFF]/70 underline-offset-4 transition-opacity hover:opacity-80"
+          className="shrink-0 self-start font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] underline decoration-[#FDFDFF]/70 underline-offset-4 transition-opacity hover:opacity-80 md:self-auto md:text-[14px]"
         >
           {action}
         </button>
@@ -63,7 +63,7 @@ export function DashboardStatList({ items, className }: DashboardStatListProps) 
       {items.map((item) => (
         <div
           key={item.label}
-          className="flex items-center justify-between gap-3 font-sans text-[14px] font-normal uppercase leading-none tracking-[-0.02em]"
+          className="flex items-center justify-between gap-3 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[14px]"
         >
           <span className="text-[#959597]">{item.label}</span>
           <span className="font-[590] text-[#FDFDFF]">{item.value}</span>

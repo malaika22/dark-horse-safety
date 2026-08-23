@@ -25,16 +25,16 @@ export function DashboardSegmentedProgress({
   return (
     <div className={className}>
       {label || sublabel ? (
-        <div className="mb-2.5 flex items-baseline justify-between gap-3">
+        <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1.5">
           {label ? (
-            <span className="font-sans text-[14px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF]">
+            <span className="font-sans text-[12px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[14px]">
               {label}
             </span>
           ) : (
             <span />
           )}
           {sublabel ? (
-            <span className="font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597]">
+            <span className="min-w-0 break-words text-right font-sans text-[11px] font-normal uppercase leading-snug tracking-[-0.02em] text-[#959597] md:text-[12px] md:leading-none">
               {sublabel}
             </span>
           ) : null}
@@ -61,14 +61,14 @@ export function DashboardSegmentedProgress({
       </div>
 
       {startLabel || todayLabel || endLabel ? (
-        <div className="mt-2.5 flex justify-between font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em]">
-          <span className="text-[#959597]">{startLabel}</span>
+        <div className="mt-2.5 flex justify-between gap-2 font-sans text-[10px] font-normal uppercase leading-none tracking-[-0.02em] sm:text-[11px]">
+          <span className="min-w-0 truncate text-[#959597]">{startLabel}</span>
           {todayLabel ? (
-            <span className="text-[#22C55E]">{todayLabel}</span>
+            <span className="shrink-0 text-[#22C55E]">{todayLabel}</span>
           ) : (
             <span />
           )}
-          <span className="text-[#959597]">{endLabel}</span>
+          <span className="min-w-0 truncate text-right text-[#959597]">{endLabel}</span>
         </div>
       ) : null}
     </div>

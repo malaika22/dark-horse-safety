@@ -1,6 +1,6 @@
 "use client";
 
-import type { MouseEvent, ReactNode } from "react";
+import type { MouseEvent, ReactNode, TouchEvent } from "react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { cn } from "../lib/cn";
 
@@ -96,11 +96,11 @@ export function DashboardBillingChart({ className }: DashboardBillingChartProps)
       ? valueToY(BILLING_POINTS[activeIndex]!.over / scale)
       : 0;
 
-  const onMove = useCallback((event: MouseEvent<HTMLDivElement>) => {
+  const onMove = useCallback((clientX: number) => {
     const el = containerRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const ratioX = (event.clientX - rect.left) / rect.width;
+    const ratioX = (clientX - rect.left) / rect.width;
     const svgX = ratioX * VIEW_W;
     let nearest = 0;
     let best = Infinity;
@@ -115,15 +115,35 @@ export function DashboardBillingChart({ className }: DashboardBillingChartProps)
     setActiveIndex(nearest);
   }, []);
 
-  const tooltipLeftPct = (activeX / VIEW_W) * 100;
+  const onMouseMove = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      onMove(event.clientX);
+    },
+    [onMove],
+  );
+
+  const onTouchMove = useCallback(
+    (event: TouchEvent<HTMLDivElement>) => {
+      const touch = event.touches[0];
+      if (touch) onMove(touch.clientX);
+    },
+    [onMove],
+  );
+
+  const tooltipLeftPct = Math.min(82, Math.max(18, (activeX / VIEW_W) * 100));
   const tooltipTopPct = (activeY / VIEW_H) * 100;
 
   return (
     <div
       ref={containerRef}
-      className={cn("relative h-[220px] w-full cursor-crosshair", className)}
-      onMouseMove={onMove}
+      className={cn(
+        "relative h-[180px] w-full min-w-0 cursor-crosshair touch-pan-y sm:h-[220px]",
+        className,
+      )}
+      onMouseMove={onMouseMove}
       onMouseLeave={() => setActiveIndex(null)}
+      onTouchStart={onTouchMove}
+      onTouchMove={onTouchMove}
     >
       <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} className="h-full w-full" aria-hidden>
         {yVals.map((_, i) => {
@@ -246,7 +266,7 @@ export function DashboardBillingChart({ className }: DashboardBillingChartProps)
       {/* Floating tooltip — follows active chart point */}
       {active ? (
         <div
-          className="pointer-events-none absolute z-10 min-w-[132px] -translate-x-1/2 -translate-y-[110%] rounded-lg border border-[#2E2E2E] bg-[#1A1A1A] px-3 py-2.5 shadow-lg"
+          className="pointer-events-none absolute z-10 min-w-[120px] max-w-[min(160px,70vw)] -translate-x-1/2 -translate-y-[110%] rounded-lg border border-[#2E2E2E] bg-[#1A1A1A] px-3 py-2.5 shadow-lg"
           style={{
             left: `${tooltipLeftPct}%`,
             top: `${tooltipTopPct}%`,
@@ -305,8 +325,8 @@ export function DashboardGaugeChart({
   className,
 }: DashboardGaugeChartProps) {
   return (
-    <div className={cn("flex items-center justify-center py-3", className)}>
-      <div className="relative flex h-36 w-56 items-end justify-center">
+    <div className={cn("flex min-w-0 items-center justify-center py-3", className)}>
+      <div className="relative flex h-28 w-full max-w-56 items-end justify-center sm:h-36">
         <svg viewBox="0 0 200 110" className="h-full w-full" aria-hidden>
           {/* Purple — left */}
           <path
@@ -334,10 +354,10 @@ export function DashboardGaugeChart({
           />
         </svg>
         <div className="absolute bottom-1 text-center">
-          <p className="font-sans text-[40px] font-[590] leading-none tracking-[-0.02em] text-[#FDFDFF]">
+          <p className="font-sans text-[28px] font-[590] leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[40px]">
             {value}
           </p>
-          <p className="mt-1 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597]">
+          <p className="mt-1 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]">
             {label}
           </p>
         </div>
@@ -449,33 +469,36 @@ export function DashboardRecordSparkline({
   return (
     <li
       className={cn(
-        "flex items-center gap-3 divider-row py-3",
+        "flex flex-col gap-2.5 divider-row py-3 md:gap-3 lg:flex-row lg:items-center",
         className,
       )}
     >
-      {iconSrc ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={iconSrc}
-          alt=""
-          className="h-7 w-7 shrink-0 rounded-md object-cover"
-        />
-      ) : (
-        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#2A2A2A] text-[#FDFDFF]">
-          {rowIcons[tone]}
-        </span>
-      )}
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <p className="shrink-0 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597]">
+      <div className="flex min-w-0 items-center gap-3">
+        {iconSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={iconSrc}
+            alt=""
+            className="h-7 w-7 shrink-0 rounded-md object-cover"
+          />
+        ) : (
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#2A2A2A] text-[#FDFDFF]">
+            {rowIcons[tone]}
+          </span>
+        )}
+        <p className="min-w-0 flex-1 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]">
           {label}
         </p>
-        <DashboardStatusSparkline
-          segments={sparklineSegments[tone]}
-          color={sparklineColors[tone]}
-          className="min-w-0 flex-1"
-        />
+        <span className="shrink-0 font-sans text-[14px] font-[510] uppercase tabular-nums leading-none tracking-[-0.02em] text-[#FDFDFF] lg:hidden">
+          {value}
+        </span>
       </div>
-      <span className="w-8 shrink-0 text-right font-sans text-[16px] font-[510] uppercase tabular-nums leading-none tracking-[-0.02em] text-[#FDFDFF]">
+      <DashboardStatusSparkline
+        segments={sparklineSegments[tone]}
+        color={sparklineColors[tone]}
+        className="w-full min-w-0 lg:flex-1"
+      />
+      <span className="hidden w-8 shrink-0 text-right font-sans text-[16px] font-[510] uppercase tabular-nums leading-none tracking-[-0.02em] text-[#FDFDFF] lg:block">
         {value}
       </span>
     </li>
@@ -498,7 +521,7 @@ export function DashboardChartLegend({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center justify-end gap-4 text-right font-sans text-[10.6px] font-normal uppercase leading-[150%] tracking-[0.02em] text-[#666D80]",
+        "flex flex-wrap items-center justify-end gap-4 text-right font-sans text-[9.5px] font-normal uppercase leading-[150%] tracking-[0.02em] text-[#666D80] md:text-[10.6px]",
         className,
       )}
     >

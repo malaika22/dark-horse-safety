@@ -16,3 +16,37 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
+
+/* react-toastify — align with dark shell */
+.Toastify__toast-container {
+  z-index: 9999;
+}
+
+.Toastify__toast.dhs-toast {
+  font-family: var(--dhs-font-sans, inherit);
+  font-size: 13px;
+  font-weight: 510;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  border-radius: 10px;
+  border: 1px solid #2d2d30;
+  background: #1a1a1a;
+  color: #fdfdff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.Toastify__toast--success {
+  border-color: #20553a;
+}
+
+.Toastify__toast--error {
+  border-color: #4b212b;
+}
+
+.Toastify__progress-bar--success {
+  background: #22c55e;
+}
+
+.Toastify__progress-bar--error {
+  background: #ff4d4d;
+}

@@ -21,10 +21,10 @@ export interface DashboardStatCellProps {
 function MetricBlock({ value, meta }: { value: string; meta: string }) {
   return (
     <div>
-      <p className="font-sans text-[32px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF]">
+      <p className="font-sans text-[24px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[32px]">
         {value}
       </p>
-      <p className="mt-2 font-sans text-[16px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597]">
+      <p className="mt-2 font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[16px]">
         {meta}
       </p>
     </div>
@@ -49,7 +49,7 @@ export function DashboardStatCell({
     <div className={cn("flex min-h-[168px] flex-col", className)}>
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-center justify-between gap-3">
-          <p className="font-sans text-[16px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF]">
+          <p className="min-w-0 flex-1 font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[16px]">
             {title}
           </p>
           {icon ? (
@@ -76,7 +76,7 @@ export function DashboardStatCell({
           <button
             type="button"
             onClick={onAction}
-            className="flex w-full items-center justify-between gap-3 px-4 py-3 font-sans text-[14px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-white/[0.03]"
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-white/[0.03] md:text-[14px]"
           >
             <span>{action}</span>
             <ArrowRightIcon className="shrink-0 text-[#FDFDFF]" />

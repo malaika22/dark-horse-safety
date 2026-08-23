@@ -30,9 +30,30 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const [mobileMenuPath, setMobileMenuPath] = React.useState<string | null>(null);
   const mobileOpen = mobileMenuPath === pathname;
 
+  React.useEffect(() => {
+    setMobileMenuPath(null);
+  }, [pathname]);
+
+  React.useEffect(() => {
+    if (!mobileOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMobileMenuPath(null);
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mobileOpen]);
+
   if (loading) {
     return (
-      <div className="flex h-dvh items-center justify-center bg-shell text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">
+      <div className="flex h-dvh items-center justify-center bg-shell px-4 text-center text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">
         Loading session…
       </div>
     );
@@ -48,12 +69,15 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         mobileOpen={mobileOpen}
         onClose={() => setMobileMenuPath(null)}
       />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <AppHeader
           title={titleForPath(pathname)}
-          onMenuClick={() => setMobileMenuPath(pathname)}
+          menuOpen={mobileOpen}
+          onMenuClick={() =>
+            setMobileMenuPath((prev) => (prev === pathname ? null : pathname))
+          }
         />
-        <main className="min-h-0 flex-1 overflow-y-auto scrollbar-hidden">
+        <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto scrollbar-hidden">
           {children}
         </main>
       </div>

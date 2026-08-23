@@ -135,7 +135,7 @@ export function DashboardPanelTitle({
   titleClassName,
 }: DashboardPanelTitleProps) {
   return (
-    <div className={cn("flex flex-wrap items-center justify-between gap-3", className)}>
+    <div className={cn("flex flex-col gap-3 md:flex-row md:items-center md:justify-between", className)}>
       <div className="flex min-w-0 items-center gap-2.5">
         {iconSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -151,14 +151,18 @@ export function DashboardPanelTitle({
         ) : null}
         <h2
           className={cn(
-            "font-sans text-[16px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF]",
+            "min-w-0 font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[16px]",
             titleClassName,
           )}
         >
           {title}
         </h2>
       </div>
-      {trailing}
+      {trailing ? (
+        <div className="w-full min-w-0 overflow-x-auto scrollbar-hidden md:w-auto md:overflow-visible">
+          {trailing}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -174,7 +178,7 @@ export function DashboardDropdownFilter({
     <button
       type="button"
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border border-[#3E3E3E] bg-[#2A2A2A] px-2.5 py-1.5 font-sans text-[12px] font-[510] uppercase leading-none tracking-[-0.02em] text-[#959597]",
+        "inline-flex items-center gap-1.5 rounded-md border border-[#3E3E3E] bg-[#2A2A2A] px-2.5 py-1.5 font-sans text-[11px] font-[510] uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]",
         className,
       )}
     >

@@ -19,10 +19,10 @@ import { requestGoogleAuthCode } from "@/lib/google-auth";
 import {
   firstFieldError,
   getApiFieldError,
-  mapApiValidationError,
   validateEmail,
   validateLoginPassword,
 } from "@/lib/auth-validation";
+import { toastApiError, toastSuccess } from "@/lib/toast";
 
 type FieldErrors = {
   email?: string;
@@ -38,12 +38,10 @@ export function LoginForm() {
   const [showCredError, setShowCredError] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [googleLoading, setGoogleLoading] = React.useState(false);
-  const [formError, setFormError] = React.useState<string | null>(null);
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setShowCredError(false);
-    setFormError(null);
 
     const nextErrors: FieldErrors = {
       email: validateEmail(email) ?? undefined,
@@ -60,11 +58,13 @@ export function LoginForm() {
         password,
       });
       setAccessToken(res.data.tokens.accessToken);
+      toastSuccess("Signed in successfully");
       router.push("/dashboard");
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === "ACCOUNT_LOCKED" || err.status === 423) {
           const minutes = err.lockDurationMinutes ?? 15;
+          toastApiError(err);
           router.push(`/account-locked?minutes=${minutes}`);
           return;
         }
@@ -73,14 +73,14 @@ export function LoginForm() {
             email: getApiFieldError(err.details, "email"),
             password: getApiFieldError(err.details, "password"),
           });
-          setFormError(mapApiValidationError(err).message);
+          toastApiError(err);
           return;
         }
         setAttemptsLeft(err.attemptsLeft ?? null);
         setShowCredError(true);
-        setFormError(err.message);
+        toastApiError(err);
       } else {
-        setFormError("Unable to sign in. Try again.");
+        toastApiError(err, "Unable to sign in. Try again.");
       }
     } finally {
       setLoading(false);
@@ -89,20 +89,18 @@ export function LoginForm() {
 
   const onGoogle = async () => {
     setShowCredError(false);
-    setFormError(null);
     setGoogleLoading(true);
     try {
       const code = await requestGoogleAuthCode();
       const res = await api.loginWithGoogle({ code });
       setAccessToken(res.data.tokens.accessToken);
+      toastSuccess("Signed in successfully");
       router.push("/dashboard");
     } catch (err) {
-      if (err instanceof ApiError) {
-        setFormError(err.message);
-      } else if (err instanceof Error) {
-        setFormError(err.message);
+      if (err instanceof Error) {
+        toastApiError(err);
       } else {
-        setFormError("Google sign-in failed. Try again.");
+        toastApiError(err, "Google sign-in failed. Try again.");
       }
     } finally {
       setGoogleLoading(false);
@@ -122,10 +120,6 @@ export function LoginForm() {
               ? `. ${attemptsLeft} attempt${attemptsLeft === 1 ? "" : "s"} left.`
               : "."}
           </Alert>
-        ) : null}
-
-        {formError && !showCredError ? (
-          <Alert variant="error">{formError}</Alert>
         ) : null}
 
         <Button

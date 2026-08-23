@@ -36,7 +36,7 @@ import {
 
 export function DashboardOverview() {
   return (
-    <div className="space-y-4 bg-shell p-4 sm:p-6">
+    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:p-6">
       <DashboardControlHeader />
 
       {/* KPI grid — dividers only, no separate cards */}
@@ -52,7 +52,7 @@ export function DashboardOverview() {
 
       {/* Row 3 — exception queue + payroll cycle */}
       <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[1.4fr_1fr]">
-        <DashboardPanel className="flex h-full flex-col p-4">
+        <DashboardPanel className="flex h-full min-w-0 flex-col p-3 sm:p-4">
           <DashboardPanelTitle
             icon="lightning"
             title="Exception queue"
@@ -71,7 +71,7 @@ export function DashboardOverview() {
           </ul>
         </DashboardPanel>
 
-        <DashboardPanel className="flex h-full flex-col justify-between gap-4 p-4">
+        <DashboardPanel className="flex h-full min-w-0 flex-col justify-between gap-4 p-3 sm:p-4">
           <DashboardPanelTitle
             icon="cycle"
             title="Payroll cycle"
@@ -82,11 +82,11 @@ export function DashboardOverview() {
             }
           />
 
-          <div>
-            <p className="font-sans text-[24px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF]">
+          <div className="min-w-0">
+            <p className="break-words font-sans text-[16px] font-[590] uppercase leading-snug tracking-[-0.02em] text-[#FDFDFF] md:text-[24px] md:leading-none">
               {PAYROLL_CYCLE.dateRange}
             </p>
-            <p className="mt-2 font-sans text-[14px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597]">
+            <p className="mt-2 break-words font-sans text-[12px] font-normal uppercase leading-snug tracking-[-0.02em] text-[#959597] md:text-[14px] md:leading-none">
               {PAYROLL_CYCLE.subtitle}
             </p>
           </div>
@@ -109,7 +109,7 @@ export function DashboardOverview() {
 
       {/* Row 4 — billing + unmatched records */}
       <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[1.4fr_1fr]">
-        <DashboardPanel className="flex h-full flex-col justify-between gap-4 p-4">
+        <DashboardPanel className="flex h-full min-w-0 flex-col justify-between gap-4 p-3 sm:p-4">
           <DashboardPanelTitle
             iconSrc="/icons/billing-icon.png"
             title="Billing discrepancies"
@@ -117,30 +117,30 @@ export function DashboardOverview() {
             trailing={<DashboardDropdownFilter label="Weekly" />}
           />
 
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="font-sans text-[24px] font-normal uppercase leading-[130%] tracking-normal text-[#FDFDFF]">
+          <div className="flex flex-col gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <p className="font-sans text-[16px] font-normal uppercase leading-[130%] tracking-normal text-[#FDFDFF] md:text-[24px]">
                 {BILLING.amount}
               </p>
-              <p className="font-sans text-[10.6px] font-normal uppercase leading-[150%] tracking-[0.02em]">
+              <p className="font-sans text-[9.5px] font-normal uppercase leading-[150%] tracking-[0.02em] md:text-[10.6px]">
                 <span className="text-[#FF4D4D]">{BILLING.changePercent}</span>{" "}
                 <span className="text-[#666D80]">{BILLING.changeLabel}</span>
               </p>
             </div>
-            <DashboardChartLegend items={BILLING_LEGEND} className="items-center" />
+            <DashboardChartLegend items={BILLING_LEGEND} className="justify-start md:justify-end" />
           </div>
           <DashboardBillingChart />
 
           <DashboardFooterButton>View bill discrepancies</DashboardFooterButton>
         </DashboardPanel>
 
-        <DashboardPanel className="flex h-full flex-col justify-between gap-4 p-4">
+        <DashboardPanel className="flex h-full min-w-0 flex-col justify-between gap-4 p-3 sm:p-4">
           <DashboardPanelTitle
             iconSrc="/icons/unmatched-icon.png"
             title="Unmatched & missing records"
           />
           <DashboardGaugeChart value={12} />
-          <ul>
+          <ul className="min-w-0">
             {UNMATCHED_RECORDS.map((row) => (
               <DashboardRecordSparkline
                 key={row.label}
@@ -157,13 +157,13 @@ export function DashboardOverview() {
 
       {/* Row 5 — recent activity + GoCanvas sync */}
       <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[1.4fr_1fr]">
-        <DashboardPanel className="flex h-full flex-col justify-between gap-4 p-4">
+        <DashboardPanel className="flex h-full min-w-0 flex-col justify-between gap-4 p-3 sm:p-4">
           <DashboardPanelTitle
             icon="lightning"
             title="Recent activity"
             trailing={<DashboardFilterTabs tabs={ACTIVITY_TABS} />}
           />
-          <ul className="flex-1">
+          <ul className="min-w-0 flex-1">
             {ACTIVITY.map((row) => (
               <DashboardActivityRow
                 key={row.title}
@@ -177,7 +177,7 @@ export function DashboardOverview() {
           <DashboardFooterButton>View activity log</DashboardFooterButton>
         </DashboardPanel>
 
-        <DashboardPanel className="flex h-full flex-col justify-between gap-4 p-4">
+        <DashboardPanel className="flex h-full min-w-0 flex-col justify-between gap-4 p-3 sm:p-4">
           <DashboardPanelTitle
             iconSrc="/icons/go-canvas-image.png"
             title="GoCanvas sync"

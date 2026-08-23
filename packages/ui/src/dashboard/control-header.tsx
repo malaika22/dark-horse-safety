@@ -54,23 +54,23 @@ export function DashboardControlHeader({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between",
+        "flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between",
         className,
       )}
     >
-      <h2 className="font-sans text-[24px] font-normal uppercase leading-none tracking-[-0.02em] text-foreground">
+      <h2 className="font-sans text-[18px] font-normal uppercase leading-none tracking-[-0.02em] text-foreground md:text-[24px]">
         {title}
       </h2>
 
-      <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-        <p className="font-sans text-[16px] font-normal uppercase leading-[150%] tracking-[-0.02em] text-[#959597]">
+      <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:gap-4">
+        <p className="font-sans text-[12px] font-normal uppercase leading-[150%] tracking-[-0.02em] text-[#959597] md:text-[16px]">
           {syncLabel}
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <button
             type="button"
             onClick={onRunSync}
-            className="btn-base btn-glass-surface inline-flex shrink-0 gap-1 whitespace-nowrap"
+            className="btn-base btn-glass-surface inline-flex shrink-0 justify-center gap-1 whitespace-nowrap sm:w-auto"
           >
             <SyncIcon className="shrink-0" />
             Run sync
@@ -78,7 +78,7 @@ export function DashboardControlHeader({
           <button
             type="button"
             onClick={onGeneratePayroll}
-            className="btn-base btn-primary-surface inline-flex shrink-0 gap-1 whitespace-nowrap"
+            className="btn-base btn-primary-surface inline-flex shrink-0 justify-center gap-1 whitespace-nowrap sm:w-auto"
           >
             <PayrollIcon className="shrink-0" />
             Generate payroll

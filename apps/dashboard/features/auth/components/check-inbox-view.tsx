@@ -9,13 +9,13 @@ import {
   Button,
 } from "@dark-horse-safety/ui";
 import { api } from "@/lib/api";
-import { mapApiValidationError, validateEmail } from "@/lib/auth-validation";
+import { validateEmail } from "@/lib/auth-validation";
+import { toastApiError, toastSuccess } from "@/lib/toast";
 
 export function CheckInboxView({ email }: { email: string }) {
   const router = useRouter();
   const [secondsLeft, setSecondsLeft] = React.useState(66);
   const [cooldown, setCooldown] = React.useState(0);
-  const [resendError, setResendError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
@@ -36,17 +36,19 @@ export function CheckInboxView({ email }: { email: string }) {
   const onResend = async () => {
     const emailError = validateEmail(email);
     if (emailError || cooldown > 0) {
-      setResendError(emailError ?? "Enter a valid email address.");
+      toastApiError(emailError ?? "Enter a valid email address.");
       return;
     }
     setLoading(true);
-    setResendError(null);
     try {
       const res = await api.resendReset({ email: email.trim() });
       setCooldown(30);
       setSecondsLeft(res.data.expiresInSeconds || 66);
+      toastSuccess(
+        res.data.message || "Password reset email resent successfully.",
+      );
     } catch (err) {
-      setResendError(mapApiValidationError(err).message);
+      toastApiError(err);
     } finally {
       setLoading(false);
     }
@@ -93,12 +95,6 @@ export function CheckInboxView({ email }: { email: string }) {
             issue persists, contact your administrator.
           </p>
         </div>
-
-        {resendError ? (
-          <p className="text-center text-xs uppercase tracking-[0.08em] text-error">
-            {resendError}
-          </p>
-        ) : null}
 
         <div className="flex w-full gap-3">
           <Button

@@ -69,7 +69,7 @@ export function DashboardBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center border font-sans text-[11.82px] font-normal uppercase leading-none tracking-[-0.02em]",
+        "inline-flex items-center border font-sans text-[10px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[11.82px]",
         pill ? "rounded-full px-2.5 py-1" : "rounded px-1.5 py-0.5",
         variantClasses[variant],
         className,

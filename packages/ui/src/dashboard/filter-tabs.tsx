@@ -34,7 +34,7 @@ export function DashboardFilterTabs({
   return (
     <div
       className={cn(
-        "inline-flex max-w-full flex-wrap items-center gap-[3.5px] rounded-[8px] bg-[#2A2A2A] p-1",
+        "flex w-full max-w-full flex-nowrap items-center gap-[3.5px] overflow-x-auto rounded-[8px] bg-[#2A2A2A] p-1 scrollbar-hidden",
         className,
       )}
     >
@@ -46,7 +46,7 @@ export function DashboardFilterTabs({
             type="button"
             onClick={() => select(tab.id)}
             className={cn(
-              "inline-flex h-[24.5px] items-center justify-center px-[8.75px] py-[7px] font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] transition-colors",
+              "inline-flex h-[24.5px] shrink-0 items-center justify-center px-[8.75px] py-[7px] font-sans text-[10px] font-normal uppercase leading-none tracking-[-0.02em] transition-colors md:text-[11px]",
               isActive
                 ? "rounded-[5.25px] border-[0.88px] border-white bg-white text-[#09090B]"
                 : "rounded-[5.25px] border-[0.88px] border-transparent text-[#959597] hover:text-[#FDFDFF]",

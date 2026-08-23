@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { SessionUser } from "@dark-horse-safety/types";
 import { api, clearAccessToken, getAccessToken } from "@/lib/api";
+import { toastInfo } from "@/lib/toast";
 
 type SessionContextValue = {
   user: SessionUser | null;
@@ -50,6 +51,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const logout = React.useCallback(() => {
     clearAccessToken();
     setUser(null);
+    toastInfo("Signed out successfully");
     router.replace("/");
   }, [router]);
 

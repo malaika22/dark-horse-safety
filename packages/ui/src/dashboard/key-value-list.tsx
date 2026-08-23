@@ -23,7 +23,7 @@ export function DashboardKeyValueList({
         <li
           key={item.label}
           className={cn(
-            "flex items-center justify-between gap-3 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em]",
+            "flex items-center justify-between gap-3 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[12px]",
             bordered && "divider-row pb-3.5 last:pb-0",
           )}
         >
@@ -56,7 +56,7 @@ export function DashboardSyncTable({ rows, className }: DashboardSyncTableProps)
       {rows.map((row) => (
         <li
           key={row.label}
-          className="flex items-center justify-between gap-3 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em]"
+          className="flex items-center justify-between gap-3 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[12px]"
         >
           <span className="text-[#959597]">{row.label}</span>
           <span className="font-[510] text-[#FDFDFF]">{row.synced} synced</span>
