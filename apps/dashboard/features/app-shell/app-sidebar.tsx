@@ -72,7 +72,7 @@ export function AppSidebar({
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col border-r border-border bg-black",
+          "divider-edge-right fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col bg-black",
           "transition-transform duration-200 lg:static lg:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
@@ -106,10 +106,10 @@ export function AppSidebar({
                       type="button"
                       onClick={() => toggle(item.id)}
                       className={cn(
-                        "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors",
+                        "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left font-sans text-[16px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors",
                         open || sectionOpen(pathname, item)
-                          ? "text-foreground"
-                          : "text-foreground-muted hover:bg-white/5 hover:text-foreground",
+                          ? "text-[#FDFDFF]"
+                          : "text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]",
                       )}
                     >
                       <NavIcon name={item.icon} className="shrink-0 opacity-90" />
@@ -121,10 +121,10 @@ export function AppSidebar({
                       href={item.href ?? "/dashboard"}
                       onClick={onClose}
                       className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors",
+                        "flex items-center gap-3 rounded-lg px-3 py-2.5 font-sans text-[16px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors",
                         activeTop
-                          ? "bg-gradient-to-r from-[#2a2a2a] to-[#1a1a1a] text-foreground"
-                          : "text-foreground-muted hover:bg-white/5 hover:text-foreground",
+                          ? "bg-gradient-to-r from-[#2a2a2a] to-[#1a1a1a] text-[#FDFDFF]"
+                          : "text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]",
                       )}
                     >
                       <NavIcon name={item.icon} className="shrink-0 opacity-90" />
@@ -142,10 +142,10 @@ export function AppSidebar({
                               href={child.href}
                               onClick={onClose}
                               className={cn(
-                                "relative flex items-center rounded-md px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] transition-colors",
+                                "relative flex items-center rounded-md px-3 py-2 font-sans text-[16px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors",
                                 active
-                                  ? "bg-gradient-to-r from-[#2f2f2f] to-[#1c1c1c] text-foreground"
-                                  : "text-foreground-muted hover:text-foreground",
+                                  ? "bg-gradient-to-r from-[#2f2f2f] to-[#1c1c1c] text-[#FDFDFF]"
+                                  : "text-[#959597] hover:text-[#FDFDFF]",
                               )}
                             >
                               {active ? (

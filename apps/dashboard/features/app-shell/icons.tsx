@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "@dark-horse-safety/ui";
 
 type SvgProps = { className?: string; children: ReactNode };
 
@@ -32,100 +33,25 @@ export function NavIcon({
     | "settings";
   className?: string;
 }) {
-  switch (name) {
-    case "dashboard":
-      return (
-        <Svg className={className}>
-          <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.75" />
-          <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.75" />
-          <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.75" />
-          <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.75" />
-        </Svg>
-      );
-    case "crm":
-      return (
-        <Svg className={className}>
-          <path
-            d="M4 19V5M4 19h16M7 15l3-4 3 2 4-6"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </Svg>
-      );
-    case "hr":
-    case "operations":
-      return (
-        <Svg className={className}>
-          <path
-            d="M8 7V6a2 2 0 012-2h4a2 2 0 012 2v1M4 10h16v9a2 2 0 01-2 2H6a2 2 0 01-2-2v-9z"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinejoin="round"
-          />
-          <circle cx="15.5" cy="14.5" r="2.5" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M17.2 16.2L19 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </Svg>
-      );
-    case "fleet":
-      return (
-        <Svg className={className}>
-          <path
-            d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinejoin="round"
-          />
-        </Svg>
-      );
-    case "safety":
-      return (
-        <Svg className={className}>
-          <path
-            d="M9 5h6l1 2h3v12a2 2 0 01-2 2H7a2 2 0 01-2-2V7h3l1-2z"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M9 13l2 2 4-4"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </Svg>
-      );
-    case "report":
-      return (
-        <Svg className={className}>
-          <path
-            d="M8 4h7l3 3v13a1 1 0 01-1 1H8a1 1 0 01-1-1V5a1 1 0 011-1z"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinejoin="round"
-          />
-          <path d="M15 4v3h3M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </Svg>
-      );
-    case "settings":
-      return (
-        <Svg className={className}>
-          <path
-            d="M4 7h10M18 7h2M12 12h8M4 12h4M4 17h8M16 17h4"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-          />
-          <circle cx="16" cy="7" r="2" stroke="currentColor" strokeWidth="1.5" />
-          <circle cx="10" cy="12" r="2" stroke="currentColor" strokeWidth="1.5" />
-          <circle cx="14" cy="17" r="2" stroke="currentColor" strokeWidth="1.5" />
-        </Svg>
-      );
-    default:
-      return null;
-  }
+  const iconSrc: Record<typeof name, string> = {
+    dashboard: "/icons/menu/dashboard.png",
+    crm: "/icons/menu/crm.png",
+    hr: "/icons/menu/employee.png",
+    fleet: "/icons/menu/fleet.png",
+    operations: "/icons/menu/operations.png",
+    safety: "/icons/menu/safety.png",
+    report: "/icons/menu/report.png",
+    settings: "/icons/menu/settings.png",
+  };
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={iconSrc[name]}
+      alt=""
+      className={cn("h-[18px] w-[18px] object-contain", className)}
+    />
+  );
 }
 
 export function ChevronIcon({

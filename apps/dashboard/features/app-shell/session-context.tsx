@@ -76,7 +76,9 @@ export function sessionDisplayName(user: SessionUser | null | undefined) {
   if (user.displayName?.trim()) return user.displayName.trim();
   const combined = [user.firstName, user.lastName].filter(Boolean).join(" ");
   if (combined) return combined;
-  return user.email.split("@")[0] || user.email;
+  if (user.email) return user.email.split("@")[0] || user.email;
+  if (user.phone) return user.phone;
+  return "User";
 }
 
 export function sessionRoleLabel(role?: string) {

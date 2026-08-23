@@ -32,7 +32,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex h-dvh items-center justify-center bg-[#0c0c0c] text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">
+      <div className="flex h-dvh items-center justify-center bg-shell text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">
         Loading session…
       </div>
     );
@@ -43,7 +43,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-[#0c0c0c] text-foreground">
+    <div className="flex h-dvh overflow-hidden bg-shell text-foreground">
       <AppSidebar
         mobileOpen={mobileOpen}
         onClose={() => setMobileMenuPath(null)}

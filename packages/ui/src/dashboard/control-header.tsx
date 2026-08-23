@@ -1,0 +1,91 @@
+import * as React from "react";
+import { cn } from "../lib/cn";
+import { ChevronDownIcon, SyncIcon } from "./icons";
+
+export interface DashboardControlHeaderProps {
+  title?: string;
+  syncLabel?: string;
+  onRunSync?: () => void;
+  onGeneratePayroll?: () => void;
+  className?: string;
+}
+
+function PayrollIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={className}
+    >
+      <path
+        d="M14 2H7a2 2 0 00-2 2v16a2 2 0 002 2h10a2 2 0 002-2V8l-5-6z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 2v6h5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 11v7M14.25 12.5c0-.9-1-1.5-2.25-1.5s-2.25.6-2.25 1.5S11 14 12 14.25 14.25 15 14.25 16.1 13.25 17.5 12 17.5s-2.25-.6-2.25-1.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function DashboardControlHeader({
+  title = "Control center",
+  syncLabel = "Last syn update 2:13pm CT",
+  onRunSync,
+  onGeneratePayroll,
+  className,
+}: DashboardControlHeaderProps) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between",
+        className,
+      )}
+    >
+      <h2 className="font-sans text-[24px] font-normal uppercase leading-none tracking-[-0.02em] text-foreground">
+        {title}
+      </h2>
+
+      <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+        <p className="font-sans text-[16px] font-normal uppercase leading-[150%] tracking-[-0.02em] text-[#959597]">
+          {syncLabel}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onRunSync}
+            className="btn-base btn-glass-surface inline-flex shrink-0 gap-1 whitespace-nowrap"
+          >
+            <SyncIcon className="shrink-0" />
+            Run sync
+          </button>
+          <button
+            type="button"
+            onClick={onGeneratePayroll}
+            className="btn-base btn-primary-surface inline-flex shrink-0 gap-1 whitespace-nowrap"
+          >
+            <PayrollIcon className="shrink-0" />
+            Generate payroll
+            <ChevronDownIcon className="shrink-0" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

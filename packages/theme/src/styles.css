@@ -31,6 +31,7 @@
   /* Divider lines (login / auth) */
   --dhs-divider: #2d2d30;
   --dhs-divider-shadow: 0px -1px 0px 0px #000000;
+  --dhs-divider-inset: 16px;
 
   --dhs-success: #22c55e;
   --dhs-warning: #f59e0b;
@@ -39,6 +40,14 @@
 
   --dhs-overlay: rgba(0, 0, 0, 0.72);
   --dhs-map-radius: rgba(59, 130, 246, 0.35);
+
+  /* Dashboard shell / panels */
+  --dhs-shell: #0c0c0c;
+  --dhs-shell-header: #121212;
+  --dhs-panel: #1a1a1a;
+  --dhs-panel-inset: #121212;
+  --dhs-gold: #c4a35a;
+  --dhs-gold-hover: #d4b56a;
 
   --dhs-radius-sm: 6px;
   --dhs-radius-md: 8px;
@@ -116,6 +125,13 @@ input:disabled {
 
   --color-overlay: var(--dhs-overlay);
   --color-map-radius: var(--dhs-map-radius);
+
+  --color-shell: var(--dhs-shell);
+  --color-shell-header: var(--dhs-shell-header);
+  --color-panel: var(--dhs-panel);
+  --color-panel-inset: var(--dhs-panel-inset);
+  --color-gold: var(--dhs-gold);
+  --color-gold-hover: var(--dhs-gold-hover);
 
   --radius-sm: var(--dhs-radius-sm);
   --radius-md: var(--dhs-radius-md);
@@ -394,6 +410,193 @@ input:disabled {
   border: none;
   border-top: 1px solid var(--dhs-divider);
   box-shadow: var(--dhs-divider-shadow);
+}
+
+/* Inset horizontal divider — short gap from left/right edges */
+@utility divider-line-inset {
+  height: 0;
+  margin-inline: var(--dhs-divider-inset);
+  border: none;
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+}
+
+/* Full-width horizontal rule — same token as KPI card dividers */
+@utility divider-line-full {
+  height: 0;
+  border: none;
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+}
+
+/* List row bottom divider — #2D2D30 + hairline shadow */
+.divider-row {
+  position: relative;
+}
+
+.divider-row:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 0;
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+  pointer-events: none;
+}
+
+/* Section top divider */
+.divider-section-top {
+  position: relative;
+}
+
+.divider-section-top::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 0;
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+  pointer-events: none;
+}
+
+/* Shell edges — header bottom / sidebar right */
+.divider-edge-bottom {
+  position: relative;
+  border-bottom: none !important;
+}
+
+.divider-edge-bottom::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 0;
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+  pointer-events: none;
+}
+
+.divider-edge-right {
+  position: relative;
+  border-right: none !important;
+}
+
+.divider-edge-right::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: var(--dhs-divider);
+  box-shadow: 1px 0 0 0 #000000;
+  pointer-events: none;
+}
+
+/* Payroll progress — filled segment (Figma green + inset shine) */
+@utility payroll-segment-filled {
+  background:
+    radial-gradient(
+      90.24% 88.18% at 8.54% 0%,
+      rgba(255, 255, 255, 0.1) 0%,
+      rgba(255, 255, 255, 0) 100%
+    ),
+    linear-gradient(0deg, #00be51, #00be51);
+  border: 0.5px solid #14ad55;
+  box-shadow:
+    2px 2px 2px 0px #ffffff2e inset,
+    -2px -1px 4px 0px #9d9d9d4d inset,
+    0px 4px 2.7px 0px #ffffff1c inset;
+}
+
+/* Payroll progress — second-last / current day segment */
+@utility payroll-segment-current {
+  background: #005d27;
+  border: 0.5px solid #00682c;
+  box-shadow: 2px 2px 2px 0px #3836362e inset;
+}
+
+/* Payroll progress — empty / last segments */
+@utility payroll-segment-empty {
+  background: #95959766;
+  border: 0.5px solid #5b5b5b;
+  box-shadow: 0px 2px 2.7px 0px #ffffff40 inset;
+}
+
+/* KPI stat grid — inset vertical/horizontal separators between cells */
+.dashboard-stat-grid > * {
+  position: relative;
+}
+
+@media (max-width: 639px) {
+  .dashboard-stat-grid > *:not(:last-child)::before {
+    content: "";
+    position: absolute;
+    right: var(--dhs-divider-inset);
+    bottom: 0;
+    left: var(--dhs-divider-inset);
+    height: 0;
+    border-top: 1px solid var(--dhs-divider);
+    box-shadow: var(--dhs-divider-shadow);
+    pointer-events: none;
+  }
+}
+
+@media (min-width: 640px) and (max-width: 1279px) {
+  .dashboard-stat-grid > *:not(:nth-child(2n)):not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: var(--dhs-divider-inset);
+    right: 0;
+    bottom: var(--dhs-divider-inset);
+    width: 1px;
+    background-color: var(--dhs-divider);
+    box-shadow: 1px 0 0 0 #000000;
+    pointer-events: none;
+  }
+
+  .dashboard-stat-grid > *:nth-child(-n + 8)::before {
+    content: "";
+    position: absolute;
+    right: var(--dhs-divider-inset);
+    bottom: 0;
+    left: var(--dhs-divider-inset);
+    height: 0;
+    border-top: 1px solid var(--dhs-divider);
+    box-shadow: var(--dhs-divider-shadow);
+    pointer-events: none;
+  }
+}
+
+@media (min-width: 1280px) {
+  .dashboard-stat-grid > *:not(:nth-child(5n)):not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: var(--dhs-divider-inset);
+    right: 0;
+    bottom: var(--dhs-divider-inset);
+    width: 1px;
+    background-color: var(--dhs-divider);
+    box-shadow: 1px 0 0 0 #000000;
+    pointer-events: none;
+  }
+
+  .dashboard-stat-grid > *:nth-child(-n + 5)::before {
+    content: "";
+    position: absolute;
+    right: var(--dhs-divider-inset);
+    bottom: 0;
+    left: var(--dhs-divider-inset);
+    height: 0;
+    border-top: 1px solid var(--dhs-divider);
+    box-shadow: var(--dhs-divider-shadow);
+    pointer-events: none;
+  }
 }
 
 /* Scrollable but no visible scrollbar — auth shells */
