@@ -71,12 +71,14 @@ export function useSession() {
   return ctx;
 }
 
-export function sessionDisplayName(user: SessionUser | null | undefined) {
+export function sessionDisplayName(
+  user: SessionUser | null | undefined,
+): string {
   if (!user) return "User";
   if (user.displayName?.trim()) return user.displayName.trim();
   const combined = [user.firstName, user.lastName].filter(Boolean).join(" ");
   if (combined) return combined;
-  return user.email.split("@")[0] || user.email;
+  return user.email?.split("@")[0] || user.email || "User";
 }
 
 export function sessionRoleLabel(role?: string) {
