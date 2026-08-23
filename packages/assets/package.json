@@ -1,0 +1,14 @@
+{
+  "name": "@dark-horse-safety/assets",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Shared brand and media assets. Apps copy or serve from public/brand.",
+  "exports": {
+    "./brand/logo.png": "./brand/logo.png",
+    "./brand/account-locked-image.svg": "./brand/account-locked-image.svg"
+  },
+  "files": [
+    "brand"
+  ]
+}

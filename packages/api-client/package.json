@@ -1,0 +1,19 @@
+{
+  "name": "@dark-horse-safety/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dark-horse-safety/types": "*"
+  },
+  "devDependencies": {
+    "@dark-horse-safety/typescript-config": "*",
+    "typescript": "^5"
+  }
+}

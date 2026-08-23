@@ -1,0 +1,409 @@
+/**
+ * Tailwind CSS v4 theme bridge for Dark Horse Safety.
+ * Import in each app: @import "@dark-horse-safety/theme/styles.css";
+ */
+
+:root {
+  --dhs-background: #161618;
+  --dhs-surface: #1c1c1e;
+  --dhs-surface-elevated: #252525;
+  --dhs-surface-muted: #2a2a2a;
+  --dhs-surface-strong: #333333;
+
+  --dhs-foreground: #ffffff;
+  --dhs-foreground-bright: #fdfdff;
+  --dhs-foreground-muted: #959597;
+  --dhs-foreground-subtle: #959597;
+  --dhs-alert-bg: #282826;
+  --dhs-alert-fg: #edf0f5;
+
+  --dhs-primary: #ffffff;
+  --dhs-primary-foreground: #09090b;
+
+  --dhs-accent: #e31c23;
+  --dhs-accent-foreground: #ffffff;
+
+  --dhs-border: #222222;
+  --dhs-border-strong: #3d3d3d;
+  --dhs-border-focus: #ffffff;
+  --dhs-border-error: #ff4d4d;
+
+  /* Divider lines (login / auth) */
+  --dhs-divider: #2d2d30;
+  --dhs-divider-shadow: 0px -1px 0px 0px #000000;
+
+  --dhs-success: #22c55e;
+  --dhs-warning: #f59e0b;
+  --dhs-error: #ff4d4d;
+  --dhs-info: #3b82f6;
+
+  --dhs-overlay: rgba(0, 0, 0, 0.72);
+  --dhs-map-radius: rgba(59, 130, 246, 0.35);
+
+  --dhs-radius-sm: 6px;
+  --dhs-radius-md: 8px;
+  --dhs-radius-lg: 12px;
+  --dhs-radius-xl: 16px;
+
+  --dhs-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "SF Pro Display", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --dhs-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "SF Pro Text", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+
+  color-scheme: dark;
+}
+
+html {
+  overflow: hidden;
+  overscroll-behavior: none;
+  font-family: var(--dhs-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Interactive controls — pointer everywhere */
+a,
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+summary,
+label[for] {
+  cursor: pointer;
+}
+
+a:disabled,
+button:disabled,
+[aria-disabled="true"],
+input:disabled {
+  cursor: not-allowed;
+}
+
+@theme inline {
+  --color-background: var(--dhs-background);
+  --color-surface: var(--dhs-surface);
+  --color-surface-elevated: var(--dhs-surface-elevated);
+  --color-surface-muted: var(--dhs-surface-muted);
+  --color-surface-strong: var(--dhs-surface-strong);
+
+  --color-foreground: var(--dhs-foreground);
+  --color-foreground-bright: var(--dhs-foreground-bright);
+  --color-foreground-muted: var(--dhs-foreground-muted);
+  --color-foreground-subtle: var(--dhs-foreground-subtle);
+  --color-alert: var(--dhs-alert-bg);
+  --color-alert-foreground: var(--dhs-alert-fg);
+
+  --color-primary: var(--dhs-primary);
+  --color-primary-foreground: var(--dhs-primary-foreground);
+
+  --color-accent: var(--dhs-accent);
+  --color-accent-foreground: var(--dhs-accent-foreground);
+
+  --color-border: var(--dhs-border);
+  --color-border-strong: var(--dhs-border-strong);
+  --color-border-focus: var(--dhs-border-focus);
+  --color-border-error: var(--dhs-border-error);
+  --color-divider: var(--dhs-divider);
+
+  --color-success: var(--dhs-success);
+  --color-warning: var(--dhs-warning);
+  --color-error: var(--dhs-error);
+  --color-info: var(--dhs-info);
+
+  --color-overlay: var(--dhs-overlay);
+  --color-map-radius: var(--dhs-map-radius);
+
+  --radius-sm: var(--dhs-radius-sm);
+  --radius-md: var(--dhs-radius-md);
+  --radius-lg: var(--dhs-radius-lg);
+  --radius-xl: var(--dhs-radius-xl);
+
+  --font-sans: var(--dhs-font-sans);
+  --font-display: var(--dhs-font-display);
+}
+
+/* Auth / primary CTA — Figma: 380×32, padding 12, radius 8, border 0.97 */
+@utility btn-base {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  align-items: center;
+  gap: 0;
+  font-size: 12px;
+  line-height: 100%;
+}
+
+/* Primary button surface — Figma: white fill, gradient border, layered shadows */
+:root {
+  --dhs-btn-primary-bg: #ffffff;
+  --dhs-btn-primary-border-width: 0.97px;
+  --dhs-btn-primary-border-gradient: linear-gradient(
+    180deg,
+    rgba(188, 188, 188, 0.32) -23.51%,
+    rgba(146, 146, 146, 0) 139.76%
+  );
+  --dhs-btn-primary-shadow:
+    0px 3.89px 3.89px 0px #08080814,
+    0px 0.97px 1.94px 0px #08080833,
+    0px 5.83px 11.67px 0px #ededed1f inset,
+    0px 0.97px 0.97px 0px #ffffff33 inset;
+}
+
+@utility btn-primary-surface {
+  color: #09090b;
+  background-color: var(--dhs-btn-primary-bg);
+  border: var(--dhs-btn-primary-border-width) solid transparent;
+  background-image:
+    linear-gradient(var(--dhs-btn-primary-bg), var(--dhs-btn-primary-bg)),
+    var(--dhs-btn-primary-border-gradient);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  box-shadow: var(--dhs-btn-primary-shadow);
+
+  &:hover:not(:disabled) {
+    filter: brightness(0.97);
+  }
+
+  &:active:not(:disabled) {
+    filter: brightness(0.94);
+    box-shadow:
+      0px 1.5px 1.5px 0px #08080814,
+      0px 0.5px 1px 0px #08080833,
+      0px 5.83px 11.67px 0px #ededed1f inset,
+      0px 0.97px 0.97px 0px #ffffff33 inset;
+  }
+}
+
+/* Back to sign in — dark surface + border */
+@utility btn-glass-surface {
+  color: var(--dhs-foreground-bright);
+  background: #353535;
+  border: 1px solid #3e3e3e;
+  font-family: var(--dhs-font-sans);
+  font-weight: 510;
+  font-size: 12px;
+  line-height: 100%;
+  letter-spacing: -0.2px;
+  text-transform: uppercase;
+  vertical-align: middle;
+
+  &:hover:not(:disabled) {
+    background: #3d3d3d;
+    border-color: #3e3e3e;
+  }
+
+  &:active:not(:disabled) {
+    background: #2e2e2e;
+    border-color: #3e3e3e;
+  }
+}
+
+/* Auth card title (e.g. Login / Reset your password) */
+@utility auth-title {
+  color: var(--dhs-foreground-bright);
+  font-family: var(--dhs-font-sans);
+  font-weight: 510;
+  font-size: 24px;
+  line-height: 100%;
+  letter-spacing: -0.2px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* Auth card subtitle under heading */
+@utility auth-description {
+  color: var(--dhs-foreground-muted);
+  font-family: var(--dhs-font-sans);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 100%;
+  letter-spacing: -0.2px;
+  text-align: center;
+  text-transform: uppercase;
+
+  & .auth-description-emphasis {
+    color: var(--dhs-foreground-bright);
+    font-weight: 400;
+  }
+}
+
+/* Check inbox — description + email highlight */
+@utility auth-inbox-description {
+  color: var(--dhs-foreground-muted);
+  font-family: var(--dhs-font-sans);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 130%;
+  letter-spacing: -0.2px;
+  text-align: center;
+  text-transform: uppercase;
+
+  & .auth-inbox-description-emphasis {
+    color: var(--dhs-foreground-bright);
+    font-family: var(--dhs-font-sans);
+    font-weight: 510;
+    font-size: 14px;
+    line-height: 130%;
+    letter-spacing: -0.2px;
+    text-transform: uppercase;
+  }
+}
+
+/* Check inbox — help callout box */
+@utility auth-inbox-help-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 380px;
+  margin-inline: auto;
+  background: #353535;
+  box-shadow: 0px 0px 8px 0px #00000008;
+  border-radius: 4px;
+  padding: 10px 12px;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+@utility auth-inbox-help-heading {
+  color: var(--dhs-foreground-muted);
+  font-family: var(--dhs-font-sans);
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 100%;
+  letter-spacing: -0.2px;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+@utility auth-inbox-help-body {
+  color: var(--dhs-foreground-bright);
+  font-family: var(--dhs-font-sans);
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: -0.2px;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+/* Input field label (Email address, Password, etc.) */
+@utility field-label {
+  color: var(--dhs-foreground-bright);
+  font-family: var(--dhs-font-sans);
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: -0.2px;
+  text-transform: uppercase;
+}
+
+/* Input placeholder (Enter your email address, etc.) */
+@utility field-placeholder {
+  &::placeholder {
+    color: var(--dhs-foreground-muted);
+    font-family: var(--dhs-font-sans);
+    font-weight: 400;
+    font-size: 12px;
+    line-height: 100%;
+    letter-spacing: -0.2px;
+    text-transform: uppercase;
+  }
+}
+
+/* Forgot password link next to password label */
+@utility auth-forgot-link {
+  color: var(--dhs-foreground-muted);
+  font-family: var(--dhs-font-sans);
+  font-weight: 400;
+  font-size: 10px;
+  line-height: 120%;
+  letter-spacing: -0.2px;
+  text-align: center;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-decoration-style: solid;
+  text-underline-offset: auto;
+
+  &:hover {
+    color: var(--dhs-foreground-bright);
+  }
+}
+
+/* Auth form error / status alert (Incorrect email or password…) */
+@utility auth-alert {
+  background: var(--dhs-alert-bg);
+  color: var(--dhs-alert-fg);
+  border: 1px solid var(--dhs-alert-bg);
+  border-radius: var(--dhs-radius-md, 8px);
+  font-family: var(--dhs-font-sans);
+  font-weight: 510;
+  font-size: 12px;
+  line-height: 100%;
+  letter-spacing: 0;
+  text-align: center;
+  text-transform: uppercase;
+  padding: 12px 16px;
+}
+
+/* Auth card footer — body copy */
+@utility auth-footer-text {
+  color: var(--dhs-foreground-muted);
+  font-family: var(--dhs-font-sans);
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 140%;
+  letter-spacing: -0.2px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* Auth card footer — email / emphasis link */
+@utility auth-footer-link {
+  color: var(--dhs-foreground-bright);
+  font-family: var(--dhs-font-sans);
+  font-weight: 590;
+  font-size: 12px;
+  line-height: 140%;
+  letter-spacing: -0.2px;
+  text-align: center;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+/* Auth card footer — semibold emphasis (e.g. expiry timer) */
+@utility auth-footer-emphasis {
+  color: var(--dhs-foreground-bright);
+  font-family: var(--dhs-font-sans);
+  font-weight: 510;
+  font-size: 12px;
+  line-height: 140%;
+  letter-spacing: -0.2px;
+  text-transform: uppercase;
+}
+
+/* Auth divider line — Figma: 1px #2D2D30 + top hairline shadow */
+@utility divider-line {
+  height: 0;
+  border: none;
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+}
+
+/* Scrollable but no visible scrollbar — auth shells */
+@utility scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}

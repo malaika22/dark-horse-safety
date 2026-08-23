@@ -1,25 +1,30 @@
 {
   "name": "dark-horse-safety",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Dark Horse Safety monorepo",
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "tooling/*"
   ],
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "dev:dashboard": "npm run dev -w @dark-horse-safety/dashboard",
+    "dev:api": "npm run start:dev -w @dark-horse-safety/api",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:embedded": "npm run db:embedded -w @dark-horse-safety/api",
+    "db:migrate": "npm run prisma:migrate -w @dark-horse-safety/api",
+    "db:seed": "npm run db:seed -w @dark-horse-safety/api"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/malaika22/dark-horse-safety.git"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/malaika22/dark-horse-safety/issues"
@@ -27,5 +32,9 @@
   "homepage": "https://github.com/malaika22/dark-horse-safety#readme",
   "devDependencies": {
     "turbo": "^2.10.11"
+  },
+  "packageManager": "npm@10.9.4",
+  "engines": {
+    "node": ">=20"
   }
 }

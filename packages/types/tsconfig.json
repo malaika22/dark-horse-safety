@@ -1,0 +1,8 @@
+{
+  "extends": "@dark-horse-safety/typescript-config/base.json",
+  "include": ["src"],
+  "exclude": ["node_modules"],
+  "compilerOptions": {
+    "noEmit": true
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@dark-horse-safety/types",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "exports": {
+    ".": "./src/index.ts",
+    "./api": "./src/api.ts",
+    "./auth": "./src/auth.ts",
+    "./user": "./src/user.ts",
+    "./common": "./src/common.ts",
+    "./validation": "./src/validation.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@dark-horse-safety/typescript-config": "*",
+    "typescript": "^5"
+  }
+}

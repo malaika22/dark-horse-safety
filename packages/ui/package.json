@@ -1,0 +1,39 @@
+{
+  "name": "@dark-horse-safety/ui",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "exports": {
+    ".": "./src/index.ts",
+    "./button": "./src/button.tsx",
+    "./input": "./src/input.tsx",
+    "./password-input": "./src/password-input.tsx",
+    "./otp-input": "./src/otp-input.tsx",
+    "./tabs": "./src/tabs.tsx",
+    "./card": "./src/card.tsx",
+    "./alert": "./src/alert.tsx",
+    "./divider": "./src/divider.tsx",
+    "./auth-card": "./src/auth-card.tsx",
+    "./cn": "./src/lib/cn.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@dark-horse-safety/theme": "*",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@dark-horse-safety/typescript-config": "*",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "typescript": "^5"
+  }
+}

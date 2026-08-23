@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  SUPERVISOR
+  TECHNICIAN
+  OPERATOR
+}
+
+enum AccountStatus {
+  ACTIVE
+  INVITED
+  LOCKED
+  DISABLED
+  PENDING_PASSWORD
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+model User {
+  id                  String        @id @default(uuid())
+  email               String?       @unique
+  phone               String?       @unique
+  passwordHash        String?
+  googleId            String?       @unique
+  firstName           String?
+  lastName            String?
+  role                UserRole      @default(OPERATOR)
+  status              AccountStatus @default(INVITED)
+  failedLoginAttempts Int           @default(0)
+  lockedUntil         DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  passwordResetTokens PasswordResetToken[]
+  invitesSent         Invite[]             @relation("Inviter")
+  invitesReceived     Invite[]             @relation("Invitee")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Invite {
+  id         String       @id @default(uuid())
+  email      String
+  tokenHash  String       @unique
+  role       UserRole     @default(OPERATOR)
+  status     InviteStatus @default(PENDING)
+  inviterId  String?
+  inviter    User?        @relation("Inviter", fields: [inviterId], references: [id], onDelete: SetNull)
+  inviteeId  String?
+  invitee    User?        @relation("Invitee", fields: [inviteeId], references: [id], onDelete: SetNull)
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([email])
+  @@index([inviterId])
+}

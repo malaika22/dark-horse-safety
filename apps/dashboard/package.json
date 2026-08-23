@@ -1,19 +1,26 @@
 {
-  "name": "dashboard",
+  "name": "@dark-horse-safety/dashboard",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3000",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "start": "next start --port 3000",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@dark-horse-safety/api-client": "*",
+    "@dark-horse-safety/theme": "*",
+    "@dark-horse-safety/types": "*",
+    "@dark-horse-safety/ui": "*",
     "next": "16.3.2",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@dark-horse-safety/eslint-config": "*",
+    "@dark-horse-safety/typescript-config": "*",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
