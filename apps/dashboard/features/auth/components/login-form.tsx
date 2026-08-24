@@ -29,19 +29,42 @@ type FieldErrors = {
   password?: string;
 };
 
+function formatCredentialsError(err: ApiError) {
+  const left =
+    typeof err.attemptsLeft === "number" && Number.isFinite(err.attemptsLeft)
+      ? err.attemptsLeft
+      : null;
+
+  if (left === null) {
+    return err.message || "Incorrect email or password.";
+  }
+
+  // Prefer API message when it already includes the attempts count
+  if (/\battempts?\s+left\b/i.test(err.message)) {
+    return err.message;
+  }
+
+  if (left <= 0) {
+    return err.message || "Incorrect email or password.";
+  }
+
+  return `Incorrect email or password. ${left} attempt${
+    left === 1 ? "" : "s"
+  } left.`;
+}
+
 export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
-  const [attemptsLeft, setAttemptsLeft] = React.useState<number | null>(null);
-  const [showCredError, setShowCredError] = React.useState(false);
+  const [credError, setCredError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [googleLoading, setGoogleLoading] = React.useState(false);
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setShowCredError(false);
+    setCredError(null);
 
     const nextErrors: FieldErrors = {
       email: validateEmail(email) ?? undefined,
@@ -63,9 +86,8 @@ export function LoginForm() {
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === "ACCOUNT_LOCKED" || err.status === 423) {
-          const minutes = err.lockDurationMinutes ?? 15;
           toastApiError(err);
-          router.push(`/account-locked?minutes=${minutes}`);
+          router.push("/account-locked");
           return;
         }
         if (err.code === "VALIDATION_ERROR" && err.details) {
@@ -76,9 +98,9 @@ export function LoginForm() {
           toastApiError(err);
           return;
         }
-        setAttemptsLeft(err.attemptsLeft ?? null);
-        setShowCredError(true);
-        toastApiError(err);
+
+        const message = formatCredentialsError(err);
+        setCredError(message);
       } else {
         toastApiError(err, "Unable to sign in. Try again.");
       }
@@ -88,7 +110,7 @@ export function LoginForm() {
   };
 
   const onGoogle = async () => {
-    setShowCredError(false);
+    setCredError(null);
     setGoogleLoading(true);
     try {
       const code = await requestGoogleAuthCode();
@@ -113,14 +135,7 @@ export function LoginForm() {
         title="Login to Dark Horse Force"
         description="Please sign in to your account below."
       >
-        {showCredError ? (
-          <Alert>
-            Incorrect email or password
-            {attemptsLeft !== null
-              ? `. ${attemptsLeft} attempt${attemptsLeft === 1 ? "" : "s"} left.`
-              : "."}
-          </Alert>
-        ) : null}
+        {credError ? <Alert>{credError}</Alert> : null}
 
         <Button
           type="button"

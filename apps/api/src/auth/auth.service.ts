@@ -30,9 +30,16 @@ import { normalizePhone } from '../common/utils/phone.util';
 const MAX_ATTEMPTS_DEFAULT = 5;
 const LOCK_MINUTES_DEFAULT = 15;
 
+type IdentifierFailure = {
+  attempts: number;
+  lockedUntil?: number;
+};
+
 @Injectable()
 export class AuthService {
   private readonly googleClient: OAuth2Client;
+  /** Tracks failed logins for unknown / passwordless identifiers (anti-enumeration). */
+  private readonly identifierFailures = new Map<string, IdentifierFailure>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -59,6 +66,87 @@ export class AuthService {
     return this.config.get<string>('FRONTEND_URL', 'http://localhost:3000');
   }
 
+  private normalizeIdentifier(raw: string) {
+    return raw.trim().toLowerCase();
+  }
+
+  private incorrectCredentialsMessage(attemptsLeft: number) {
+    if (attemptsLeft <= 0) {
+      return 'Incorrect email or password.';
+    }
+    return `Incorrect email or password. ${attemptsLeft} attempt${
+      attemptsLeft === 1 ? '' : 's'
+    } left.`;
+  }
+
+  private remainingLockMinutes(lockedUntil: Date | number) {
+    const until =
+      lockedUntil instanceof Date ? lockedUntil.getTime() : lockedUntil;
+    return Math.max(1, Math.ceil((until - Date.now()) / 60_000));
+  }
+
+  private clearIdentifierFailures(identifier: string) {
+    this.identifierFailures.delete(this.normalizeIdentifier(identifier));
+  }
+
+  private assertIdentifierNotLocked(identifier: string) {
+    const key = this.normalizeIdentifier(identifier);
+    const entry = this.identifierFailures.get(key);
+    if (!entry?.lockedUntil) return;
+
+    if (entry.lockedUntil > Date.now()) {
+      const minutes = this.remainingLockMinutes(entry.lockedUntil);
+      throw new HttpException(
+        {
+          code: 'ACCOUNT_LOCKED',
+          message: `Too many failed attempts. Your account is locked for ${minutes} minute${minutes === 1 ? '' : 's'}. Try again after the lock expires, or reset your password.`,
+          lockedUntil: new Date(entry.lockedUntil).toISOString(),
+          lockDurationMinutes: minutes,
+          maxLoginAttempts: this.maxAttempts(),
+          attemptsLeft: 0,
+        },
+        HttpStatus.LOCKED,
+      );
+    }
+
+    // Lock window ended — resume fresh attempts
+    this.identifierFailures.delete(key);
+  }
+
+  private handleUnknownLogin(identifier: string): never {
+    this.assertIdentifierNotLocked(identifier);
+
+    const key = this.normalizeIdentifier(identifier);
+    const max = this.maxAttempts();
+    const prev = this.identifierFailures.get(key)?.attempts ?? 0;
+    const attempts = prev + 1;
+    const remaining = Math.max(max - attempts, 0);
+
+    if (attempts >= max) {
+      const lockedUntil = Date.now() + this.lockMinutes() * 60_000;
+      this.identifierFailures.set(key, { attempts, lockedUntil });
+      throw new HttpException(
+        {
+          code: 'ACCOUNT_LOCKED',
+          message: `Too many failed attempts. Your account is locked for ${this.lockMinutes()} minutes. Try again after the lock expires, or reset your password.`,
+          lockedUntil: new Date(lockedUntil).toISOString(),
+          attemptsLeft: 0,
+          lockDurationMinutes: this.lockMinutes(),
+          maxLoginAttempts: max,
+        },
+        HttpStatus.LOCKED,
+      );
+    }
+
+    this.identifierFailures.set(key, { attempts });
+    throw new UnauthorizedException({
+      code: 'UNAUTHORIZED',
+      message: this.incorrectCredentialsMessage(remaining),
+      attemptsLeft: remaining,
+      maxLoginAttempts: max,
+    });
+  }
+
   private authResponse(user: User) {
     const token = this.tokens.signAccessToken(user);
     return {
@@ -71,21 +159,20 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await findUserByLoginIdentifier(this.prisma, dto.email);
+    const identifier = dto.email;
+    let user = await findUserByLoginIdentifier(this.prisma, identifier);
 
     if (!user || !user.passwordHash) {
-      throw new UnauthorizedException({
-        code: 'UNAUTHORIZED',
-        message: 'Incorrect email, phone, or password',
-        attemptsLeft: this.maxAttempts() - 1,
-      });
+      this.handleUnknownLogin(identifier);
     }
 
-    this.assertNotLocked(user);
+    user = await this.resumeIfLockExpired(user);
+    this.assertStillLocked(user);
+    this.assertIdentifierNotLocked(identifier);
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) {
-      return this.handleFailedLogin(user);
+      return this.handleFailedLogin(user, identifier);
     }
 
     if (
@@ -98,6 +185,8 @@ export class AuthService {
         message: 'Account is not active. Complete invite activation first.',
       });
     }
+
+    this.clearIdentifierFailures(identifier);
 
     const updated = await this.prisma.user.update({
       where: { id: user.id },
@@ -185,22 +274,51 @@ export class AuthService {
     };
   }
 
-  private assertNotLocked(user: User) {
+  /**
+   * After the 15-minute lock window ends, clear lock state so the user can
+   * sign in again with a fresh attempt counter.
+   */
+  private async resumeIfLockExpired(user: User): Promise<User> {
+    const lockExpired =
+      Boolean(user.lockedUntil) && user.lockedUntil! <= new Date();
+    const staleLockStatus =
+      user.status === AccountStatus.LOCKED &&
+      (!user.lockedUntil || user.lockedUntil <= new Date());
+
+    if (!lockExpired && !staleLockStatus) {
+      return user;
+    }
+
+    this.clearIdentifierFailures(user.email ?? user.phone ?? user.id);
+
+    return this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        status: AccountStatus.ACTIVE,
+      },
+    });
+  }
+
+  private assertStillLocked(user: User) {
     if (user.lockedUntil && user.lockedUntil > new Date()) {
+      const minutes = this.remainingLockMinutes(user.lockedUntil);
       throw new HttpException(
         {
           code: 'ACCOUNT_LOCKED',
-          message: `Too many failed attempts. Your account is locked for ${this.lockMinutes()} minutes. Reset your password to regain access sooner.`,
+          message: `Too many failed attempts. Your account is locked for ${minutes} minute${minutes === 1 ? '' : 's'}. Try again after the lock expires, or reset your password.`,
           lockedUntil: user.lockedUntil.toISOString(),
-          lockDurationMinutes: this.lockMinutes(),
+          lockDurationMinutes: minutes,
           maxLoginAttempts: this.maxAttempts(),
+          attemptsLeft: 0,
         },
         HttpStatus.LOCKED,
       );
     }
   }
 
-  private async handleFailedLogin(user: User) {
+  private async handleFailedLogin(user: User, identifier: string) {
     const max = this.maxAttempts();
     const attempts = user.failedLoginAttempts + 1;
     const remaining = Math.max(max - attempts, 0);
@@ -215,11 +333,15 @@ export class AuthService {
           status: AccountStatus.LOCKED,
         },
       });
+      this.identifierFailures.set(this.normalizeIdentifier(identifier), {
+        attempts,
+        lockedUntil: lockedUntil.getTime(),
+      });
 
       throw new HttpException(
         {
           code: 'ACCOUNT_LOCKED',
-          message: `Too many failed attempts. Your account is locked for ${this.lockMinutes()} minutes.`,
+          message: `Too many failed attempts. Your account is locked for ${this.lockMinutes()} minutes. Try again after the lock expires, or reset your password.`,
           lockedUntil: lockedUntil.toISOString(),
           attemptsLeft: 0,
           lockDurationMinutes: this.lockMinutes(),
@@ -236,8 +358,9 @@ export class AuthService {
 
     throw new UnauthorizedException({
       code: 'UNAUTHORIZED',
-      message: 'Incorrect email or password',
+      message: this.incorrectCredentialsMessage(remaining),
       attemptsLeft: remaining,
+      maxLoginAttempts: max,
     });
   }
 
@@ -453,6 +576,7 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
+    const user = record.user;
 
     await this.prisma.$transaction([
       this.prisma.user.update({
@@ -469,6 +593,10 @@ export class AuthService {
         data: { usedAt: new Date() },
       }),
     ]);
+
+    // Clear in-memory lock tracking so login works immediately after reset
+    if (user.email) this.clearIdentifierFailures(user.email);
+    if (user.phone) this.clearIdentifierFailures(user.phone);
 
     return {
       data: { message: 'Password updated successfully' },

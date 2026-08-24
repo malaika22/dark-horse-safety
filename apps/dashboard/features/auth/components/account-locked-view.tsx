@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   AccountLockedImage,
   AuthCard,
@@ -10,14 +10,12 @@ import {
 
 export function AccountLockedView() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const minutes = Number(searchParams.get("minutes")) || 15;
 
   return (
     <AuthShell>
       <AuthCard
         title="Account locked"
-        description={`Too many failed attempts. Your account is locked for ${minutes} minute${minutes === 1 ? "" : "s"}. Reset your password to regain access sooner.`}
+        description="Too many failed attempts. Your account is locked for 15 minutes. Reset your password to regain access sooner, or try again after the lock expires."
         icon={<AccountLockedImage size={56} />}
       >
         <Button type="button" onClick={() => router.push("/reset-password")}>
