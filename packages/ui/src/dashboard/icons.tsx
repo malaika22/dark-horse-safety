@@ -43,6 +43,28 @@ export function ArrowRightIcon({ className }: { className?: string }) {
   );
 }
 
+/** Left arrow with shaft — back / cancel controls */
+export function ArrowLeftIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={className}
+    >
+      <path
+        d="M20 12H6M11 6l-6 6 6 6"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function ChevronDownIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -129,7 +151,17 @@ export type StatIconName =
   | "edit"
   | "gps"
   | "equipment"
-  | "wrench";
+  | "wrench"
+  | "customers";
+
+/** Full Figma assets (include rounded bg) — skip the KPI wrapper fill. */
+export const STAT_ICON_SRC: Partial<Record<StatIconName, string>> = {
+  customers: "/icons/customers-icon.png",
+};
+
+export function isAssetStatIcon(name: StatIconName) {
+  return Boolean(STAT_ICON_SRC[name]);
+}
 
 export function StatIcon({
   name,
@@ -138,6 +170,18 @@ export function StatIcon({
   name: StatIconName;
   className?: string;
 }) {
+  const assetSrc = STAT_ICON_SRC[name];
+  if (assetSrc) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={assetSrc}
+        alt=""
+        className={className ?? "h-8 w-8 rounded-[8px] object-cover"}
+      />
+    );
+  }
+
   switch (name) {
     case "crm":
     case "time":

@@ -1,6 +1,11 @@
 import * as React from "react";
 import { cn } from "../lib/cn";
-import { ArrowRightIcon, StatIcon, type StatIconName } from "./icons";
+import {
+  ArrowRightIcon,
+  StatIcon,
+  isAssetStatIcon,
+  type StatIconName,
+} from "./icons";
 
 export interface DashboardStatMetric {
   value: string;
@@ -49,8 +54,19 @@ export function DashboardStatCell({
     metrics ?? (value && meta ? [{ value, meta }] : []);
 
   return (
-    <div className={cn("flex min-h-[168px] min-w-0 flex-col", className)}>
-      <div className="flex min-w-0 flex-1 flex-col p-4">
+    <div
+      className={cn(
+        "flex min-w-0 flex-col",
+        action ? "min-h-[168px]" : null,
+        className,
+      )}
+    >
+      <div
+        className={cn(
+          "flex min-w-0 flex-col p-4",
+          action ? "flex-1" : null,
+        )}
+      >
         <div className="flex items-center justify-between gap-3">
           <p
             title={title}
@@ -59,9 +75,16 @@ export function DashboardStatCell({
             {title}
           </p>
           {icon ? (
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#2A2A2A] text-white">
-              <StatIcon name={icon} />
-            </span>
+            isAssetStatIcon(icon) ? (
+              <StatIcon
+                name={icon}
+                className="h-8 w-8 shrink-0 rounded-[8px] object-cover"
+              />
+            ) : (
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#2A2A2A] text-white">
+                <StatIcon name={icon} />
+              </span>
+            )
           ) : null}
         </div>
 

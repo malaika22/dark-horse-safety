@@ -7,8 +7,44 @@ import { AppHeader } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
 import { SessionProvider, useSession } from "./session-context";
 
+/** Figma app-header titles — longest prefix wins for nested `/new` routes. */
+const HEADER_TITLES: { path: string; title: string }[] = [
+  { path: "/dashboard", title: "Dashboard Overview" },
+  { path: "/crm/accounts/new", title: "Add Customer" },
+  { path: "/crm/contacts/new", title: "Add Contact" },
+  { path: "/crm/requirements/new", title: "Add Requirement" },
+  { path: "/crm/pricing-rules/new", title: "Add Pricing Rule" },
+  { path: "/crm/form-rules/new", title: "Add Form Rule" },
+  { path: "/crm/route-rules/new", title: "Add Route Rule" },
+  { path: "/crm/locations/new", title: "Add Location" },
+  { path: "/crm/accounts", title: "CRM / Customers" },
+  { path: "/crm/contacts", title: "CRM / Contacts" },
+  { path: "/crm/requirements", title: "CRM / Customer Requirements" },
+  { path: "/crm/pricing-rules", title: "CRM / Pricing Rules" },
+  { path: "/crm/form-rules", title: "CRM / Required Form Rules" },
+  { path: "/crm/route-rules", title: "CRM / Route / GPS Rules" },
+  { path: "/crm/locations", title: "CRM / Locations / Wells" },
+  { path: "/crm/eod-reports", title: "CRM / EOD Reports" },
+  { path: "/crm/sales", title: "CRM / Sales" },
+  { path: "/crm/leads", title: "CRM / Leads" },
+  { path: "/crm", title: "CRM / CRM Dashboard" },
+];
+
 function titleForPath(pathname: string) {
-  if (pathname === "/dashboard") return "Dashboard Overview";
+  if (/^\/crm\/accounts\/[^/]+\/edit$/.test(pathname)) return "Edit Customer";
+  if (/^\/crm\/accounts\/[^/]+$/.test(pathname)) return "CRM / Customer";
+
+  const exact = HEADER_TITLES.find((entry) => entry.path === pathname);
+  if (exact) return exact.title;
+
+  // Nested paths (e.g. future detail routes) — match longest prefix
+  const prefixed = [...HEADER_TITLES]
+    .sort((a, b) => b.path.length - a.path.length)
+    .find(
+      (entry) =>
+        pathname === entry.path || pathname.startsWith(`${entry.path}/`),
+    );
+  if (prefixed) return prefixed.title;
 
   for (const item of APP_NAV) {
     if (item.href && (pathname === item.href || pathname.startsWith(`${item.href}/`))) {
@@ -16,8 +52,10 @@ function titleForPath(pathname: string) {
     }
     for (const child of item.children ?? []) {
       if (pathname === child.href || pathname.startsWith(`${child.href}/`)) {
-        // Section breadcrumb (e.g. "CRM / Customer") — matches Figma header
-        return item.label;
+        const section = item.label.includes(" / ")
+          ? item.label.split(" / ")[0]
+          : item.label;
+        return `${section} / ${child.label}`;
       }
     }
   }

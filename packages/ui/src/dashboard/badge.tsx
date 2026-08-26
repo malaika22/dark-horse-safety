@@ -14,7 +14,8 @@ export type DashboardBadgeVariant =
   | "fleet"
   | "billing"
   | "customer"
-  | "gold";
+  | "gold"
+  | "offline";
 
 const variantTone: Partial<
   Record<DashboardBadgeVariant, { background: string; border: string; color: string }>
@@ -26,6 +27,8 @@ const variantTone: Partial<
   error: { background: "#3D1F1F", border: "#4B212B", color: "#FFBBCA" },
   /* Needs Review */
   review: { background: "#31221B", border: "#4B3429", color: "#FFD1A9" },
+  /* Offline */
+  offline: { background: "#2A2040", border: "#6B5B95", color: "#C4B5FD" },
   operations: { background: "#2A2618", border: "#C4A35A", color: "#C4A35A" },
   employee: { background: "#2A2618", border: "#C4A35A", color: "#C4A35A" },
   safety: { background: "#2A2618", border: "#C4A35A", color: "#C4A35A" },
@@ -42,6 +45,7 @@ const variantClasses: Record<DashboardBadgeVariant, string> = {
   info: "border-transparent bg-info/15 text-sky-300",
   neutral: "border-transparent bg-white/10 text-foreground-muted",
   review: "",
+  offline: "",
   operations: "",
   employee: "",
   safety: "",

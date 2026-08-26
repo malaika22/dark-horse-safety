@@ -11,7 +11,7 @@ export const CRM_KPI_TOP = [
     value: "142",
     meta: "+3 this month",
     action: "View customers",
-    icon: "time" as StatIconName,
+    icon: "customers" as StatIconName,
   },
   {
     title: "Open jobs",
