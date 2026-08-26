@@ -545,18 +545,24 @@ input:disabled {
   box-shadow: 0px 2px 2.7px 0px #ffffff40 inset;
 }
 
-/* KPI stat grid — inset vertical/horizontal separators between cells */
-.dashboard-stat-grid > * {
+/* KPI stat rows — flush bands inside one panel; full-height verticals (no gap) */
+.dashboard-stat-row > * {
   position: relative;
 }
 
+/* Hairline between top (5-col) and bottom (4-col wider) bands — no spacing gap */
+.dashboard-stat-row + .dashboard-stat-row {
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+}
+
 @media (max-width: 639px) {
-  .dashboard-stat-grid > *:not(:last-child)::before {
+  .dashboard-stat-row > *:not(:last-child)::before {
     content: "";
     position: absolute;
-    right: var(--dhs-divider-inset);
+    right: 0;
     bottom: 0;
-    left: var(--dhs-divider-inset);
+    left: 0;
     height: 0;
     border-top: 1px solid var(--dhs-divider);
     box-shadow: var(--dhs-divider-shadow);
@@ -565,24 +571,25 @@ input:disabled {
 }
 
 @media (min-width: 640px) and (max-width: 1279px) {
-  .dashboard-stat-grid > *:not(:nth-child(2n)):not(:last-child)::after {
+  .dashboard-stat-row > *:not(:nth-child(2n)):not(:last-child)::after {
     content: "";
     position: absolute;
-    top: var(--dhs-divider-inset);
+    top: 0;
     right: 0;
-    bottom: var(--dhs-divider-inset);
+    bottom: 0;
     width: 1px;
     background-color: var(--dhs-divider);
     box-shadow: 1px 0 0 0 #000000;
     pointer-events: none;
   }
 
-  .dashboard-stat-grid > *:nth-child(-n + 8)::before {
+  /* Bottom hairline under every cell except the last visual row (last 1–2 cells) */
+  .dashboard-stat-row > *:not(:nth-last-child(-n + 2))::before {
     content: "";
     position: absolute;
-    right: var(--dhs-divider-inset);
+    right: 0;
     bottom: 0;
-    left: var(--dhs-divider-inset);
+    left: 0;
     height: 0;
     border-top: 1px solid var(--dhs-divider);
     box-shadow: var(--dhs-divider-shadow);
@@ -591,27 +598,16 @@ input:disabled {
 }
 
 @media (min-width: 1280px) {
-  .dashboard-stat-grid > *:not(:nth-child(5n)):not(:last-child)::after {
+  /* Full-height verticals — every cell except last in the band (no inset gap) */
+  .dashboard-stat-row > *:not(:last-child)::after {
     content: "";
     position: absolute;
-    top: var(--dhs-divider-inset);
+    top: 0;
     right: 0;
-    bottom: var(--dhs-divider-inset);
+    bottom: 0;
     width: 1px;
     background-color: var(--dhs-divider);
     box-shadow: 1px 0 0 0 #000000;
-    pointer-events: none;
-  }
-
-  .dashboard-stat-grid > *:nth-child(-n + 5)::before {
-    content: "";
-    position: absolute;
-    right: var(--dhs-divider-inset);
-    bottom: 0;
-    left: var(--dhs-divider-inset);
-    height: 0;
-    border-top: 1px solid var(--dhs-divider);
-    box-shadow: var(--dhs-divider-shadow);
     pointer-events: none;
   }
 }

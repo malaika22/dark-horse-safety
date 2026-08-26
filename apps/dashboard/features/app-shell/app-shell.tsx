@@ -16,7 +16,8 @@ function titleForPath(pathname: string) {
     }
     for (const child of item.children ?? []) {
       if (pathname === child.href || pathname.startsWith(`${child.href}/`)) {
-        return child.label;
+        // Section breadcrumb (e.g. "CRM / Customer") — matches Figma header
+        return item.label;
       }
     }
   }

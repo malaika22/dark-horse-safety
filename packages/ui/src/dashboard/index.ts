@@ -11,8 +11,11 @@ export {
   DashboardStatCell,
   DashboardStatCard,
   DashboardStatGrid,
+  DashboardStatRow,
   type DashboardStatCellProps,
   type DashboardStatCardProps,
+  type DashboardStatGridProps,
+  type DashboardStatRowProps,
   type DashboardStatMetric,
 } from "./stat-card";
 export {

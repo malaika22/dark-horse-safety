@@ -16,6 +16,7 @@ import {
   DashboardSegmentedProgress,
   DashboardStatCell,
   DashboardStatGrid,
+  DashboardStatRow,
   DashboardStatList,
   DashboardSyncTable,
 } from "@dark-horse-safety/ui";
@@ -39,15 +40,23 @@ export function DashboardOverview() {
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:p-6">
       <DashboardControlHeader />
 
-      {/* KPI grid — dividers only, no separate cards */}
+      {/* Top KPI cards */}
       <DashboardStatGrid>
-        {KPI_TOP.map((cell) => (
-          <DashboardStatCell key={cell.title} {...cell} />
-        ))}
-        {KPI_MID.map((cell) => (
-          <DashboardStatCell key={cell.title} {...cell} />
-        ))}
-        <DashboardStatCell {...KPI_EQUIPMENT} className="xl:col-span-2" />
+        <DashboardStatRow columns={5}>
+          {KPI_TOP.map((cell) => (
+            <DashboardStatCell key={cell.title} {...cell} />
+          ))}
+        </DashboardStatRow>
+      </DashboardStatGrid>
+
+      {/* Bottom KPI cards — 4 in one line */}
+      <DashboardStatGrid>
+        <DashboardStatRow columns={4}>
+          {KPI_MID.map((cell) => (
+            <DashboardStatCell key={cell.title} {...cell} />
+          ))}
+          <DashboardStatCell {...KPI_EQUIPMENT} />
+        </DashboardStatRow>
       </DashboardStatGrid>
 
       {/* Row 3 — exception queue + payroll cycle */}

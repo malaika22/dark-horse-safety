@@ -71,7 +71,6 @@ export const KPI_EQUIPMENT = {
   ],
   action: "View assets",
   icon: "wrench" as StatIconName,
-  className: "xl:col-span-2",
 };
 
 export const EXCEPTION_TABS = [

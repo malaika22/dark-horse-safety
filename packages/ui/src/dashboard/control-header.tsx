@@ -6,7 +6,12 @@ export interface DashboardControlHeaderProps {
   title?: string;
   syncLabel?: string;
   onRunSync?: () => void;
+  /** @deprecated Prefer primaryActionLabel + onPrimaryAction */
   onGeneratePayroll?: () => void;
+  primaryActionLabel?: string;
+  onPrimaryAction?: () => void;
+  primaryActionIcon?: React.ReactNode;
+  showPrimaryChevron?: boolean;
   className?: string;
 }
 
@@ -44,13 +49,47 @@ function PayrollIcon({ className }: { className?: string }) {
   );
 }
 
+function PlusIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={className}
+    >
+      <path
+        d="M12 5v14M5 12h14"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function DashboardControlHeader({
   title = "Control center",
   syncLabel = "Last syn update 2:13pm CT",
   onRunSync,
   onGeneratePayroll,
+  primaryActionLabel,
+  onPrimaryAction,
+  primaryActionIcon,
+  showPrimaryChevron = true,
   className,
 }: DashboardControlHeaderProps) {
+  const actionLabel = primaryActionLabel ?? "Generate payroll";
+  const actionHandler = onPrimaryAction ?? onGeneratePayroll;
+  const actionIcon =
+    primaryActionIcon ??
+    (primaryActionLabel ? (
+      <PlusIcon className="shrink-0" />
+    ) : (
+      <PayrollIcon className="shrink-0" />
+    ));
+
   return (
     <div
       className={cn(
@@ -77,12 +116,14 @@ export function DashboardControlHeader({
           </button>
           <button
             type="button"
-            onClick={onGeneratePayroll}
+            onClick={actionHandler}
             className="btn-base btn-primary-surface inline-flex shrink-0 justify-center gap-1 whitespace-nowrap sm:w-auto"
           >
-            <PayrollIcon className="shrink-0" />
-            Generate payroll
-            <ChevronDownIcon className="shrink-0" />
+            {actionIcon}
+            {actionLabel}
+            {showPrimaryChevron ? (
+              <ChevronDownIcon className="shrink-0" />
+            ) : null}
           </button>
         </div>
       </div>

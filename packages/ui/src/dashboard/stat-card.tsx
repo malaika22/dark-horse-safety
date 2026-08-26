@@ -20,11 +20,14 @@ export interface DashboardStatCellProps {
 
 function MetricBlock({ value, meta }: { value: string; meta: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="font-sans text-[24px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[32px]">
         {value}
       </p>
-      <p className="mt-2 font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[16px]">
+      <p
+        title={meta}
+        className="mt-2 truncate font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[16px]"
+      >
         {meta}
       </p>
     </div>
@@ -46,10 +49,13 @@ export function DashboardStatCell({
     metrics ?? (value && meta ? [{ value, meta }] : []);
 
   return (
-    <div className={cn("flex min-h-[168px] flex-col", className)}>
-      <div className="flex flex-1 flex-col p-4">
+    <div className={cn("flex min-h-[168px] min-w-0 flex-col", className)}>
+      <div className="flex min-w-0 flex-1 flex-col p-4">
         <div className="flex items-center justify-between gap-3">
-          <p className="min-w-0 flex-1 font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[16px]">
+          <p
+            title={title}
+            className="min-w-0 flex-1 truncate font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[16px]"
+          >
             {title}
           </p>
           {icon ? (
@@ -59,7 +65,12 @@ export function DashboardStatCell({
           ) : null}
         </div>
 
-        <div className={cn("mt-4", items.length > 1 && "grid grid-cols-2 gap-4")}>
+        <div
+          className={cn(
+            "mt-4 min-w-0",
+            items.length > 1 && "grid grid-cols-2 gap-3",
+          )}
+        >
           {items.map((item) => (
             <MetricBlock
               key={`${item.value}-${item.meta}`}
@@ -75,10 +86,11 @@ export function DashboardStatCell({
           <div className="divider-line-inset shrink-0" aria-hidden />
           <button
             type="button"
+            title={action}
             onClick={onAction}
-            className="flex w-full items-center justify-between gap-3 px-4 py-3 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-white/[0.03] md:text-[14px]"
+            className="flex w-full min-w-0 items-center justify-between gap-3 px-4 py-3 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-white/[0.03] md:text-[14px]"
           >
-            <span>{action}</span>
+            <span className="truncate">{action}</span>
             <ArrowRightIcon className="shrink-0 text-[#FDFDFF]" />
           </button>
         </>
@@ -105,7 +117,8 @@ export interface DashboardStatGridProps {
 }
 
 /**
- * KPI grid — one flat surface, tiles separated by login-style dividers only.
+ * KPI shell — one flat bordered surface. Put `DashboardStatRow`s inside
+ * (e.g. 5-col top + 4-col wider bottom) with no gap between rows.
  */
 export function DashboardStatGrid({ children, className }: DashboardStatGridProps) {
   return (
@@ -115,9 +128,39 @@ export function DashboardStatGrid({ children, className }: DashboardStatGridProp
         className,
       )}
     >
-      <div className="dashboard-stat-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5">
-        {children}
-      </div>
+      {children}
+    </div>
+  );
+}
+
+export interface DashboardStatRowProps {
+  children: React.ReactNode;
+  /** Desktop columns — 5 top, 3 mid, 1 solo last card, etc. */
+  columns?: 1 | 2 | 3 | 4 | 5;
+  className?: string;
+}
+
+/**
+ * One KPI band inside `DashboardStatGrid`.
+ */
+export function DashboardStatRow({
+  children,
+  columns = 5,
+  className,
+}: DashboardStatRowProps) {
+  return (
+    <div
+      className={cn(
+        "dashboard-stat-row grid grid-cols-1 sm:grid-cols-2",
+        columns === 1 && "sm:grid-cols-1 xl:grid-cols-1",
+        columns === 2 && "xl:grid-cols-2",
+        columns === 3 && "xl:grid-cols-3",
+        columns === 4 && "xl:grid-cols-4",
+        columns === 5 && "xl:grid-cols-5",
+        className,
+      )}
+    >
+      {children}
     </div>
   );
 }
