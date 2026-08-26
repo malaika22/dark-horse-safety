@@ -170,7 +170,12 @@ export class AuthService {
     this.assertStillLocked(user);
     this.assertIdentifierNotLocked(identifier);
 
-    const valid = await bcrypt.compare(dto.password, user.passwordHash);
+    const passwordHash = user.passwordHash;
+    if (!passwordHash) {
+      this.handleUnknownLogin(identifier);
+    }
+
+    const valid = await bcrypt.compare(dto.password, passwordHash);
     if (!valid) {
       return this.handleFailedLogin(user, identifier);
     }
@@ -731,6 +736,19 @@ export class AuthService {
 
   async resendInvite(dto: ResendInviteDto) {
     const email = dto.email.trim().toLowerCase();
+    const result = await this.issueAndSendInvite(email, true);
+    return {
+      data: {
+        message: 'Invite resent',
+        email: result.email,
+        expiresAt: result.expiresAt,
+        expiresInDays: result.expiresInDays,
+      },
+    };
+  }
+
+  /** Create or refresh invite token and email the accept URL to the user. */
+  private async issueAndSendInvite(email: string, isResend: boolean) {
     const days = Number(this.config.get('INVITE_EXPIRES_DAYS', 7));
 
     const pending = await this.prisma.invite.findFirst({
@@ -786,16 +804,14 @@ export class AuthService {
             .filter(Boolean)
             .join(' ')
         : undefined,
-      Boolean(pending),
+      isResend,
     );
 
     return {
-      data: {
-        message: 'Invite resent',
-        email,
-        expiresAt: expiresAt.toISOString(),
-        expiresInDays: days,
-      },
+      email,
+      expiresAt: expiresAt.toISOString(),
+      expiresInDays: days,
+      inviteUrl,
     };
   }
 }

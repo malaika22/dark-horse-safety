@@ -140,11 +140,14 @@ export function LoginForm() {
         <Button
           type="button"
           variant="secondary"
-          leftIcon={<GoogleGlyph />}
           onClick={onGoogle}
           disabled={loading || googleLoading}
+          className="justify-center"
         >
-          {googleLoading ? "Connecting…" : "Login with Google"}
+          <span className="auth-google-label inline-flex items-center justify-center gap-2">
+            <GoogleGlyph />
+            <span>{googleLoading ? "Connecting…" : "Login with Google"}</span>
+          </span>
         </Button>
 
         <Divider label="Or continue with" />

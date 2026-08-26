@@ -3,6 +3,8 @@
  * Import in each app: @import "@dark-horse-safety/theme/styles.css";
  */
 
+@import "./fonts.css";
+
 :root {
   --dhs-background: #161618;
   --dhs-surface: #1c1c1e;
@@ -54,11 +56,12 @@
   --dhs-radius-lg: 12px;
   --dhs-radius-xl: 16px;
 
-  --dhs-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text",
-    "SF Pro Display", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+  /* Self-hosted SF Pro Display first (loaded via fonts.css) */
+  --dhs-font-sans: "SF Pro Display", "SF Pro Text", -apple-system,
+    BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial,
     sans-serif;
-  --dhs-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display",
-    "SF Pro Text", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+  --dhs-font-display: "SF Pro Display", "SF Pro Text", -apple-system,
+    BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial,
     sans-serif;
 
   color-scheme: dark;
@@ -71,6 +74,10 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--dhs-font-sans);
 }
 
 /* Interactive controls — pointer everywhere */
@@ -247,6 +254,16 @@ input:disabled {
     color: var(--dhs-foreground-bright);
     font-weight: 400;
   }
+}
+
+/* Login with Google — icon + label together */
+@utility auth-google-label {
+  font-family: "SF Pro Display", "SF Pro Text", var(--dhs-font-sans);
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 100%;
+  letter-spacing: -0.2px;
+  text-transform: none;
 }
 
 /* Check inbox — description + email highlight */

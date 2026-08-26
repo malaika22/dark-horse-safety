@@ -85,7 +85,7 @@ export class RegisterDto {
   @MaxLength(80)
   lastName?: string;
 
-  @ApiProperty({ example: 'Password123!', minLength: 8 })
+  @ApiProperty({ example: 'Password123!', minLength: 7 })
   @IsString()
   @IsNotEmpty({ message: VALIDATION_MESSAGES.required })
   @MinLength(AUTH_LIMITS.passwordMinLength, {
@@ -97,7 +97,7 @@ export class RegisterDto {
   @IsStrongPassword()
   password!: string;
 
-  @ApiProperty({ example: 'Password123!', minLength: 8 })
+  @ApiProperty({ example: 'Password123!', minLength: 7 })
   @IsString()
   @IsNotEmpty({ message: VALIDATION_MESSAGES.required })
   @Match('password', { message: VALIDATION_MESSAGES.passwordMismatch })
@@ -150,7 +150,7 @@ export class ResetPasswordDto {
   @Matches(TOKEN_REGEX, { message: VALIDATION_MESSAGES.tokenInvalid })
   token!: string;
 
-  @ApiProperty({ example: 'NewPassword123!', minLength: 8 })
+  @ApiProperty({ example: 'NewPassword123!', minLength: 7 })
   @IsString()
   @IsNotEmpty({ message: VALIDATION_MESSAGES.required })
   @MinLength(AUTH_LIMITS.passwordMinLength, {
@@ -162,7 +162,7 @@ export class ResetPasswordDto {
   @IsStrongPassword()
   password!: string;
 
-  @ApiProperty({ example: 'NewPassword123!', minLength: 8 })
+  @ApiProperty({ example: 'NewPassword123!', minLength: 7 })
   @IsString()
   @IsNotEmpty({ message: VALIDATION_MESSAGES.required })
   @Match('password', { message: VALIDATION_MESSAGES.passwordMismatch })
@@ -182,7 +182,7 @@ export class AcceptInviteDto {
   @Matches(TOKEN_REGEX, { message: VALIDATION_MESSAGES.tokenInvalid })
   inviteToken!: string;
 
-  @ApiProperty({ example: 'Password123!', minLength: 8 })
+  @ApiProperty({ example: 'Password123!', minLength: 7 })
   @IsString()
   @IsNotEmpty({ message: VALIDATION_MESSAGES.required })
   @MinLength(AUTH_LIMITS.passwordMinLength, {
@@ -194,7 +194,7 @@ export class AcceptInviteDto {
   @IsStrongPassword()
   password!: string;
 
-  @ApiProperty({ example: 'Password123!', minLength: 8 })
+  @ApiProperty({ example: 'Password123!', minLength: 7 })
   @IsString()
   @IsNotEmpty({ message: VALIDATION_MESSAGES.required })
   @Match('password', { message: VALIDATION_MESSAGES.passwordMismatch })
