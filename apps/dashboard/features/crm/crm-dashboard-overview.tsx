@@ -1,93 +1,57 @@
+"use client";
+
 import {
-  DashboardActivityRow,
-  DashboardControlHeader,
-  DashboardExceptionRow,
-  DashboardFilterTabs,
-  DashboardFooterButton,
-  DashboardPanel,
-  DashboardPanelTitle,
-  DashboardStatCell,
-  DashboardStatGrid,
-  DashboardStatRow,
-} from "@dark-horse-safety/ui";
-import {
-  CRM_ACTIVITY,
-  CRM_ACTIVITY_TABS,
-  CRM_KPI_MID,
-  CRM_KPI_MSA,
-  CRM_KPI_TOP,
-  CRM_REQUIREMENT_TABS,
-  CRM_REQUIREMENTS,
-} from "./data/overview.mock";
+  CrmAccountSetupHealth,
+  CrmEodComplianceCard,
+  CrmFieldEventsWeek,
+  CrmMsaRenewalList,
+  CrmQuotePipelinePanel,
+  CrmRepPerformanceTable,
+  CrmSalesActivityList,
+  CrmWidgetSection,
+} from "./crm-dashboard-widgets";
 
 export function CrmDashboardOverview() {
   return (
-    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:p-6">
-      <DashboardControlHeader
-        title="CRM Dashboard"
-        syncLabel="Last syn update 2:13pm CT"
-        primaryActionLabel="Add customer"
-      />
+    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(240px,1fr)] lg:gap-5">
+        <div className="flex min-w-0 flex-col gap-4 sm:gap-5">
+          <CrmWidgetSection title="Eod compliance">
+            <CrmEodComplianceCard />
+          </CrmWidgetSection>
 
-      {/* Top KPI cards */}
-      <DashboardStatGrid>
-        <DashboardStatRow columns={5}>
-          {CRM_KPI_TOP.map((cell) => (
-            <DashboardStatCell key={cell.title} {...cell} />
-          ))}
-        </DashboardStatRow>
-      </DashboardStatGrid>
+          <CrmWidgetSection
+            title="Rep performance"
+            actionLabel="View manager summary"
+          >
+            <CrmRepPerformanceTable />
+          </CrmWidgetSection>
 
-      {/* Bottom KPI cards — 4 in one line */}
-      <DashboardStatGrid>
-        <DashboardStatRow columns={4}>
-          {CRM_KPI_MID.map((cell) => (
-            <DashboardStatCell key={cell.title} {...cell} />
-          ))}
-          <DashboardStatCell {...CRM_KPI_MSA} />
-        </DashboardStatRow>
-      </DashboardStatGrid>
+          <CrmWidgetSection
+            title="Recent sales activity"
+            actionLabel="View system feed"
+          >
+            <CrmSalesActivityList />
+          </CrmWidgetSection>
 
-      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-2">
-        <DashboardPanel className="flex h-full min-w-0 flex-col p-3 sm:p-4">
-          <DashboardPanelTitle
-            icon="lightning"
-            title="Requirements needing review"
-            trailing={<DashboardFilterTabs tabs={CRM_REQUIREMENT_TABS} />}
-          />
-          <ul className="mt-2 flex-1">
-            {CRM_REQUIREMENTS.map((row) => (
-              <DashboardExceptionRow
-                key={row.text}
-                tag={row.tag}
-                tagVariant={row.tagVariant}
-                title={row.text}
-                action={row.action}
-              />
-            ))}
-          </ul>
-          <DashboardFooterButton className="mt-4">View all</DashboardFooterButton>
-        </DashboardPanel>
+          <CrmWidgetSection title="Msa renewals">
+            <CrmMsaRenewalList />
+          </CrmWidgetSection>
+        </div>
 
-        <DashboardPanel className="flex h-full min-w-0 flex-col p-3 sm:p-4">
-          <DashboardPanelTitle
-            icon="lightning"
-            title="Recent customer activity"
-            trailing={<DashboardFilterTabs tabs={CRM_ACTIVITY_TABS} />}
-          />
-          <ul className="mt-2 min-w-0 flex-1">
-            {CRM_ACTIVITY.map((row) => (
-              <DashboardActivityRow
-                key={row.title}
-                title={row.title}
-                subtitle={row.subtitle}
-                status={row.status}
-                statusVariant={row.statusVariant}
-              />
-            ))}
-          </ul>
-          <DashboardFooterButton className="mt-4">View all</DashboardFooterButton>
-        </DashboardPanel>
+        <div className="flex min-w-0 flex-col gap-4 sm:gap-5">
+          <CrmWidgetSection title="Events today in the field">
+            <CrmFieldEventsWeek />
+          </CrmWidgetSection>
+
+          <CrmWidgetSection title="Quote pipeline" actionLabel="View crm">
+            <CrmQuotePipelinePanel />
+          </CrmWidgetSection>
+
+          <CrmWidgetSection title="Account setup health">
+            <CrmAccountSetupHealth />
+          </CrmWidgetSection>
+        </div>
       </div>
     </div>
   );

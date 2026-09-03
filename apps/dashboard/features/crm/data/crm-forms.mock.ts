@@ -13,12 +13,41 @@ export const CRM_OWNERS: DashboardSelectOption[] = [
   { value: "l-nguyen", label: "L. Nguyen" },
 ];
 
+export const CUSTOMER_FORM = {
+  statuses: [
+    { value: "active", label: "Active" },
+    { value: "inactive", label: "Inactive" },
+    { value: "needs-review", label: "Needs review" },
+  ] as DashboardSelectOption[],
+  industries: [
+    { value: "oil-gas", label: "Oil & Gas" },
+    { value: "construction", label: "Construction" },
+    { value: "utilities", label: "Utilities" },
+  ] as DashboardSelectOption[],
+  paymentTerms: [
+    { value: "net-15", label: "Net 15" },
+    { value: "net-30", label: "Net 30" },
+    { value: "net-60", label: "Net 60" },
+  ] as DashboardSelectOption[],
+  pricingTiers: [
+    { value: "standard", label: "Standard" },
+    { value: "enterprise", label: "Enterprise" },
+    { value: "custom", label: "Custom" },
+  ] as DashboardSelectOption[],
+};
+
 export const CONTACT_FORM = {
   roles: [
-    { value: "ops-mgr", label: "Operations mgr" },
+    { value: "ops-mgr", label: "Operations Manager" },
+    { value: "site-supervisor", label: "Site Supervisor" },
     { value: "ap", label: "AP / Billing" },
-    { value: "field", label: "Field ops" },
-    { value: "safety", label: "Safety lead" },
+    { value: "field", label: "Field Ops" },
+    { value: "safety", label: "Safety Lead" },
+  ] as DashboardSelectOption[],
+  preferredMethods: [
+    { value: "email", label: "Email" },
+    { value: "phone", label: "Phone" },
+    { value: "sms", label: "SMS" },
   ] as DashboardSelectOption[],
   channels: [
     { id: "email", label: "Email" },
@@ -65,10 +94,21 @@ export const REQUIREMENT_FORM = {
 
 export const PRICING_FORM = {
   services: [
-    { value: "wireline", label: "Wireline logging" },
-    { value: "h2s", label: "H2S tech" },
+    { value: "wireline", label: "Wireline Logging" },
+    { value: "h2s", label: "H2S Tech" },
     { value: "standby", label: "Standby" },
-    { value: "equipment", label: "Equipment day rate" },
+    { value: "equipment", label: "Equipment Day Rate" },
+    { value: "pump-down", label: "Pump Down" },
+  ] as DashboardSelectOption[],
+  rateTypes: [
+    { value: "per-job", label: "Per Job" },
+    { value: "per-hr", label: "Per Hr" },
+    { value: "per-run", label: "Per Run" },
+  ] as DashboardSelectOption[],
+  units: [
+    { value: "job", label: "Job" },
+    { value: "hr", label: "Hr" },
+    { value: "run", label: "Run" },
   ] as DashboardSelectOption[],
   statuses: [
     { value: "active", label: "Active" },
@@ -148,6 +188,25 @@ export const ROUTE_RULE_FORM = {
 };
 
 export const LOCATION_FORM = {
+  counties: [
+    { value: "midland", label: "Midland" },
+    { value: "ector", label: "Ector" },
+    { value: "reeves", label: "Reeves" },
+  ] as DashboardSelectOption[],
+  states: [
+    { value: "tx", label: "TX" },
+    { value: "nm", label: "NM" },
+    { value: "ok", label: "OK" },
+  ] as DashboardSelectOption[],
+  siteTypes: [
+    { value: "well", label: "Well" },
+    { value: "pad", label: "Pad" },
+    { value: "facility", label: "Facility" },
+  ] as DashboardSelectOption[],
+  siteContacts: [
+    { value: "active", label: "Active" },
+    { value: "inactive", label: "Inactive" },
+  ] as DashboardSelectOption[],
   wellTypes: [
     { value: "horizontal", label: "Horizontal" },
     { value: "vertical", label: "Vertical" },

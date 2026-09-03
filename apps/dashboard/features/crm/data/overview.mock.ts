@@ -1,158 +1,139 @@
 import type { DashboardBadgeVariant } from "@dark-horse-safety/ui";
-import type { StatIconName } from "@dark-horse-safety/ui";
+import type { DashboardHorizontalBarItem } from "@dark-horse-safety/ui";
+import type { DashboardWorkloadSegment } from "@dark-horse-safety/ui";
 
-/**
- * KPI icon mapping matches Figma CRM Dashboard:
- * clock · edit · pin · wrench pattern.
- */
-export const CRM_KPI_TOP = [
-  {
-    title: "Active customers",
-    value: "142",
-    meta: "+3 this month",
-    action: "View customers",
-    icon: "customers" as StatIconName,
-  },
-  {
-    title: "Open jobs",
-    value: "27",
-    meta: "Across 9 customers",
-    action: "View jobs",
-    icon: "edit" as StatIconName,
-  },
-  {
-    title: "Requirements to review",
-    value: "19",
-    meta: "3 need review",
-    action: "Review",
-    icon: "gps" as StatIconName,
-  },
-  {
-    title: "Locations / wells",
-    value: "312",
-    meta: "+8 this cycle",
-    action: "View locations",
-    icon: "wrench" as StatIconName,
-  },
-  {
-    title: "Pricing rules missing",
-    value: "4",
-    meta: "Needs pricing",
-    action: "Fix pricing",
-    icon: "wrench" as StatIconName,
-  },
-];
+export const CRM_SYNC_LABEL = "Last synced 2:13 PM CT";
 
-export const CRM_KPI_MID = [
-  {
-    title: "Required form rules",
-    value: "24",
-    meta: "8 customers configured",
-    action: "Manage rules",
-    icon: "time" as StatIconName,
-  },
-  {
-    title: "Route / GPS rules",
-    value: "16",
-    meta: "3 need setup",
-    action: "Review",
-    icon: "edit" as StatIconName,
-  },
-  {
-    title: "New leads",
-    value: "3",
-    meta: "This month",
-    action: "View leads",
-    icon: "gps" as StatIconName,
-  },
-];
-
-export const CRM_KPI_MSA = {
-  title: "MSA renewals",
-  metrics: [
-    { value: "1", meta: "Due this month" },
-    { value: "2", meta: "Due next 60 days" },
-  ],
-  action: "Review",
-  icon: "wrench" as StatIconName,
+export const EOD_COMPLIANCE = {
+  complete: 7,
+  total: 8,
+  blocked: 1,
+  dateLabel: "Thu • aug 27",
+  /** Visual density for segmented bar (label still shows 7/8). */
+  segments: [
+    { count: 35, tone: "success" as const, label: "7 complete" },
+    { count: 5, tone: "error" as const, label: "1 blocked" },
+  ] satisfies DashboardWorkloadSegment[],
+  barTotal: 40,
 };
 
-export const CRM_REQUIREMENT_TABS = [
-  { id: "all", label: "All" },
-  { id: "operation", label: "Operation" },
-  { id: "employee", label: "Employee" },
-  { id: "customer", label: "Customer" },
+export type RepEodTone = "complete" | "warning" | "critical";
+
+export const REP_PERFORMANCE = [
+  {
+    rep: "R. Crawford",
+    calls: 18,
+    visits: 6,
+    quotes: 4,
+    pipeline: "$286K",
+    eod: "5/5",
+    eodTone: "complete" as RepEodTone,
+  },
+  {
+    rep: "S. Vance",
+    calls: 14,
+    visits: 5,
+    quotes: 3,
+    pipeline: "$198K",
+    eod: "3/5",
+    eodTone: "warning" as RepEodTone,
+  },
+  {
+    rep: "M. Diaz",
+    calls: 11,
+    visits: 4,
+    quotes: 2,
+    pipeline: "$142K",
+    eod: "1/5",
+    eodTone: "critical" as RepEodTone,
+  },
+  {
+    rep: "K. Lee",
+    calls: 9,
+    visits: 3,
+    quotes: 1,
+    pipeline: "$86K",
+    eod: "5/5",
+    eodTone: "complete" as RepEodTone,
+  },
 ];
 
-export const CRM_REQUIREMENTS = [
+export type SalesActivityIcon = "dollar" | "building" | "quote" | "visit";
+
+export const SALES_ACTIVITY = [
   {
-    tag: "Operations",
-    tagVariant: "operations" as DashboardBadgeVariant,
-    text: "3 work orders missing sales ticket",
-    action: "Review",
+    icon: "dollar" as SalesActivityIcon,
+    title: "S. Vance closed cactus well • $84K",
+    subtitle: "Quote converted",
+    time: "40m ago",
   },
   {
-    tag: "Employee / HR",
-    tagVariant: "employee" as DashboardBadgeVariant,
-    text: "5 time edit requests pending review",
-    action: "Review",
+    icon: "building" as SalesActivityIcon,
+    title: "New account setup • apex drilling",
+    subtitle: "Route rules pending",
+    time: "2h ago",
   },
   {
-    tag: "Safety / Compliance",
-    tagVariant: "safety" as DashboardBadgeVariant,
-    text: "JSA missing · WO 46005734 · blocks payroll",
-    action: "Open",
-  },
-  {
-    tag: "Fleet / Asset",
-    tagVariant: "fleet" as DashboardBadgeVariant,
-    text: "SCBA expired · 2 monitors need calibration",
-    action: "Open",
-  },
-  {
-    tag: "Billing",
-    tagVariant: "billing" as DashboardBadgeVariant,
-    text: "Unmatched work order vs sales ticket",
-    action: "Review",
+    icon: "quote" as SalesActivityIcon,
+    title: "M. Diaz sent quote • west pad 12",
+    subtitle: "$42K pipeline add",
+    time: "Yesterday",
   },
 ];
 
-export const CRM_ACTIVITY_TABS = [
-  { id: "all", label: "All" },
-  { id: "time", label: "Time" },
-  { id: "billing", label: "Billing" },
-  { id: "sync", label: "Sync" },
+export const MSA_RENEWALS = [
+  { client: "Permian basin energy", due: "Due in 9 days" },
+  { client: "Lonestar operating", due: "Due in 41 days" },
 ];
 
-export const CRM_ACTIVITY = [
-  {
-    title: "Isaac submitted a time edit request for Jun 14 — missing clock-out",
-    subtitle: "2 hours ago · time edit request",
-    status: "Pending",
-    statusVariant: "warning" as DashboardBadgeVariant,
-  },
-  {
-    title: "Billing discrepancy on WO 46005812 · sales ticket mismatch",
-    subtitle: "3 hours ago · billing reconciliation",
-    status: "Needs review",
-    statusVariant: "review" as DashboardBadgeVariant,
-  },
-  {
-    title: "JSA missing for WO 46005734",
-    subtitle: "4 hours ago · compliance documents",
-    status: "Missing",
-    statusVariant: "error" as DashboardBadgeVariant,
-  },
-  {
-    title: "New customer lead imported from website — Apex Drilling",
-    subtitle: "5 hours ago · lead sync",
-    status: "Pending",
-    statusVariant: "warning" as DashboardBadgeVariant,
-  },
-  {
-    title: "Pricing rule missing for location West Pad 12",
-    subtitle: "6 hours ago · pricing rules",
-    status: "Needs review",
-    statusVariant: "review" as DashboardBadgeVariant,
-  },
+export const FIELD_EVENTS_WEEK = [
+  { day: "M", count: 3, isToday: false },
+  { day: "T", count: 5, isToday: true },
+  { day: "W", count: 4, isToday: false },
+  { day: "T", count: 2, isToday: false },
+  { day: "F", count: 6, isToday: false },
 ];
+
+export const FIELD_EVENTS_TODAY = [
+  { label: "Visits", count: 2, icon: "pin" as const },
+  { label: "Calls", count: 2, icon: "phone" as const },
+  { label: "Meetings", count: 1, icon: "users" as const },
+];
+
+export const QUOTE_PIPELINE: DashboardHorizontalBarItem[] = [
+  { label: "Draft", value: 38, icon: "document" },
+  { label: "Sent", value: 3, icon: "send" },
+  { label: "Approved", value: 2, icon: "check" },
+  { label: "Won", value: 1, tone: "success", icon: "won" },
+  { label: "Expired", value: 1, tone: "critical", icon: "expired" },
+];
+
+export const QUOTE_PIPELINE_SUMMARY = {
+  open: "$834K",
+  conversion: "2.6%",
+};
+
+export type SetupHealthTone = "healthy" | "warning" | "critical";
+
+export const ACCOUNT_SETUP_HEALTH = [
+  { label: "Form rules", value: 16, total: 142, tone: "critical" as SetupHealthTone },
+  { label: "Route rules", value: 128, total: 142, tone: "healthy" as SetupHealthTone },
+  { label: "Pricing", value: 134, total: 142, tone: "healthy" as SetupHealthTone },
+  { label: "Requirements", value: 98, total: 142, tone: "warning" as SetupHealthTone },
+];
+
+export const SETUP_HEALTH_LEGEND: {
+  tone: SetupHealthTone;
+  label: string;
+  color: string;
+}[] = [
+  { tone: "healthy", label: "Healthy", color: "#22C55E" },
+  { tone: "warning", label: "Warning", color: "#FF9500" },
+  { tone: "critical", label: "Critical", color: "#FF4D4D" },
+];
+
+export function repEodBadgeVariant(tone: RepEodTone): DashboardBadgeVariant {
+  if (tone === "complete") return "neutral";
+  if (tone === "warning") return "review";
+  return "error";
+}

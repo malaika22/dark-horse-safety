@@ -29,13 +29,13 @@ export const APP_NAV: NavItem[] = [
       { id: "crm-dashboard", label: "CRM Dashboard", href: "/crm" },
       { id: "crm-customers", label: "Customers", href: "/crm/accounts" },
       { id: "crm-eod", label: "EOD Reports", href: "/crm/eod-reports" },
-      { id: "crm-sales", label: "Sales", href: "/crm/sales" },
       { id: "crm-contacts", label: "Contacts", href: "/crm/contacts" },
+      { id: "crm-sales", label: "Sales", href: "/crm/sales" },
       { id: "crm-locations", label: "Locations / Wells", href: "/crm/locations" },
       { id: "crm-pricing", label: "Pricing Rules", href: "/crm/pricing-rules" },
       {
         id: "crm-requirements",
-        label: "Customer Requirements",
+        label: "Customer Reqs.",
         href: "/crm/requirements",
       },
       {
@@ -48,7 +48,6 @@ export const APP_NAV: NavItem[] = [
         label: "Route / GPS Rules",
         href: "/crm/route-rules",
       },
-      { id: "crm-leads", label: "Leads", href: "/crm/leads" },
     ],
   },
   {
@@ -101,7 +100,7 @@ export const APP_NAV: NavItem[] = [
       { id: "ops-dashboard", label: "Ops Dashboard", href: "/operations" },
       {
         id: "ops-dispatch",
-        label: "Dispatch Calendar",
+        label: "Dispatch Calender",
         href: "/operations/dispatch",
       },
       {
@@ -133,7 +132,7 @@ export const APP_NAV: NavItem[] = [
   },
   {
     id: "safety",
-    label: "Safety & Compliance",
+    label: "Safety & Comp.",
     icon: "safety",
     children: [
       { id: "safety-hub", label: "Safety Hub", href: "/safety" },

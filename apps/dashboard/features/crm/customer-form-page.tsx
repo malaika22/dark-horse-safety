@@ -1,21 +1,14 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import {
-  ArrowLeftIcon,
-  DashboardChoiceChips,
   DashboardFormGrid,
-  DashboardPanel,
-  DashboardPanelTitle,
   DashboardSelectField,
   DashboardTextField,
-  DashboardToolbarButton,
+  DashboardToggle,
 } from "@dark-horse-safety/ui";
-import {
-  CUSTOMER_DETAIL,
-  CUSTOMER_FORM_OPTIONS,
-} from "./data/customer-detail.mock";
+import { CrmFormPageShell } from "./crm-form-page-shell";
+import { CRM_CUSTOMERS, CUSTOMER_FORM } from "./data/crm-forms.mock";
 
 export function CustomerFormPage({
   mode,
@@ -24,112 +17,179 @@ export function CustomerFormPage({
   mode: "create" | "edit";
   customerId?: string;
 }) {
-  const isEdit = mode === "edit";
-  /** Figma Add Customer screen uses the sample filled values. */
-  const seed = CUSTOMER_DETAIL;
   void customerId;
-  void isEdit;
-
-  const [requirements, setRequirements] = React.useState<string[]>([
-    "msa",
-    "coi",
-    "w9",
-    "safety",
-  ]);
+  const [taxExempt, setTaxExempt] = React.useState(false);
+  const [msaOnFile, setMsaOnFile] = React.useState(true);
+  const [requiresPo, setRequiresPo] = React.useState(true);
 
   return (
-    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:p-6">
-      {/* Top — Cancel back control (Figma) */}
-      <div>
-        <Link href="/crm/accounts" className="inline-flex shrink-0">
-          <DashboardToolbarButton
-            leftIcon={<ArrowLeftIcon className="shrink-0" />}
-          >
-            Cancel
-          </DashboardToolbarButton>
-        </Link>
-      </div>
-
-      {/* Customer details */}
-      <DashboardPanel>
-        <div className="px-4 pt-4 pb-3">
-          <DashboardPanelTitle icon="lightning" title="Customer details" />
-        </div>
-        <div className="divider-line-full w-full" aria-hidden />
-        <div className="p-4">
-          <DashboardFormGrid className="gap-x-4 gap-y-5">
-            <DashboardTextField
-              label="Company name"
-              defaultValue={seed.name}
-              placeholder="Company name"
-            />
-            <DashboardSelectField
-              label="Industry"
-              defaultValue="oil-gas"
-              options={CUSTOMER_FORM_OPTIONS.industries}
-            />
-            <DashboardTextField
-              label="Email"
-              type="email"
-              defaultValue={seed.email}
-              placeholder="ap@customer.com"
-            />
-            <DashboardTextField
-              label="Phone"
-              defaultValue={seed.phone}
-              placeholder="(432) 555-0000"
-            />
-            <DashboardSelectField
-              label="Account owner"
-              defaultValue="r-crawford"
-              options={CUSTOMER_FORM_OPTIONS.owners}
-            />
-            <DashboardTextField
-              label="Customer since"
-              type="date"
-              defaultValue={seed.customerSince}
-            />
-          </DashboardFormGrid>
-        </div>
-      </DashboardPanel>
-
-      {/* Account & billing */}
-      <DashboardPanel>
-        <div className="px-4 pt-4 pb-3">
-          <DashboardPanelTitle icon="lightning" title="Account & billing" />
-        </div>
-        <div className="divider-line-full w-full" aria-hidden />
-        <div className="space-y-5 p-4">
-          <DashboardFormGrid className="gap-x-4 gap-y-5">
-            <DashboardSelectField
-              label="Billing terms"
-              defaultValue="net-30"
-              options={CUSTOMER_FORM_OPTIONS.billingTerms}
-            />
-            <DashboardTextField
-              label="Default rate"
-              defaultValue="$0.00"
-              placeholder="$0.00"
-            />
-          </DashboardFormGrid>
-          <DashboardChoiceChips
-            label="Requirements on file"
-            options={CUSTOMER_FORM_OPTIONS.requirementChips}
-            value={requirements}
-            onChange={setRequirements}
-          />
-        </div>
-      </DashboardPanel>
-
-      {/* Footer actions */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Link href="/crm/accounts" className="inline-flex shrink-0">
-          <DashboardToolbarButton>Cancel</DashboardToolbarButton>
-        </Link>
-        <DashboardToolbarButton variant="primary">
-          {mode === "edit" ? "Save customer" : "Add customer"}
-        </DashboardToolbarButton>
-      </div>
-    </div>
+    <CrmFormPageShell
+      cancelHref="/crm/accounts"
+      submitLabel="Save"
+      sections={[
+        {
+          title: "Company Details",
+          content: (
+            <DashboardFormGrid className="gap-x-4 gap-y-5">
+              <DashboardTextField
+                label="Customer Name *"
+                defaultValue="Permian Basin Energy"
+                placeholder="Customer name"
+              />
+              <DashboardTextField
+                label="Legal Entity Name"
+                defaultValue="Permian Basin Energy Holdings LLC"
+                placeholder="Legal entity name"
+              />
+              <DashboardTextField
+                label="Customer ID"
+                defaultValue="CUST-004821"
+                placeholder="CUST-000000"
+              />
+              <DashboardSelectField
+                label="Status *"
+                defaultValue="active"
+                options={CUSTOMER_FORM.statuses}
+              />
+              <DashboardTextField
+                label="Assigned Rep *"
+                defaultValue="Sarah Mitchell"
+                placeholder="Assigned rep"
+              />
+              <DashboardSelectField
+                label="Industry"
+                defaultValue="oil-gas"
+                options={CUSTOMER_FORM.industries}
+              />
+              <DashboardTextField
+                label="Website"
+                defaultValue="www.permianbasinenergy.com"
+                placeholder="www.example.com"
+              />
+              <DashboardTextField
+                label="Phone"
+                defaultValue="(432) 555-0184"
+                placeholder="(432) 555-0000"
+              />
+              <DashboardTextField
+                label="Billing Address *"
+                defaultValue="1200 W Wall St, Midland, TX 79701"
+                placeholder="Billing address"
+              />
+              <DashboardTextField
+                label="Mailing Address"
+                defaultValue="PO Box 4821, Midland, TX 79702"
+                placeholder="Mailing address"
+              />
+            </DashboardFormGrid>
+          ),
+        },
+        {
+          title: "Commercial",
+          content: (
+            <DashboardFormGrid className="gap-x-4 gap-y-5">
+              <DashboardSelectField
+                label="Payment Terms *"
+                defaultValue="net-60"
+                options={CUSTOMER_FORM.paymentTerms}
+              />
+              <DashboardTextField
+                label="Credit Limit"
+                defaultValue="$50,000.00"
+                placeholder="$0.00"
+              />
+              <DashboardToggle
+                label="Tax Exempt?"
+                checked={taxExempt}
+                onCheckedChange={setTaxExempt}
+              />
+              <DashboardTextField
+                label="Tax ID"
+                defaultValue="82-3749201"
+                placeholder="Tax ID"
+              />
+              <DashboardSelectField
+                label="Default Pricing Tier"
+                defaultValue="enterprise"
+                options={CUSTOMER_FORM.pricingTiers}
+                containerClassName="md:col-span-2"
+              />
+            </DashboardFormGrid>
+          ),
+        },
+        {
+          title: "Integration",
+          content: (
+            <DashboardFormGrid className="gap-x-4 gap-y-5">
+              <DashboardTextField
+                label="NetSuite Customer ID"
+                defaultValue="NS-829471"
+                placeholder="NS-000000"
+              />
+              <DashboardTextField
+                label="ISN ID"
+                defaultValue="ISN-40058723"
+                placeholder="ISN-00000000"
+              />
+              <DashboardTextField
+                label="Veriforce ID"
+                defaultValue="VF-2039185"
+                placeholder="VF-0000000"
+              />
+            </DashboardFormGrid>
+          ),
+        },
+        {
+          title: "Compliance",
+          content: (
+            <DashboardFormGrid className="gap-x-4 gap-y-5">
+              <DashboardToggle
+                label="MSA on File?"
+                checked={msaOnFile}
+                onCheckedChange={setMsaOnFile}
+              />
+              <DashboardTextField
+                label="MSA Expiry"
+                defaultValue="12/31/2026"
+                placeholder="MM/DD/YYYY"
+              />
+              <DashboardTextField
+                label="COI Expiry"
+                defaultValue="03/15/2027"
+                placeholder="MM/DD/YYYY"
+              />
+              <DashboardTextField
+                label="W-9 on File"
+                defaultValue="$125,000.00"
+                placeholder="W-9 status"
+              />
+            </DashboardFormGrid>
+          ),
+        },
+        {
+          title: "Operational Defaults",
+          content: (
+            <DashboardFormGrid className="gap-x-4 gap-y-5">
+              <DashboardTextField
+                label="Default Clock In Radius"
+                defaultValue="CUST-007394"
+                placeholder="Radius"
+              />
+              <DashboardToggle
+                label="Requires PO Before Invoice?"
+                checked={requiresPo}
+                onCheckedChange={setRequiresPo}
+              />
+              <DashboardTextField
+                label="Default Required Forms"
+                defaultValue="JSA, FLRA, TBT"
+                placeholder="Forms"
+                containerClassName="md:col-span-2"
+              />
+            </DashboardFormGrid>
+          ),
+        },
+      ]}
+    />
   );
 }

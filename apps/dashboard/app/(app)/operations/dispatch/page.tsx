@@ -1,5 +1,5 @@
 ﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
 
 export default function Page() {
-  return <ModulePlaceholder title="Dispatch Calendar" />;
+  return <ModulePlaceholder title="Dispatch Calender" />;
 }

@@ -1,5 +1,36 @@
 import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
+import { DashboardMutedLink } from "./gold-link";
+
+export function DashboardWidgetHeader({
+  title,
+  actionLabel,
+  className,
+  onAction,
+}: {
+  title: string;
+  actionLabel?: string;
+  className?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-x-3 gap-y-1",
+        className,
+      )}
+    >
+      <h2 className="min-w-0 truncate font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[13px]">
+        {title}
+      </h2>
+      {actionLabel ? (
+        <DashboardMutedLink onClick={onAction} className="shrink-0">
+          {actionLabel}
+        </DashboardMutedLink>
+      ) : null}
+    </div>
+  );
+}
 
 export type PanelIconName =
   | "lightning"

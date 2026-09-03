@@ -8,6 +8,7 @@ export type CustomerDetail = {
   accountOwner: string;
   email: string;
   phone: string;
+  imageUrl: string;
   industry: string;
   billingAddress: string;
   primaryContact: string;
@@ -22,14 +23,15 @@ export const CUSTOMER_DETAIL: CustomerDetail = {
   code: "CUST-1001",
   status: { label: "Active", variant: "success" },
   accountOwner: "R. Crawford",
-  email: "ap@customer.com",
-  phone: "(432) 555-0000",
+  email: "ap@permianbasin.com",
+  phone: "(432) 555-0110",
+  imageUrl: "https://picsum.photos/seed/dhs-permian-basin/128/128",
   industry: "Oil & Gas",
-  billingAddress: "1200 Midland Hwy, TX",
-  primaryContact: "J. Hale",
-  customerSince: "2026-06-16",
+  billingAddress: "1200 Energy Plaza, Midland, TX",
+  primaryContact: "J. Martinez",
+  customerSince: "2023-04-12",
   maxClockInRadius: true,
-  radiusMiles: "25",
+  radiusMiles: "5",
 };
 
 export const CUSTOMER_DETAIL_KPI = [
@@ -37,20 +39,27 @@ export const CUSTOMER_DETAIL_KPI = [
     title: "Open jobs",
     value: "7",
     meta: "3 scheduled · 4 in progress",
-    icon: "time" as StatIconName,
+    icon: "folder" as StatIconName,
   },
   {
     title: "Locations / wells",
     value: "12",
-    meta: "9 active · 3 idle",
+    meta: "9 active · 3 inactive",
     icon: "gps" as StatIconName,
   },
   {
-    title: "Requirements due",
+    title: "Requirements",
     value: "3",
-    meta: "1 MSA · 2 COI",
-    icon: "edit" as StatIconName,
+    meta: "3 need review",
+    icon: "document" as StatIconName,
   },
+];
+
+export const CUSTOMER_SETUP_HEALTH = [
+  { label: "Form rules", value: 16, total: 142, tone: "critical" as const },
+  { label: "Route rules", value: 13, total: 16, tone: "healthy" as const },
+  { label: "Pricing", value: 138, total: 142, tone: "warning" as const },
+  { label: "Requirements", value: 16, total: 19, tone: "warning" as const },
 ];
 
 export const CUSTOMER_ACCOUNT_SUMMARY = [
@@ -97,64 +106,59 @@ export const CUSTOMER_AUDIT = [
 ];
 
 export const CUSTOMER_DOCUMENTS = [
-  { title: "MSA 2025.pdf", subtitle: "Signed · Exp 2026-12-31" },
-  { title: "COI.pdf", subtitle: "On file" },
-  { title: "W-9.pdf", subtitle: "On file" },
+  { id: "1", title: "MSA 2025.pdf", subtitle: "Signed · Exp 2026-12-31" },
+  { id: "2", title: "COI 2026.pdf", subtitle: "On file" },
+  { id: "3", title: "W-4.pdf", subtitle: "On file" },
 ];
 
 export const CUSTOMER_CONTACTS = [
-  { title: "J. Hale", subtitle: "AP / Billing", trailing: "Primary" },
-  { title: "M. Soto", subtitle: "Field ops", trailing: "Secondary" },
-  { title: "A. Quinn", subtitle: "Safety lead", trailing: "Secondary" },
+  { id: "1", name: "James Whitfield", role: "Operations MGR", badge: "Primary" as const },
+  { id: "2", name: "Sarah Delgado", role: "Safety Lead", badge: "Secondary" as const },
+  { id: "3", name: "Mark Reyes", role: "Field Super", badge: "Secondary" as const },
 ];
 
 export const CUSTOMER_LOCATIONS = [
-  {
-    title: "West Pad 12",
-    status: { label: "Active", variant: "success" as DashboardBadgeVariant },
-  },
-  {
-    title: "North Flare",
-    status: { label: "Active", variant: "success" as DashboardBadgeVariant },
-  },
-  {
-    title: "East Staging",
-    status: { label: "Active", variant: "success" as DashboardBadgeVariant },
-  },
+  { id: "1", name: "Wolfcamp 12-4H", detail: "Midland, TX", status: "Active" as const },
+  { id: "2", name: "Bone Spring 8-3H", detail: "Ector, TX", status: "Active" as const },
+  { id: "3", name: "Spraberry 6-1H", detail: "Reeves, TX", status: "Active" as const },
 ];
 
 export const CUSTOMER_PRICING = [
-  { title: "Standby", trailing: "$85/hr" },
-  { title: "H2S tech", trailing: "$110/hr" },
-  { title: "Equipment", trailing: "$250/day" },
+  { id: "1", title: "Site Safety Technician", trailing: "$100 / Hr" },
+  { id: "2", title: "H2S Monitoring Package", trailing: "$5000" },
 ];
 
 export const CUSTOMER_FORMS = [
-  { title: "JSA", subtitle: "On dispatch · Hard-gate" },
-  { title: "Tailgate", subtitle: "On clock-in" },
-  { title: "EOD report", subtitle: "End of day" },
+  { id: "1", title: "JSA", detail: "On Dispatch · Hard-Gate" },
+  { id: "2", title: "Permit to Work", detail: "On Start · Hard-Gate" },
+  { id: "3", title: "Air Quality Test", detail: "H2S Sites" },
 ];
 
 export const CUSTOMER_ROUTE_GPS = [
-  { title: "West Pad 12", subtitle: "Geofence 0.25 mi" },
-  { title: "North Flare", subtitle: "Geofence 0.50 mi" },
-  { title: "Yard", subtitle: "Geofence 1.00 mi" },
+  { id: "1", name: "Wolfcamp 12-4H", detail: "Geofence 900 FT · Route A" },
+  { id: "2", name: "Bone Spring 8-3H", detail: "Geofence 760 FT · Route R" },
 ];
 
 export const CUSTOMER_SALES_TICKETS = [
   {
-    title: "ST-44012",
-    subtitle: "2026-06-12 · $4,200",
+    id: "1",
+    title: "ST-44019",
+    subtitle: "Jun 13",
+    amount: "$10,340",
     status: { label: "Approved", variant: "success" as DashboardBadgeVariant },
   },
   {
-    title: "ST-43988",
-    subtitle: "2026-06-08 · $1,850",
+    id: "2",
+    title: "ST-89104",
+    subtitle: "Jun 08",
+    amount: "$7,880",
     status: { label: "Sent to NetSuite", variant: "review" as DashboardBadgeVariant },
   },
   {
-    title: "ST-43901",
-    subtitle: "2026-05-28 · $920",
+    id: "3",
+    title: "ST-89035",
+    subtitle: "May 28",
+    amount: "$9,410",
     status: { label: "Closed", variant: "error" as DashboardBadgeVariant },
   },
 ];
@@ -172,39 +176,14 @@ export type CustomerWorkOrder = {
 };
 
 export const CUSTOMER_WORK_ORDERS: CustomerWorkOrder[] = [
-  {
-    id: "1",
-    serviceDate: "2026-06-14",
-    woNumber: "WO-46005812",
-    customer: "Permian Basin Energy",
-    category: { label: "Billable", variant: "success" },
-    clockIn: "06:02",
-    clockOut: "16:40",
-    hours: "10.6",
-    status: { label: "Approved", variant: "success" },
-  },
-  {
-    id: "2",
-    serviceDate: "2026-06-13",
-    woNumber: "WO-46005734",
-    customer: "Permian Basin Energy",
-    category: { label: "Training", variant: "error" },
-    clockIn: "07:10",
-    clockOut: "—",
-    hours: "—",
-    status: { label: "Missing out", variant: "review" },
-  },
-  {
-    id: "3",
-    serviceDate: "2026-06-12",
-    woNumber: "WO-46005601",
-    customer: "Permian Basin Energy",
-    category: { label: "Vacation", variant: "gold" },
-    clockIn: "—",
-    clockOut: "—",
-    hours: "8.0",
-    status: { label: "Pending", variant: "warning" },
-  },
+  { id: "1",  serviceDate: "Jun 12 2026", woNumber: "46005950", customer: "Devon Energy",          category: { label: "Billable",  variant: "success" }, clockIn: "07:00", clockOut: "15:30", hours: "8.5H", status: { label: "Approved",     variant: "success" } },
+  { id: "2",  serviceDate: "Jun 12 2026", woNumber: "46005951", customer: "ConocoPhillips",        category: { label: "Billable",  variant: "success" }, clockIn: "06:45", clockOut: "15:15", hours: "8.5H", status: { label: "Missing Out",  variant: "review"  } },
+  { id: "3",  serviceDate: "Jun 12 2026", woNumber: "46005952", customer: "Chevron, Midland",      category: { label: "Training",  variant: "error"   }, clockIn: "07:30", clockOut: "16:00", hours: "8.5H", status: { label: "Approved",     variant: "success" } },
+  { id: "4",  serviceDate: "Jun 17 2026", woNumber: "46005953", customer: "Permian Basin Energy",  category: { label: "Billable",  variant: "success" }, clockIn: "07:00", clockOut: "15:30", hours: "7.7H", status: { label: "Pending",      variant: "warning" } },
+  { id: "5",  serviceDate: "Jun 12 2026", woNumber: "46005954", customer: "Permian Basin Energy",  category: { label: "Billable",  variant: "success" }, clockIn: "07:00", clockOut: "15:30", hours: "8.8H", status: { label: "Approved",     variant: "success" } },
+  { id: "6",  serviceDate: "Jun 12 2026", woNumber: "46005955", customer: "Devon Energy",          category: { label: "Billable",  variant: "success" }, clockIn: "07:00", clockOut: "15:30", hours: "8.5H", status: { label: "Approved",     variant: "success" } },
+  { id: "7",  serviceDate: "Jun 12 2026", woNumber: "46005956", customer: "Permian Basin Energy",  category: { label: "Vacation",  variant: "gold"    }, clockIn: "07:00", clockOut: "15:30", hours: "8.5H", status: { label: "Pending",      variant: "warning" } },
+  { id: "8",  serviceDate: "Jun 12 2026", woNumber: "46005957", customer: "ConocoPhillips",        category: { label: "Training",  variant: "error"   }, clockIn: "07:00", clockOut: "15:30", hours: "8.8H", status: { label: "Pending",      variant: "warning" } },
 ];
 
 export const CUSTOMER_FORM_OPTIONS = {

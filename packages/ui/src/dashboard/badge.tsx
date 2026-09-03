@@ -23,17 +23,21 @@ const variantTone: Partial<
   success: { background: "#203B2C", border: "#22C55E", color: "#ACEBCE" },
   /* Pending */
   warning: { background: "#352E1B", border: "#534A1E", color: "#CAC897" },
-  /* Missing */
-  error: { background: "#3D1F1F", border: "#4B212B", color: "#FFBBCA" },
-  /* Needs Review */
-  review: { background: "#31221B", border: "#4B3429", color: "#FFD1A9" },
+  /* Missing / Failed */
+  error: { background: "#FF4D4D", border: "#FF4D4D", color: "#FFFFFF" },
+  /* Needs Review / billing alert */
+  review: { background: "#FF9500", border: "#FF9500", color: "#FFFFFF" },
   /* Offline */
   offline: { background: "#2A2040", border: "#6B5B95", color: "#C4B5FD" },
-  operations: { background: "#2A2618", border: "#C4A35A", color: "#C4A35A" },
   employee: { background: "#2A2618", border: "#C4A35A", color: "#C4A35A" },
-  safety: { background: "#2A2618", border: "#C4A35A", color: "#C4A35A" },
-  fleet: { background: "#2A2618", border: "#C4A35A", color: "#C4A35A" },
-  billing: { background: "#2A2618", border: "#C4A35A", color: "#C4A35A" },
+  /* Exception queue — solid red */
+  safety: { background: "#FF4D4D", border: "#FF4D4D", color: "#FFFFFF" },
+  /* Exception queue — muted maroon */
+  billing: { background: "#3A1515", border: "#5C1F1F", color: "#FF6B6B" },
+  /* Exception queue — charcoal pills */
+  operations: { background: "#2A2A2A", border: "#3E3E3E", color: "#959597" },
+  fleet: { background: "#2A2A2A", border: "#3E3E3E", color: "#959597" },
+  neutral: { background: "#2A2A2A", border: "#3E3E3E", color: "#959597" },
   customer: { background: "#2A2618", border: "#C4A35A", color: "#C4A35A" },
   gold: { background: "#2A2618", border: "#C4A35A", color: "#C4A35A" },
 };
@@ -43,7 +47,7 @@ const variantClasses: Record<DashboardBadgeVariant, string> = {
   warning: "",
   error: "",
   info: "border-transparent bg-info/15 text-sky-300",
-  neutral: "border-transparent bg-white/10 text-foreground-muted",
+  neutral: "",
   review: "",
   offline: "",
   operations: "",
@@ -69,11 +73,12 @@ export function DashboardBadge({
   ...props
 }: DashboardBadgeProps) {
   const tone = variantTone[variant];
+  const label = typeof children === "string" ? children : null;
 
   return (
     <span
       className={cn(
-        "inline-flex items-center border font-sans text-[10px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[11.82px]",
+        "inline-flex max-w-full items-center border font-sans text-[10px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[11px]",
         pill ? "rounded-full px-2.5 py-1" : "rounded px-1.5 py-0.5",
         variantClasses[variant],
         className,
@@ -88,9 +93,16 @@ export function DashboardBadge({
             }
           : style
       }
+      title={label ?? undefined}
       {...props}
     >
-      {children}
+      {label ? (
+        <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
+          {label}
+        </span>
+      ) : (
+        children
+      )}
     </span>
   );
 }

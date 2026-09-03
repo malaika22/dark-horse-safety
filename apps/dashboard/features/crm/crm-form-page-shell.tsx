@@ -20,11 +20,13 @@ export type CrmFormSection = {
  */
 export function CrmFormPageShell({
   cancelHref,
-  submitLabel,
+  submitLabel = "Save",
+  saveAndAddAnotherLabel = "Save & Add Another",
   sections,
 }: {
   cancelHref: string;
-  submitLabel: string;
+  submitLabel?: string;
+  saveAndAddAnotherLabel?: string;
   sections: CrmFormSection[];
 }) {
   return (
@@ -53,6 +55,7 @@ export function CrmFormPageShell({
         <Link href={cancelHref} className="inline-flex shrink-0">
           <DashboardToolbarButton>Cancel</DashboardToolbarButton>
         </Link>
+        <DashboardToolbarButton>{saveAndAddAnotherLabel}</DashboardToolbarButton>
         <DashboardToolbarButton variant="primary">
           {submitLabel}
         </DashboardToolbarButton>

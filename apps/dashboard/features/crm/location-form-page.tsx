@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import {
-  DashboardChoiceChips,
   DashboardFormGrid,
   DashboardSelectField,
   DashboardTextField,
+  DashboardToggle,
 } from "@dark-horse-safety/ui";
 import { CrmFormPageShell } from "./crm-form-page-shell";
 import {
@@ -13,78 +14,99 @@ import {
   LOCATION_FORM,
 } from "./data/crm-forms.mock";
 
+function customerValueFromQuery(name: string | null) {
+  if (!name) return "pbe";
+  const match = CRM_CUSTOMERS.find(
+    (c) => c.label.toLowerCase() === name.trim().toLowerCase(),
+  );
+  return match?.value ?? "pbe";
+}
+
 export function LocationFormPage() {
-  const [requirements, setRequirements] = React.useState([
-    "h2s",
-    "jsa",
-    "ptw",
-  ]);
+  const searchParams = useSearchParams();
+  const [gpsRequired, setGpsRequired] = React.useState(false);
+  const customerDefault = customerValueFromQuery(searchParams.get("customer"));
 
   return (
     <CrmFormPageShell
       cancelHref="/crm/locations"
-      submitLabel="Add location"
+      submitLabel="Save"
       sections={[
         {
-          title: "Location details",
+          title: "Location Details",
           content: (
             <DashboardFormGrid className="gap-x-4 gap-y-5">
               <DashboardTextField
-                label="Location / well name"
+                label="Location Name *"
                 defaultValue="Wolfcamp 12-4H"
-                placeholder="Well name"
+                placeholder="Location name"
+              />
+              <DashboardTextField
+                label="Well / Pad Number"
+                defaultValue="WPC-1204"
+                placeholder="WPC-0000"
+              />
+              <DashboardTextField
+                label="API Number"
+                defaultValue="42-329-35421"
+                placeholder="API number"
               />
               <DashboardSelectField
-                label="Customer"
-                defaultValue="pbe"
+                label="Customer *"
+                defaultValue={customerDefault}
                 options={CRM_CUSTOMERS}
               />
-              <DashboardTextField
-                label="County / state"
-                defaultValue="Midland, TX"
-                placeholder="City, ST"
+              <DashboardSelectField
+                label="County *"
+                defaultValue="midland"
+                options={LOCATION_FORM.counties}
               />
               <DashboardSelectField
-                label="Well type"
-                defaultValue="horizontal"
-                options={LOCATION_FORM.wellTypes}
+                label="State *"
+                defaultValue="tx"
+                options={LOCATION_FORM.states}
               />
               <DashboardTextField
-                label="GPS latitude"
-                defaultValue="31.9973"
-                placeholder="0.0000"
+                label="Coordinates *"
+                defaultValue="31.8973, -102.0779"
+                placeholder="Lat, Long"
+              />
+              <DashboardSelectField
+                label="Site Type"
+                defaultValue="well"
+                options={LOCATION_FORM.siteTypes}
+              />
+              <DashboardSelectField
+                label="Status"
+                defaultValue="active"
+                options={LOCATION_FORM.statuses}
               />
               <DashboardTextField
-                label="GPS longitude"
-                defaultValue="-102.0779"
-                placeholder="0.0000"
+                label="Access Notes"
+                defaultValue="Site damp by rain"
+                placeholder="Access notes"
+              />
+              <DashboardSelectField
+                label="Site Contact"
+                defaultValue="active"
+                options={LOCATION_FORM.siteContacts}
+              />
+              <DashboardTextField
+                label="Geofence Radius"
+                defaultValue="Gate code: 4521. Use south entrance."
+                placeholder="Geofence radius"
+              />
+              <DashboardToggle
+                label="GPS Required?"
+                checked={gpsRequired}
+                onCheckedChange={setGpsRequired}
+              />
+              <DashboardTextField
+                label="Nearest Hospital"
+                defaultValue="Midland Memorial Hospital"
+                placeholder="Hospital name"
               />
             </DashboardFormGrid>
-          ),
-        },
-        {
-          title: "Operations",
-          content: (
-            <div className="space-y-5">
-              <DashboardFormGrid className="gap-x-4 gap-y-5">
-                <DashboardSelectField
-                  label="Route rule"
-                  defaultValue="route-a"
-                  options={LOCATION_FORM.routes}
-                />
-                <DashboardSelectField
-                  label="Status"
-                  defaultValue="active"
-                  options={LOCATION_FORM.statuses}
-                />
-              </DashboardFormGrid>
-              <DashboardChoiceChips
-                label="Requirements"
-                options={LOCATION_FORM.requirements}
-                value={requirements}
-                onChange={setRequirements}
-              />
-            </div>
           ),
         },
       ]}

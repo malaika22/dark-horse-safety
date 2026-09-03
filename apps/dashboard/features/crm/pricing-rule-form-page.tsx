@@ -1,8 +1,6 @@
 "use client";
 
-import * as React from "react";
 import {
-  DashboardChoiceChips,
   DashboardFormGrid,
   DashboardSelectField,
   DashboardTextField,
@@ -10,78 +8,71 @@ import {
 import { CrmFormPageShell } from "./crm-form-page-shell";
 import {
   CRM_CUSTOMERS,
-  CRM_OWNERS,
   PRICING_FORM,
 } from "./data/crm-forms.mock";
 
 export function PricingRuleFormPage() {
-  const [appliesTo, setAppliesTo] = React.useState(["all-jobs", "site-safety"]);
-
   return (
     <CrmFormPageShell
       cancelHref="/crm/pricing-rules"
-      submitLabel="Add pricing rule"
+      submitLabel="Save"
       sections={[
         {
-          title: "Rule details",
+          title: "Rule Details",
           content: (
             <DashboardFormGrid className="gap-x-4 gap-y-5">
               <DashboardSelectField
-                label="Customer"
+                label="Customer *"
                 defaultValue="pbe"
                 options={CRM_CUSTOMERS}
               />
               <DashboardSelectField
-                label="Service / item"
+                label="Service / Item *"
                 defaultValue="wireline"
                 options={PRICING_FORM.services}
               />
+              <DashboardSelectField
+                label="Rate Type *"
+                defaultValue="per-job"
+                options={PRICING_FORM.rateTypes}
+              />
               <DashboardTextField
-                label="Rate"
+                label="Rate *"
+                defaultValue="$1,250"
+                placeholder="$0.00"
+              />
+              <DashboardSelectField
+                label="Unit of Measurement"
+                defaultValue="job"
+                options={PRICING_FORM.units}
+              />
+              <DashboardTextField
+                label="Minimum Charge"
                 defaultValue="$1,250"
                 placeholder="$0.00"
               />
               <DashboardTextField
-                label="Unit"
-                defaultValue="Per job"
-                placeholder="Per job"
+                label="Overtime Multiplier"
+                defaultValue="1.5X"
+                placeholder="1.0X"
               />
               <DashboardTextField
-                label="Effective date"
-                type="date"
-                defaultValue="2025-01-01"
+                label="Effective From *"
+                defaultValue="09/01/2026"
+                placeholder="MM/DD/YYYY"
               />
               <DashboardTextField
-                label="Expires date"
-                type="date"
-                defaultValue="2026-12-31"
+                label="Effective To"
+                defaultValue="12/31/2026"
+                placeholder="MM/DD/YYYY"
+              />
+              <DashboardTextField
+                label="Notes/Justification *"
+                defaultValue="Approved discounted rate for Q4 high-volume wireline logging contract, PE..."
+                placeholder="Notes"
+                containerClassName="md:col-span-2"
               />
             </DashboardFormGrid>
-          ),
-        },
-        {
-          title: "Rate",
-          content: (
-            <div className="space-y-5">
-              <DashboardFormGrid className="gap-x-4 gap-y-5">
-                <DashboardSelectField
-                  label="Owner"
-                  defaultValue="r-crawford"
-                  options={CRM_OWNERS}
-                />
-                <DashboardSelectField
-                  label="Status"
-                  defaultValue="active"
-                  options={PRICING_FORM.statuses}
-                />
-              </DashboardFormGrid>
-              <DashboardChoiceChips
-                label="Applies to"
-                options={PRICING_FORM.appliesTo}
-                value={appliesTo}
-                onChange={setAppliesTo}
-              />
-            </div>
           ),
         },
       ]}

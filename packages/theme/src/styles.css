@@ -188,6 +188,12 @@ input:disabled {
   background-origin: border-box;
   background-clip: padding-box, border-box;
   box-shadow: var(--dhs-btn-primary-shadow);
+  font-weight: 510;
+  font-size: 12px;
+  line-height: 100%;
+  letter-spacing: -0.2px;
+  text-transform: uppercase;
+  vertical-align: middle;
 
   &:hover:not(:disabled) {
     filter: brightness(0.97);
@@ -449,6 +455,7 @@ input:disabled {
 /* List row bottom divider — #2D2D30 + hairline shadow */
 .divider-row {
   position: relative;
+  isolation: isolate;
 }
 
 .divider-row:not(:last-child)::after {
@@ -457,6 +464,7 @@ input:disabled {
   right: 0;
   bottom: 0;
   left: 0;
+  z-index: 0;
   height: 0;
   border-top: 1px solid var(--dhs-divider);
   box-shadow: var(--dhs-divider-shadow);

@@ -24,8 +24,18 @@ export {
 } from "./control-header";
 export {
   DashboardGoldLink,
+  DashboardMutedLink,
   type DashboardGoldLinkProps,
+  type DashboardMutedLinkProps,
 } from "./gold-link";
+export {
+  DashboardCycleKpiCard,
+  DashboardCycleKpiStrip,
+  type DashboardCycleKpiCardProps,
+  type DashboardCycleKpiItem,
+  type DashboardCycleKpiStripProps,
+  type CycleKpiIconName,
+} from "./cycle-kpi";
 export {
   DashboardFooterButton,
   type DashboardFooterButtonProps,
@@ -46,6 +56,10 @@ export {
   type DashboardProgressBarProps,
   type DashboardTimelineProps,
   type DashboardSegmentedProgressProps,
+  DashboardWorkloadBar,
+  type DashboardWorkloadBarProps,
+  type DashboardWorkloadSegment,
+  type DashboardWorkloadTone,
 } from "./progress-bar";
 export {
   DashboardExceptionRow,
@@ -56,6 +70,7 @@ export {
 } from "./exception-row";
 export {
   DashboardPanelTitle,
+  DashboardWidgetHeader,
   PanelIcon,
   DashboardDropdownFilter,
   type DashboardPanelTitleProps,
@@ -89,6 +104,12 @@ export {
   type DashboardMiniBarListProps,
   type DashboardMiniBarItem,
   type DashboardChartLegendItem,
+  DashboardUnbilledHoursChart,
+  DashboardHorizontalBarChart,
+  type DashboardUnbilledHoursChartProps,
+  type DashboardHorizontalBarChartProps,
+  type DashboardHorizontalBarItem,
+  type DashboardBarIconName,
   type SparklineTone,
 } from "./charts";
 export {
@@ -121,11 +142,50 @@ export {
   DashboardDataTable,
   DashboardTablePrimaryCell,
   DashboardTableBadgeStack,
+  DashboardTableTruncatedText,
   type DashboardDataTableColumn,
   type DashboardDataTableProps,
   type DashboardTablePrimaryCellProps,
   type DashboardTableBadgeStackProps,
+  type DashboardTableTruncatedTextProps,
 } from "./data-table";
+export {
+  DashboardMenuPopover,
+  DashboardModal,
+  DashboardDrawer,
+  type DashboardMenuItem,
+  type DashboardMenuPopoverProps,
+  type DashboardModalProps,
+  type DashboardDrawerProps,
+} from "./overlay";
+export {
+  DashboardPageSizeControl,
+  DashboardPagination,
+  DashboardBulkSelectBar,
+  DashboardExportMenu,
+  DashboardSortMenu,
+  DashboardRowActionMenu,
+  type DashboardPageSizeControlProps,
+  type DashboardPaginationProps,
+  type DashboardBulkSelectBarProps,
+  type DashboardExportMenuProps,
+  type DashboardSortMenuProps,
+  type DashboardSortOption,
+  type DashboardSortDirection,
+  type DashboardRowActionMenuProps,
+} from "./list-controls";
+export {
+  DashboardFiltersDrawer,
+  DashboardSaveViewsModal,
+  DashboardSaveNewViewModal,
+  DEFAULT_LIST_FILTERS,
+  type DashboardListFiltersState,
+  type DashboardFilterRadioValue,
+  type DashboardFiltersDrawerProps,
+  type DashboardSavedView,
+  type DashboardSaveViewsModalProps,
+  type DashboardSaveNewViewModalProps,
+} from "./list-views";
 export {
   DashboardField,
   DashboardTextField,

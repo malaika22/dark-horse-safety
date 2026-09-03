@@ -68,13 +68,28 @@ function DownloadIcon({ className }: { className?: string }) {
 
 function CustomersIcon({ className }: { className?: string }) {
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src="/icons/customers-icon.png"
-      alt=""
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
       aria-hidden
-      className={cn("h-4 w-4 shrink-0 rounded-[4px] object-cover", className)}
-    />
+      className={cn("h-3.5 w-3.5 shrink-0", className)}
+    >
+      <circle cx="9" cy="8" r="3" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M3.5 19c0-2.8 2.5-5 5.5-5s5.5 2.2 5.5 5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M16 8a3 3 0 11.2 5.9M20.5 19c0-2.2-1.6-4-3.8-4.6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
@@ -89,17 +104,24 @@ export interface DashboardToolbarButtonProps
 }
 
 /** Shared toolbar / filter / export action button. */
-export function DashboardToolbarButton({
-  variant = "glass",
-  leftIcon,
-  rightIcon,
-  showChevron = false,
-  className,
-  children,
-  ...props
-}: DashboardToolbarButtonProps) {
+export const DashboardToolbarButton = React.forwardRef<
+  HTMLButtonElement,
+  DashboardToolbarButtonProps
+>(function DashboardToolbarButton(
+  {
+    variant = "glass",
+    leftIcon,
+    rightIcon,
+    showChevron = false,
+    className,
+    children,
+    ...props
+  },
+  ref,
+) {
   return (
     <button
+      ref={ref}
       type="button"
       className={cn(
         "btn-base inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap font-sans font-[510] uppercase tracking-[-0.02em]",
@@ -117,7 +139,7 @@ export function DashboardToolbarButton({
       {showChevron ? <ChevronDownIcon className="shrink-0" /> : null}
     </button>
   );
-}
+});
 
 export interface DashboardFilterChip {
   id: string;
@@ -192,16 +214,20 @@ export function DashboardListToolbar({
   className,
 }: DashboardListToolbarProps) {
   return (
-    <div className={cn("flex flex-col gap-5", className)}>
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+    <div className={cn("flex flex-col gap-3", className)}>
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1 sm:max-w-md">{search}</div>
           {filters ? (
-            <div className="flex flex-wrap items-center gap-2.5">{filters}</div>
+            <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto">
+              {filters}
+            </div>
           ) : null}
         </div>
         {actions ? (
-          <div className="flex flex-wrap items-center gap-2.5">{actions}</div>
+          <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto lg:justify-end">
+            {actions}
+          </div>
         ) : null}
       </div>
       {chips}

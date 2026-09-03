@@ -1,21 +1,18 @@
 import * as React from "react";
 import { cn } from "../lib/cn";
-import {
-  ArrowRightIcon,
-  StatIcon,
-  isAssetStatIcon,
-  type StatIconName,
-} from "./icons";
+import { ArrowRightIcon, StatIcon, type StatIconName } from "./icons";
 
 export interface DashboardStatMetric {
   value: string;
   meta: string;
+  metaTone?: "muted" | "success";
 }
 
 export interface DashboardStatCellProps {
   title: string;
   value?: string;
   meta?: string;
+  metaTone?: "muted" | "success";
   metrics?: DashboardStatMetric[];
   action?: string;
   icon?: StatIconName;
@@ -23,7 +20,15 @@ export interface DashboardStatCellProps {
   className?: string;
 }
 
-function MetricBlock({ value, meta }: { value: string; meta: string }) {
+function MetricBlock({
+  value,
+  meta,
+  metaTone = "muted",
+}: {
+  value: string;
+  meta: string;
+  metaTone?: "muted" | "success";
+}) {
   return (
     <div className="min-w-0">
       <p className="font-sans text-[24px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[32px]">
@@ -31,7 +36,10 @@ function MetricBlock({ value, meta }: { value: string; meta: string }) {
       </p>
       <p
         title={meta}
-        className="mt-2 truncate font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[16px]"
+        className={cn(
+          "mt-2 truncate font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[16px]",
+          metaTone === "success" ? "text-[#22C55E]" : "text-[#959597]",
+        )}
       >
         {meta}
       </p>
@@ -44,6 +52,7 @@ export function DashboardStatCell({
   title,
   value,
   meta,
+  metaTone,
   metrics,
   action,
   icon,
@@ -51,7 +60,8 @@ export function DashboardStatCell({
   className,
 }: DashboardStatCellProps) {
   const items =
-    metrics ?? (value && meta ? [{ value, meta }] : []);
+    metrics ??
+    (value && meta ? [{ value, meta, metaTone }] : []);
 
   return (
     <div
@@ -75,16 +85,9 @@ export function DashboardStatCell({
             {title}
           </p>
           {icon ? (
-            isAssetStatIcon(icon) ? (
-              <StatIcon
-                name={icon}
-                className="h-8 w-8 shrink-0 rounded-[8px] object-cover"
-              />
-            ) : (
-              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#2A2A2A] text-white">
-                <StatIcon name={icon} />
-              </span>
-            )
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#2A2A2A] text-[#959597]">
+              <StatIcon name={icon} className="h-4 w-4" />
+            </span>
           ) : null}
         </div>
 
@@ -99,6 +102,7 @@ export function DashboardStatCell({
               key={`${item.value}-${item.meta}`}
               value={item.value}
               meta={item.meta}
+              metaTone={item.metaTone}
             />
           ))}
         </div>
