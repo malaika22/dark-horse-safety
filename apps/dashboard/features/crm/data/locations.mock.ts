@@ -48,7 +48,7 @@ export const LOCATIONS_CARDS: LocationCard[] = [
 ];
 
 export const LOCATIONS_SORT_OPTIONS = [
-  { id: "name",     label: "Name" },
+  { id: "name",     label: "Notice start (nearest)" },
   { id: "customer", label: "Customer" },
   { id: "status",   label: "Status" },
   { id: "openJobs", label: "Open Jobs" },

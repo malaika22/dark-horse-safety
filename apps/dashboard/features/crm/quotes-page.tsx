@@ -33,6 +33,8 @@ import {
   type QuoteRow,
 } from "./data/quotes.mock";
 import { SendQuoteModal } from "./send-quote-modal";
+import { DocumentPlusIcon } from "./crm-list-page-shell";
+import Link from "next/link";
 
 const DEFAULT_CHIPS = [
   { id: "active",  label: "Active" },
@@ -111,125 +113,122 @@ function QuotesFiltersDrawer({
   const range = (minKey: keyof QuoteFilters, maxKey: keyof QuoteFilters, minVal: string, maxVal: string) =>
     onChange({ ...value, [minKey]: minVal, [maxKey]: maxVal });
 
-  const LabelEl = ({ children }: { children: React.ReactNode }) => (
-    <span className="font-sans text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-      {children}
-    </span>
+  const controlClass =
+    "h-8 w-full appearance-none rounded-md border-0 bg-[#2A2A2A] px-2.5 pr-8 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none";
+
+  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div className="flex items-center justify-between gap-3">
+      <span className="shrink-0 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+        {label}
+      </span>
+      <div className="flex min-w-0 max-w-[200px] flex-1 justify-end">{children}</div>
+    </div>
   );
 
   const SelectEl = ({ fieldKey, options }: { fieldKey: keyof QuoteFilters; options: string[] }) => (
-    <div className="relative">
+    <div className="relative w-full">
       <select
         value={value[fieldKey] as string}
         onChange={(e) => sel(fieldKey, e.target.value)}
-        className="h-9 w-full appearance-none rounded border border-border bg-card px-3 pr-8 font-sans text-[12px] text-foreground focus:outline-none"
+        className={controlClass}
       >
-        <option value=""></option>
+        <option value="" />
         {options.map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
-      <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" width="12" height="12" viewBox="0 0 12 12" fill="none">
-        <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
+      <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[#FDFDFF]">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
     </div>
   );
 
   const RangePair = ({ minKey, maxKey }: { minKey: keyof QuoteFilters; maxKey: keyof QuoteFilters }) => (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1.5">
       <input
         type="text"
-        placeholder=""
         value={value[minKey] as string}
         onChange={(e) => range(minKey, maxKey, e.target.value, value[maxKey] as string)}
-        className="h-9 w-full rounded border border-border bg-card px-3 font-sans text-[12px] text-foreground focus:outline-none"
+        className="h-8 w-[72px] rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
       />
-      <span className="text-muted-foreground">–</span>
+      <span className="text-[#FDFDFF]" aria-hidden>-</span>
       <input
         type="text"
-        placeholder=""
         value={value[maxKey] as string}
         onChange={(e) => range(minKey, maxKey, value[minKey] as string, e.target.value)}
-        className="h-9 w-full rounded border border-border bg-card px-3 font-sans text-[12px] text-foreground focus:outline-none"
+        className="h-8 w-[72px] rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
       />
     </div>
   );
 
   return (
     <>
-      <div
-        className="fixed inset-0 z-40"
-        onClick={onClose}
-      />
-      <aside className="fixed right-0 top-0 z-50 flex h-full w-[280px] flex-col bg-card shadow-xl">
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <span className="font-sans text-[11px] font-semibold uppercase tracking-[0.1em] text-foreground">
+      <div className="fixed inset-0 z-40 bg-black/50" onClick={onClose} />
+      <aside className="fixed right-0 top-0 z-50 flex h-full w-[min(100%,360px)] flex-col border-l border-divider bg-[#0D0D0D] shadow-xl">
+        <div className="flex items-center justify-between border-b border-divider px-5 py-4">
+          <span className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
             Filters
           </span>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={onClose} className="text-[#FDFDFF] hover:opacity-70" aria-label="Close">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
-          <div className="space-y-1.5">
-            <LabelEl>Status</LabelEl>
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+          <Row label="Status">
             <SelectEl fieldKey="status" options={["Draft", "Sent", "Approved", "Expired", "Converted"]} />
-          </div>
-          <div className="space-y-1.5">
-            <LabelEl>Customer</LabelEl>
+          </Row>
+          <Row label="Customer">
             <SelectEl fieldKey="customer" options={["Permian Basin", "Lonestar", "Cactus Well", "Rio Grande", "Delaware", "Frontier", "Summit", "Vaquero"]} />
-          </div>
-          <div className="space-y-1.5">
-            <LabelEl>Rep</LabelEl>
+          </Row>
+          <Row label="Rep">
             <SelectEl fieldKey="rep" options={["R. Crawford", "S. Vance", "M. Ellis", "S. Nguyen"]} />
-          </div>
-          <div className="space-y-1.5">
-            <LabelEl>Value</LabelEl>
+          </Row>
+          <Row label="Value">
             <RangePair minKey="valueMin" maxKey="valueMax" />
-          </div>
-          <div className="space-y-1.5">
-            <LabelEl>Created</LabelEl>
+          </Row>
+          <Row label="Created">
             <RangePair minKey="createdMin" maxKey="createdMax" />
-          </div>
-          <div className="space-y-1.5">
-            <LabelEl>Expires</LabelEl>
+          </Row>
+          <Row label="Expires">
             <RangePair minKey="expiresMin" maxKey="expiresMax" />
-          </div>
-          <div className="flex items-center justify-between">
-            <LabelEl>Has PO?</LabelEl>
+          </Row>
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+              Has PO?
+            </span>
             <button
+              type="button"
               role="switch"
               aria-checked={value.hasPo}
               onClick={() => onChange({ ...value, hasPo: !value.hasPo })}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${value.hasPo ? "bg-primary" : "bg-muted"}`}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${value.hasPo ? "bg-[#FDFDFF]" : "bg-[#3E3E3E]"}`}
             >
               <span
-                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${value.hasPo ? "translate-x-4" : "translate-x-1"}`}
+                className={`absolute h-3.5 w-3.5 rounded-full shadow transition-transform ${
+                  value.hasPo ? "translate-x-[18px] bg-[#1A1A1A]" : "translate-x-1 bg-[#959597]"
+                }`}
               />
             </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 border-t border-border px-5 py-4">
-          <button
-            onClick={onClose}
-            className="flex-1 rounded border border-border bg-transparent px-3 py-2 font-sans text-[11px] uppercase tracking-[0.08em] text-foreground hover:bg-muted/30"
-          >
+        <div className="flex items-center gap-2 border-t border-divider px-5 py-4">
+          <DashboardToolbarButton onClick={onClose} className="flex-1 justify-center">
             Close
-          </button>
-          <button
-            onClick={() => { onClearAll(); }}
-            className="flex-1 rounded border border-border bg-transparent px-3 py-2 font-sans text-[11px] uppercase tracking-[0.08em] text-foreground hover:bg-muted/30"
-          >
+          </DashboardToolbarButton>
+          <DashboardToolbarButton onClick={onClearAll} className="flex-1 justify-center">
             Clear All
-          </button>
-          <button
+          </DashboardToolbarButton>
+          <DashboardToolbarButton
+            variant="primary"
             onClick={() => { onApply(); onClose(); }}
-            className="flex-1 rounded bg-foreground px-3 py-2 font-sans text-[11px] uppercase tracking-[0.08em] text-background hover:bg-foreground/90"
+            className="flex-1 justify-center"
           >
             Apply
-          </button>
+          </DashboardToolbarButton>
         </div>
       </aside>
     </>
@@ -398,9 +397,15 @@ export function QuotesPage() {
         <h1 className="font-sans text-[18px] font-normal uppercase leading-none tracking-[-0.02em] text-foreground md:text-[24px]">
           Quotes
         </h1>
-        <DashboardToolbarButton variant="primary" showChevron>
-          Create Work Order
-        </DashboardToolbarButton>
+        <Link href="/crm/quotes/new" className="inline-flex shrink-0">
+          <DashboardToolbarButton
+            variant="primary"
+            leftIcon={<DocumentPlusIcon className="shrink-0" />}
+            showChevron
+          >
+            Create Quote
+          </DashboardToolbarButton>
+        </Link>
       </div>
 
       <DashboardStatGrid>

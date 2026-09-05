@@ -6,22 +6,23 @@ import { APP_NAV } from "./nav";
 import { AppHeader } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
 import {
-  AddCustomerHeaderButton,
-  CrmDashboardHeaderActions,
-  CustomerDetailHeaderActions,
+  CRM_LIST_HEADER_ACTIONS,
 } from "./crm-header-actions";
 import { SessionProvider, useSession } from "./session-context";
+import { CUSTOMERS_ROWS } from "../crm/data/customers.mock";
+import { CUSTOMER_DETAIL } from "../crm/data/customer-detail.mock";
+import { CONTACT_DETAIL } from "../crm/data/contacts.mock";
 
 /** Figma app-header titles — longest prefix wins for nested `/new` routes. */
 const HEADER_TITLES: { path: string; title: string }[] = [
   { path: "/dashboard", title: "Dashboard" },
-  { path: "/crm/accounts/new", title: "Add Customer" },
+  { path: "/crm/accounts/new", title: "CRM / Customers / Add Customer" },
   { path: "/crm/contacts/new", title: "Add Contact" },
-  { path: "/crm/requirements/new", title: "Add Requirement" },
-  { path: "/crm/pricing-rules/new", title: "Add Pricing Rule" },
-  { path: "/crm/form-rules/new", title: "Add Form Rule" },
-  { path: "/crm/route-rules/new", title: "Add Route Rule" },
-  { path: "/crm/locations/new", title: "Add Location" },
+  { path: "/crm/requirements/new", title: "CRM / Customer Reqs. / Add Requirement" },
+  { path: "/crm/pricing-rules/new", title: "CRM / Pricing Rules / Add Pricing Rule" },
+  { path: "/crm/form-rules/new", title: "CRM / Form Rules / Add Form Rule" },
+  { path: "/crm/route-rules/new", title: "CRM / Route Rules / Add Route Rule" },
+  { path: "/crm/locations/new", title: "CRM / Locations / Add Location" },
   { path: "/crm/accounts", title: "CRM / Customer" },
   { path: "/crm/contacts", title: "CRM / Contacts" },
   { path: "/crm/requirements", title: "CRM / Customer Reqs." },
@@ -69,9 +70,29 @@ const HEADER_TITLES: { path: string; title: string }[] = [
 function titleForPath(pathname: string) {
   if (pathname === "/dashboard") return "";
 
-  if (/^\/crm\/accounts\/[^/]+\/edit$/.test(pathname)) return "Edit Customer";
+  if (/^\/crm\/accounts\/[^/]+\/edit$/.test(pathname)) {
+    return "CRM / Customers / Edit Customer";
+  }
+  if (/^\/crm\/locations\/[^/]+\/edit$/.test(pathname)) {
+    return "CRM / Locations / Edit Location";
+  }
+  if (/^\/crm\/pricing-rules\/[^/]+\/edit$/.test(pathname)) {
+    return "CRM / Pricing Rules / Edit Pricing Rule";
+  }
+  if (/^\/crm\/requirements\/[^/]+\/edit$/.test(pathname)) {
+    return "CRM / Customer Reqs. / Edit Requirement";
+  }
+  if (/^\/crm\/form-rules\/[^/]+\/edit$/.test(pathname)) {
+    return "CRM / Form Rules / Edit Form Rule";
+  }
+  if (/^\/crm\/route-rules\/[^/]+\/edit$/.test(pathname)) {
+    return "CRM / Route Rules / Edit Route Rule";
+  }
   if (/^\/crm\/accounts\/[^/]+$/.test(pathname)) {
-    return "CRM/Customer > Customers";
+    const id = pathname.split("/")[3] ?? "";
+    const row = CUSTOMERS_ROWS.find((c) => c.id === id);
+    const name = row?.name ?? CUSTOMER_DETAIL.name;
+    return `CRM / Customers / ${name}`;
   }
   if (/^\/crm\/eod-reports\/[^/]+$/.test(pathname)) {
     return "CRM / Customer / EOD Report";
@@ -84,6 +105,9 @@ function titleForPath(pathname: string) {
   }
   if (/^\/crm\/sales\/[^/]+$/.test(pathname)) {
     return "CRM / Customer";
+  }
+  if (/^\/crm\/contacts\/[^/]+$/.test(pathname) && pathname !== "/crm/contacts/new") {
+    return `CRM / Contacts / ${CONTACT_DETAIL.name}`;
   }
 
   const exact = HEADER_TITLES.find((entry) => entry.path === pathname);
@@ -116,13 +140,13 @@ function titleForPath(pathname: string) {
 }
 
 function headerTrailing(pathname: string) {
-  if (pathname === "/crm") return <CrmDashboardHeaderActions />;
-  if (pathname === "/crm/accounts") return <AddCustomerHeaderButton />;
-  const detailMatch = pathname.match(/^\/crm\/accounts\/([^/]+)$/);
-  if (detailMatch?.[1]) {
-    return <CustomerDetailHeaderActions customerId={detailMatch[1]} />;
+  const path = pathname.replace(/\/$/, "") || "/";
+  // Customer detail (/crm/accounts/[id]) — no top-right header actions.
+  if (/^\/crm\/accounts\/[^/]+$/.test(path) && path !== "/crm/accounts/new") {
+    return null;
   }
-  return null;
+  const Action = CRM_LIST_HEADER_ACTIONS[path];
+  return Action ? <Action /> : null;
 }
 
 function AppShellInner({ children }: { children: React.ReactNode }) {

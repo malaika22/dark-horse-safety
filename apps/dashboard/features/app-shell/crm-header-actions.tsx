@@ -1,11 +1,13 @@
 "use client";
 
+import type { ReactElement } from "react";
 import Link from "next/link";
 import {
   DashboardToolbarButton,
   SyncIcon,
 } from "@dark-horse-safety/ui";
 import { CRM_SYNC_LABEL } from "../crm/data/overview.mock";
+import { AddUserIcon } from "../crm/crm-list-page-shell";
 
 function BellIcon({ className }: { className?: string }) {
   return (
@@ -34,24 +36,24 @@ function BellIcon({ className }: { className?: string }) {
   );
 }
 
-function UserPlusIcon({ className }: { className?: string }) {
+/** Shared Figma header CTA — white pill + person icon. */
+function AddHeaderButton({
+  href,
+  label,
+}: {
+  href: string;
+  label: string;
+}) {
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-      className={className}
-    >
-      <circle cx="12" cy="8" r="3.25" stroke="currentColor" strokeWidth="1.75" />
-      <path
-        d="M5.5 19.5c0-3.2 2.9-5.5 6.5-5.5s6.5 2.3 6.5 5.5"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
-    </svg>
+    <Link href={href} className="inline-flex shrink-0">
+      <DashboardToolbarButton
+        variant="primary"
+        leftIcon={<AddUserIcon className="shrink-0" />}
+        className="!rounded-full"
+      >
+        {label}
+      </DashboardToolbarButton>
+    </Link>
   );
 }
 
@@ -79,8 +81,8 @@ export function CrmDashboardHeaderActions() {
       <Link href="/crm/accounts/new" className="inline-flex shrink-0">
         <DashboardToolbarButton
           variant="primary"
-          leftIcon={<UserPlusIcon className="shrink-0" />}
-          className="!px-2.5 sm:!px-3"
+          leftIcon={<AddUserIcon className="shrink-0" />}
+          className="!rounded-full !px-2.5 sm:!px-3"
         >
           <span className="hidden sm:inline">Add customer</span>
           <span className="sm:hidden">Add</span>
@@ -91,45 +93,103 @@ export function CrmDashboardHeaderActions() {
 }
 
 export function AddCustomerHeaderButton() {
+  return <AddHeaderButton href="/crm/accounts/new" label="Add customer" />;
+}
+
+export function AddContactHeaderButton() {
+  return <AddHeaderButton href="/crm/contacts/new" label="Add Contact" />;
+}
+
+export function AddLocationHeaderButton() {
+  return <AddHeaderButton href="/crm/locations/new" label="Add Location" />;
+}
+
+export function AddPricingRuleHeaderButton() {
   return (
-    <Link href="/crm/accounts/new" className="inline-flex shrink-0">
-      <DashboardToolbarButton
-        variant="primary"
-        leftIcon={<UserPlusIcon className="shrink-0" />}
-      >
-        Add customer
-      </DashboardToolbarButton>
-    </Link>
+    <AddHeaderButton href="/crm/pricing-rules/new" label="Add Pricing Rule" />
   );
 }
 
-/** Customer detail header — sync + bell + add note + edit customer. */
-export function CustomerDetailHeaderActions({
-  customerId,
-}: {
-  customerId: string;
-}) {
+export function AddRequirementHeaderButton() {
   return (
-    <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
-      <p className="hidden shrink-0 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] sm:block md:text-[12px]">
-        {CRM_SYNC_LABEL}
-      </p>
-      <button
-        type="button"
-        aria-label="Notifications"
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[#3E3E3E] bg-[#2A2A2A] text-[#959597] transition-colors hover:bg-[#353535] hover:text-[#FDFDFF]"
-      >
-        <BellIcon />
-      </button>
-      <DashboardToolbarButton>Add note</DashboardToolbarButton>
-      <Link
-        href={`/crm/accounts/${customerId}/edit`}
-        className="inline-flex shrink-0"
-      >
-        <DashboardToolbarButton variant="primary">
-          Edit customer
-        </DashboardToolbarButton>
-      </Link>
-    </div>
+    <AddHeaderButton href="/crm/requirements/new" label="Add Requirement" />
   );
 }
+
+export function AddFormRuleHeaderButton() {
+  return <AddHeaderButton href="/crm/form-rules/new" label="Add Form Rule" />;
+}
+
+export function AddRouteRuleHeaderButton() {
+  return <AddHeaderButton href="/crm/route-rules/new" label="Add Route Rule" />;
+}
+
+function ClipboardCheckIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={className}
+    >
+      <path
+        d="M9 5h6l1 2h3v13a1 1 0 01-1 1H6a1 1 0 01-1-1V7h3l1-2z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <rect
+        x="9"
+        y="3"
+        width="6"
+        height="3.5"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <path
+        d="M9.5 13.5l1.5 1.5 3.5-3.5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.5 17.5l1.5 1.5 3.5-3.5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Figma EOD list header — Create Work Order (clipboard + chevron). */
+export function CreateWorkOrderHeaderButton() {
+  return (
+    <DashboardToolbarButton
+      variant="primary"
+      leftIcon={<ClipboardCheckIcon className="shrink-0" />}
+      showChevron
+      className="!rounded-full"
+    >
+      Create Work Order
+    </DashboardToolbarButton>
+  );
+}
+
+/** Listing-page header CTAs keyed by exact path (no trailing slash). */
+export const CRM_LIST_HEADER_ACTIONS: Record<string, () => ReactElement> = {
+  "/crm": CrmDashboardHeaderActions,
+  "/crm/accounts": AddCustomerHeaderButton,
+  "/crm/contacts": AddContactHeaderButton,
+  "/crm/locations": AddLocationHeaderButton,
+  "/crm/pricing-rules": AddPricingRuleHeaderButton,
+  "/crm/requirements": AddRequirementHeaderButton,
+  "/crm/form-rules": AddFormRuleHeaderButton,
+  "/crm/route-rules": AddRouteRuleHeaderButton,
+  "/crm/eod-reports": CreateWorkOrderHeaderButton,
+};

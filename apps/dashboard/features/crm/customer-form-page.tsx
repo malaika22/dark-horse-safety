@@ -8,8 +8,15 @@ import {
   DashboardToggle,
 } from "@dark-horse-safety/ui";
 import { CrmFormPageShell } from "./crm-form-page-shell";
-import { CRM_CUSTOMERS, CUSTOMER_FORM } from "./data/crm-forms.mock";
+import {
+  CUSTOMER_FORM,
+  CUSTOMER_FORM_EDIT_DEFAULTS,
+} from "./data/crm-forms.mock";
 
+/**
+ * Shared Add / Edit Customer screen — same UI for both modes.
+ * Header title (Add Customer vs Edit Customer) comes from app-shell path.
+ */
 export function CustomerFormPage({
   mode,
   customerId,
@@ -18,9 +25,12 @@ export function CustomerFormPage({
   customerId?: string;
 }) {
   void customerId;
-  const [taxExempt, setTaxExempt] = React.useState(false);
-  const [msaOnFile, setMsaOnFile] = React.useState(true);
-  const [requiresPo, setRequiresPo] = React.useState(true);
+  const isEdit = mode === "edit";
+  const d = isEdit ? CUSTOMER_FORM_EDIT_DEFAULTS : null;
+
+  const [taxExempt, setTaxExempt] = React.useState(d?.taxExempt ?? false);
+  const [msaOnFile, setMsaOnFile] = React.useState(d?.msaOnFile ?? false);
+  const [requiresPo, setRequiresPo] = React.useState(d?.requiresPo ?? false);
 
   return (
     <CrmFormPageShell
@@ -33,52 +43,52 @@ export function CustomerFormPage({
             <DashboardFormGrid className="gap-x-4 gap-y-5">
               <DashboardTextField
                 label="Customer Name *"
-                defaultValue="Permian Basin Energy"
+                defaultValue={d?.customerName}
                 placeholder="Customer name"
               />
               <DashboardTextField
                 label="Legal Entity Name"
-                defaultValue="Permian Basin Energy Holdings LLC"
+                defaultValue={d?.legalEntityName}
                 placeholder="Legal entity name"
               />
               <DashboardTextField
                 label="Customer ID"
-                defaultValue="CUST-004821"
+                defaultValue={d?.customerId}
                 placeholder="CUST-000000"
               />
               <DashboardSelectField
                 label="Status *"
-                defaultValue="active"
+                defaultValue={d?.status ?? "active"}
                 options={CUSTOMER_FORM.statuses}
               />
-              <DashboardTextField
+              <DashboardSelectField
                 label="Assigned Rep *"
-                defaultValue="Sarah Mitchell"
-                placeholder="Assigned rep"
+                defaultValue={d?.assignedRep ?? "sarah-mitchell"}
+                options={CUSTOMER_FORM.assignedReps}
               />
               <DashboardSelectField
                 label="Industry"
-                defaultValue="oil-gas"
+                defaultValue={d?.industry ?? "oil-gas"}
                 options={CUSTOMER_FORM.industries}
               />
               <DashboardTextField
                 label="Website"
-                defaultValue="www.permianbasinenergy.com"
+                defaultValue={d?.website}
                 placeholder="www.example.com"
               />
               <DashboardTextField
                 label="Phone"
-                defaultValue="(432) 555-0184"
+                defaultValue={d?.phone}
                 placeholder="(432) 555-0000"
               />
-              <DashboardTextField
+              <DashboardSelectField
                 label="Billing Address *"
-                defaultValue="1200 W Wall St, Midland, TX 79701"
-                placeholder="Billing address"
+                defaultValue={d?.billingAddress ?? "midland-wall"}
+                options={CUSTOMER_FORM.billingAddresses}
               />
               <DashboardTextField
                 label="Mailing Address"
-                defaultValue="PO Box 4821, Midland, TX 79702"
+                defaultValue={d?.mailingAddress}
                 placeholder="Mailing address"
               />
             </DashboardFormGrid>
@@ -90,12 +100,12 @@ export function CustomerFormPage({
             <DashboardFormGrid className="gap-x-4 gap-y-5">
               <DashboardSelectField
                 label="Payment Terms *"
-                defaultValue="net-60"
+                defaultValue={d?.paymentTerms ?? "net-60"}
                 options={CUSTOMER_FORM.paymentTerms}
               />
               <DashboardTextField
                 label="Credit Limit"
-                defaultValue="$50,000.00"
+                defaultValue={d?.creditLimit}
                 placeholder="$0.00"
               />
               <DashboardToggle
@@ -105,12 +115,12 @@ export function CustomerFormPage({
               />
               <DashboardTextField
                 label="Tax ID"
-                defaultValue="82-3749201"
+                defaultValue={d?.taxId}
                 placeholder="Tax ID"
               />
               <DashboardSelectField
                 label="Default Pricing Tier"
-                defaultValue="enterprise"
+                defaultValue={d?.pricingTier ?? "enterprise"}
                 options={CUSTOMER_FORM.pricingTiers}
                 containerClassName="md:col-span-2"
               />
@@ -123,18 +133,19 @@ export function CustomerFormPage({
             <DashboardFormGrid className="gap-x-4 gap-y-5">
               <DashboardTextField
                 label="NetSuite Customer ID"
-                defaultValue="NS-829471"
+                defaultValue={d?.netsuiteId}
                 placeholder="NS-000000"
               />
               <DashboardTextField
                 label="ISN ID"
-                defaultValue="ISN-40058723"
+                defaultValue={d?.isnId}
                 placeholder="ISN-00000000"
               />
               <DashboardTextField
                 label="Veriforce ID"
-                defaultValue="VF-2039185"
+                defaultValue={d?.veriforceId}
                 placeholder="VF-0000000"
+                containerClassName="md:col-span-2"
               />
             </DashboardFormGrid>
           ),
@@ -150,17 +161,17 @@ export function CustomerFormPage({
               />
               <DashboardTextField
                 label="MSA Expiry"
-                defaultValue="12/31/2026"
+                defaultValue={d?.msaExpiry}
                 placeholder="MM/DD/YYYY"
               />
               <DashboardTextField
                 label="COI Expiry"
-                defaultValue="03/15/2027"
+                defaultValue={d?.coiExpiry}
                 placeholder="MM/DD/YYYY"
               />
               <DashboardTextField
                 label="W-9 on File"
-                defaultValue="$125,000.00"
+                defaultValue={d?.w9OnFile}
                 placeholder="W-9 status"
               />
             </DashboardFormGrid>
@@ -172,7 +183,7 @@ export function CustomerFormPage({
             <DashboardFormGrid className="gap-x-4 gap-y-5">
               <DashboardTextField
                 label="Default Clock In Radius"
-                defaultValue="CUST-007394"
+                defaultValue={d?.clockInRadius}
                 placeholder="Radius"
               />
               <DashboardToggle
@@ -182,7 +193,7 @@ export function CustomerFormPage({
               />
               <DashboardTextField
                 label="Default Required Forms"
-                defaultValue="JSA, FLRA, TBT"
+                defaultValue={d?.requiredForms}
                 placeholder="Forms"
                 containerClassName="md:col-span-2"
               />

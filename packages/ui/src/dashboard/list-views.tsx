@@ -122,30 +122,18 @@ export function DashboardFiltersDrawer({
           />
         </FilterRow>
         <FilterRow label="Status">
-          <select
+          <FilterSelect
             value={value.status}
-            onChange={(e) => patch({ status: e.target.value })}
-            className={cn(filterControlClass, "appearance-none pr-8")}
-          >
-            {statusOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            onChange={(status) => patch({ status })}
+            options={statusOptions}
+          />
         </FilterRow>
         <FilterRow label="Msa status">
-          <select
+          <FilterSelect
             value={value.msaStatus}
-            onChange={(e) => patch({ msaStatus: e.target.value })}
-            className={cn(filterControlClass, "appearance-none pr-8")}
-          >
-            {msaOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            onChange={(msaStatus) => patch({ msaStatus })}
+            options={msaOptions}
+          />
         </FilterRow>
         <FilterRow label="Has open jobs?">
           <InlineToggle
@@ -169,17 +157,11 @@ export function DashboardFiltersDrawer({
           onChange={(routeRules) => patch({ routeRules })}
         />
         <FilterRow label="Assigned reps">
-          <select
+          <FilterSelect
             value={value.assignedReps}
-            onChange={(e) => patch({ assignedReps: e.target.value })}
-            className={cn(filterControlClass, "appearance-none pr-8")}
-          >
-            {repOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            onChange={(assignedReps) => patch({ assignedReps })}
+            options={repOptions}
+          />
         </FilterRow>
       </div>
     </DashboardDrawer>
@@ -187,7 +169,50 @@ export function DashboardFiltersDrawer({
 }
 
 const filterControlClass =
-  "h-10 w-full max-w-[200px] rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] px-3 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] outline-none";
+  "h-8 w-full max-w-[200px] rounded-md border-0 bg-[#2A2A2A] px-2.5 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] outline-none";
+
+function FilterChevronIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M6 9l6 6 6-6"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FilterSelect({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div className="relative w-full max-w-[200px]">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(filterControlClass, "max-w-none appearance-none pr-8")}
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[#FDFDFF]">
+        <FilterChevronIcon />
+      </span>
+    </div>
+  );
+}
 
 function FilterRow({
   label,
@@ -198,10 +223,10 @@ function FilterRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <span className="shrink-0 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF]">
+      <span className="shrink-0 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF]">
         {label}
       </span>
-      <div className="min-w-0 flex-1 flex justify-end">{children}</div>
+      <div className="flex min-w-0 flex-1 justify-end">{children}</div>
     </div>
   );
 }

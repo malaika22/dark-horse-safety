@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   DashboardBadge,
@@ -128,53 +127,77 @@ function ContactsFiltersDrawer({
         </div>
       }
     >
-      <div className="space-y-5">
-        {/* Customer */}
+      <div className="space-y-4">
         <FilterSelectRow
           label="Customer"
           value={value.customer}
-          placeholder="Select customer"
-          options={["Permian Basin Energy", "Lonestar Oilfield", "Cactus Well Services", "Rio Grande Resources", "Delaware Basin Co.", "Frontier Energy LLC", "Summit Production", "Vaquero Oil & Gas"]}
+          options={[
+            "Permian Basin Energy",
+            "Lonestar Oilfield",
+            "Cactus Well Services",
+            "Rio Grande Resources",
+            "Delaware Basin Co.",
+            "Frontier Energy LLC",
+            "Summit Production",
+            "Vaquero Oil & Gas",
+          ]}
           onChange={(v) => patch({ customer: v })}
         />
-        {/* Role */}
         <FilterSelectRow
           label="Role"
           value={value.role}
-          placeholder="Select role"
-          options={["Operations MGR", "Safety Lead", "Field Super", "AP Contact", "Company MAN", "Procurement", "HSE Manager", "Dispatcher"]}
+          options={[
+            "Operations MGR",
+            "Safety Lead",
+            "Field Super",
+            "AP Contact",
+            "Company MAN",
+            "Procurement",
+            "HSE Manager",
+            "Dispatcher",
+          ]}
           onChange={(v) => patch({ role: v })}
         />
-        {/* Toggles */}
-        <FilterToggleRow label="Is Primary Contact?" checked={value.isPrimary} onChange={(v) => patch({ isPrimary: v })} />
-        <FilterToggleRow label="Has Email?"          checked={value.hasEmail}  onChange={(v) => patch({ hasEmail: v })} />
-        <FilterToggleRow label="Has Phone?"          checked={value.hasPhone}  onChange={(v) => patch({ hasPhone: v })} />
-        {/* Assigned Rep */}
+        <FilterToggleRow
+          label="Is Primary Contact?"
+          checked={value.isPrimary}
+          onChange={(v) => patch({ isPrimary: v })}
+        />
+        <FilterToggleRow
+          label="Has Email?"
+          checked={value.hasEmail}
+          onChange={(v) => patch({ hasEmail: v })}
+        />
+        <FilterToggleRow
+          label="Has Phone?"
+          checked={value.hasPhone}
+          onChange={(v) => patch({ hasPhone: v })}
+        />
         <FilterSelectRow
           label="Assigned Rep"
           value={value.assignedRep}
-          placeholder="Select rep"
           options={["R. Crawford", "M. Torres", "L. Nguyen"]}
           onChange={(v) => patch({ assignedRep: v })}
         />
-        {/* Last Activity range */}
-        <div>
-          <p className="mb-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">Last Activity</p>
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-3">
+          <p className="shrink-0 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+            Last Activity
+          </p>
+          <div className="flex min-w-0 items-center gap-1.5">
             <input
               type="text"
-              placeholder=""
               value={value.lastActivityFrom}
               onChange={(e) => patch({ lastActivityFrom: e.target.value })}
-              className="flex-1 rounded-md border border-[#2D2D30] bg-[#1A1A1A] px-2.5 py-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] placeholder-[#959597] outline-none focus:border-[#555]"
+              className="h-8 w-[72px] rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
             />
-            <span className="font-sans text-[11px] text-[#959597]">-</span>
+            <span className="font-sans text-[11px] text-[#FDFDFF]" aria-hidden>
+              -
+            </span>
             <input
               type="text"
-              placeholder=""
               value={value.lastActivityTo}
               onChange={(e) => patch({ lastActivityTo: e.target.value })}
-              className="flex-1 rounded-md border border-[#2D2D30] bg-[#1A1A1A] px-2.5 py-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] placeholder-[#959597] outline-none focus:border-[#555]"
+              className="h-8 w-[72px] rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
             />
           </div>
         </div>
@@ -183,38 +206,83 @@ function ContactsFiltersDrawer({
   );
 }
 
+function FilterChevronIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M6 9l6 6 6-6"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function FilterSelectRow({
-  label, value, placeholder, options, onChange,
+  label,
+  value,
+  options,
+  onChange,
 }: {
-  label: string; value: string; placeholder: string; options: string[]; onChange: (v: string) => void;
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
 }) {
   return (
-    <div>
-      <p className="mb-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">{label}</p>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border border-[#2D2D30] bg-[#1A1A1A] px-2.5 py-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none focus:border-[#555] appearance-none"
-      >
-        <option value="">{placeholder}</option>
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
+    <div className="flex items-center justify-between gap-3">
+      <p className="shrink-0 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+        {label}
+      </p>
+      <div className="relative min-w-0 flex-1 max-w-[200px]">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-8 w-full appearance-none rounded-md border-0 bg-[#2A2A2A] py-0 pl-2.5 pr-8 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
+        >
+          <option value="" />
+          {options.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+        <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[#FDFDFF]">
+          <FilterChevronIcon />
+        </span>
+      </div>
     </div>
   );
 }
 
-function FilterToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function FilterToggleRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">{label}</p>
+      <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+        {label}
+      </p>
       <button
         type="button"
         role="switch"
         aria-checked={checked}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${checked ? "bg-[#FDFDFF]" : "bg-[#3E3E3E]"}`}
+        className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full bg-[#FDFDFF] transition-colors"
       >
-        <span className={`absolute h-3.5 w-3.5 rounded-full shadow transition-transform ${checked ? "translate-x-[18px] bg-[#1A1A1A]" : "translate-x-1 bg-[#959597]"}`} />
+        <span
+          className={`absolute h-3.5 w-3.5 rounded-full bg-[#3E3E3E] shadow transition-transform ${
+            checked ? "translate-x-[18px]" : "translate-x-1"
+          }`}
+        />
       </button>
     </div>
   );
@@ -344,18 +412,6 @@ export function ContactsPage() {
 
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
-      {/* page title + primary action */}
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="font-sans text-[20px] font-[590] uppercase leading-none tracking-[-0.03em] text-[#FDFDFF] sm:text-[24px]">
-          Contacts
-        </h1>
-        <Link href="/crm/contacts/new" className="inline-flex shrink-0">
-          <DashboardToolbarButton variant="primary">
-            Add Contact
-          </DashboardToolbarButton>
-        </Link>
-      </div>
-
       {/* KPI strip */}
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>

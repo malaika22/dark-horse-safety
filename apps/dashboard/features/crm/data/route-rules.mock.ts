@@ -1,10 +1,10 @@
 import type { DashboardBadgeVariant, StatIconName } from "@dark-horse-safety/ui";
 
 export const ROUTE_RULES_KPI = [
-  { title: "Active Rules",          value: "11", meta: "+1 This Month",        icon: "customers" as StatIconName },
-  { title: "Customers Configured",  value: "27", meta: "Per Tech Avg 31.1H",   icon: "time"      as StatIconName },
-  { title: "Geofenced Sites",       value: "19", meta: "3 Edits · 2 Time Off", icon: "edit"      as StatIconName },
-  { title: "Missing Rules",         value: "2",  meta: "BBS Missing",           icon: "wrench"    as StatIconName },
+  { title: "Active Rules",         value: "11", meta: "+1 This Month",     icon: "document"  as StatIconName },
+  { title: "Customers Configured", value: "27", meta: "With Route Rules",  icon: "time"      as StatIconName },
+  { title: "Geofenced Sites",      value: "19", meta: "Sites Covered",     icon: "customers" as StatIconName },
+  { title: "Missing Rules",        value: "2",  meta: "Needs Setup",       icon: "lightning" as StatIconName },
 ];
 
 export type RouteMapPin = {
@@ -83,13 +83,10 @@ export const ROUTE_RULES_ROWS: RouteRuleRow[] = Array.from({ length: 32 }, (_, i
 });
 
 export const ROUTE_RULES_SORT_OPTIONS = [
-  { id: "customer",    label: "Customer" },
-  { id: "location",    label: "Location" },
-  { id: "status",      label: "Status" },
-  { id: "route",       label: "Route" },
-  { id: "geofence",    label: "Geofence" },
-  { id: "gpsRequired", label: "GPS Required" },
-  { id: "owner",       label: "Owner" },
+  { id: "name",     label: "Notice start (nearest)" },
+  { id: "customer", label: "Customer" },
+  { id: "status",   label: "Status" },
+  { id: "openJobs", label: "Open Jobs" },
 ];
 
 export const ROUTE_RULES_SAVED_VIEWS = [

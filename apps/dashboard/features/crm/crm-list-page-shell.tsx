@@ -43,6 +43,72 @@ export function PlusIcon({ className }: { className?: string }) {
   );
 }
 
+/** Figma Add CTA — filled person / user silhouette. */
+export function AddUserIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={className}
+    >
+      <circle cx="12" cy="7.5" r="3.5" fill="currentColor" />
+      <path
+        d="M5 20.75c0-3.5 3.15-6 7-6s7 2.5 7 6"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+/** Figma primary CTA — document with corner plus (Create Quote / Send Quote). */
+export function DocumentPlusIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={className}
+    >
+      <path
+        d="M7 3.75h6.5L17.25 7.5V14.5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7 3.75v16.5h6.25"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M13.5 3.75V7.5h3.75"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 10.25h3.5M9 13.25h2.25"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+      <path
+        d="M17.5 16.25v5M15 18.75h5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 const DEFAULT_CHIPS: DashboardFilterChip[] = [
   { id: "active", label: "Active" },
   { id: "current", label: "Current" },

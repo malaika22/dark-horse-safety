@@ -2,86 +2,84 @@
 
 import * as React from "react";
 import {
-  DashboardChoiceChips,
   DashboardFormGrid,
   DashboardSelectField,
   DashboardTextField,
+  DashboardToggle,
 } from "@dark-horse-safety/ui";
 import { CrmFormPageShell } from "./crm-form-page-shell";
 import {
-  CRM_CUSTOMERS,
-  CRM_OWNERS,
   REQUIREMENT_FORM,
+  REQUIREMENT_FORM_DEFAULTS,
 } from "./data/crm-forms.mock";
 
-export function RequirementFormPage() {
-  const [docs, setDocs] = React.useState(["cert", "coi"]);
+/**
+ * Shared Add / Edit Requirement screen — same UI for both modes.
+ * Header title (Add vs Edit) comes from app-shell path.
+ */
+export function RequirementFormPage({
+  mode = "create",
+  requirementId,
+}: {
+  mode?: "create" | "edit";
+  requirementId?: string;
+}) {
+  void requirementId;
+  const d = REQUIREMENT_FORM_DEFAULTS;
+  const [evidenceRequired, setEvidenceRequired] = React.useState(
+    d.evidenceRequired,
+  );
 
   return (
     <CrmFormPageShell
       cancelHref="/crm/requirements"
-      submitLabel="Add requirement"
+      submitLabel="Save"
       sections={[
         {
-          title: "Requirement details",
+          title: "Requirement Details",
           content: (
             <DashboardFormGrid className="gap-x-4 gap-y-5">
-              <DashboardSelectField
-                label="Customer"
-                defaultValue="pbe"
-                options={CRM_CUSTOMERS}
+              <DashboardTextField
+                label="Customer *"
+                defaultValue={d.customer}
+                placeholder="Customer name"
               />
               <DashboardSelectField
-                label="Requirement"
-                defaultValue="h2s"
-                options={REQUIREMENT_FORM.requirements}
-              />
-              <DashboardSelectField
-                label="Type"
-                defaultValue="safety"
+                label="Requirement Type *"
+                defaultValue={d.requirementType}
                 options={REQUIREMENT_FORM.types}
               />
+              <DashboardTextField
+                label="Requirement *"
+                defaultValue={d.requirement}
+                placeholder="Requirement name"
+              />
               <DashboardSelectField
-                label="Owner"
-                defaultValue="r-crawford"
-                options={CRM_OWNERS}
+                label="Applies To"
+                defaultValue={d.appliesTo}
+                options={REQUIREMENT_FORM.appliesTo}
+              />
+              <DashboardSelectField
+                label="Enforcement Level *"
+                defaultValue={d.enforcementLevel}
+                options={REQUIREMENT_FORM.enforcementLevels}
+              />
+              <DashboardToggle
+                label="Evidence Required?"
+                checked={evidenceRequired}
+                onCheckedChange={setEvidenceRequired}
               />
               <DashboardTextField
-                label="Due date"
-                type="date"
-                defaultValue="2026-09-01"
+                label="Renewal Period"
+                defaultValue={d.renewalPeriod}
+                placeholder="Renewal period"
               />
-              <DashboardSelectField
-                label="Review cycle"
-                defaultValue="annual"
-                options={REQUIREMENT_FORM.cycles}
+              <DashboardTextField
+                label="Notes"
+                defaultValue={d.notes}
+                placeholder="Notes"
               />
             </DashboardFormGrid>
-          ),
-        },
-        {
-          title: "Tracking",
-          content: (
-            <div className="space-y-5">
-              <DashboardFormGrid className="gap-x-4 gap-y-5">
-                <DashboardSelectField
-                  label="Status"
-                  defaultValue="met"
-                  options={REQUIREMENT_FORM.statuses}
-                />
-                <DashboardSelectField
-                  label="Docs required"
-                  defaultValue="yes"
-                  options={REQUIREMENT_FORM.docsRequired}
-                />
-              </DashboardFormGrid>
-              <DashboardChoiceChips
-                label="Documents"
-                options={REQUIREMENT_FORM.documentChips}
-                value={docs}
-                onChange={setDocs}
-              />
-            </div>
           ),
         },
       ]}

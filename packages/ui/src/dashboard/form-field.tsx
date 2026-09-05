@@ -11,6 +11,24 @@ export interface DashboardFieldProps {
   children: React.ReactNode;
 }
 
+/** Renders trailing `*` in required labels as red (Figma). */
+function FieldLabelText({ label }: { label: string }) {
+  const parts = label.split(/(\*)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part === "*" ? (
+          <span key={i} className="text-[#E5484D]">
+            *
+          </span>
+        ) : (
+          <React.Fragment key={i}>{part}</React.Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
 /** Uppercase field label + control — shared across CRM / HR forms. */
 export function DashboardField({
   label,
@@ -24,7 +42,7 @@ export function DashboardField({
       className={cn("flex min-w-0 flex-col gap-2", className)}
     >
       <span className="font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]">
-        {label}
+        <FieldLabelText label={label} />
       </span>
       {children}
     </label>

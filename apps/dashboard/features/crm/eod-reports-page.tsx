@@ -34,22 +34,68 @@ import {
   type EodReportRow,
 } from "./data/eod-reports.mock";
 
-const DEFAULT_CHIPS = [
-  { id: "active",  label: "Active" },
-  { id: "current", label: "Current" },
-  { id: "future",  label: "Future" },
-];
+function FilterCheckMarkIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={className}
+    >
+      <path
+        d="M5 12.5l4.5 4.5L19 7"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
-function sortRows(rows: EodReportRow[], field: string, direction: DashboardSortDirection) {
+function ClockIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={className}
+    >
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.75" />
+      <path
+        d="M12 8v4.5l3 1.5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function sortRows(
+  rows: EodReportRow[],
+  field: string,
+  direction: DashboardSortDirection,
+) {
   const dir = direction === "asc" ? 1 : -1;
   return [...rows].sort((a, b) => {
     switch (field) {
-      case "date":       return a.date.localeCompare(b.date) * dir;
-      case "rep":        return a.rep.localeCompare(b.rep) * dir;
-      case "activities": return (a.activities - b.activities) * dir;
-      case "status":     return a.status.label.localeCompare(b.status.label) * dir;
+      case "date":
+        return a.date.localeCompare(b.date) * dir;
+      case "rep":
+        return a.rep.localeCompare(b.rep) * dir;
+      case "activities":
+        return (a.activities - b.activities) * dir;
+      case "status":
+        return a.status.label.localeCompare(b.status.label) * dir;
       case "reportId":
-      default:           return a.reportId.localeCompare(b.reportId) * dir;
+      default:
+        return a.reportId.localeCompare(b.reportId) * dir;
     }
   });
 }
@@ -63,12 +109,20 @@ function BadgeOrDash({ value }: { value: BadgeCell }) {
   );
 }
 
-function StackedCell({ title, subtitle }: { title: string; subtitle: string }) {
+function StackedCell({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle: string;
+}) {
   return (
     <div className="min-w-0">
       <div className="truncate">{title}</div>
       {subtitle ? (
-        <div className="truncate text-[10px] uppercase text-[#959597]">{subtitle}</div>
+        <div className="truncate text-[10px] uppercase text-[#959597]">
+          {subtitle}
+        </div>
       ) : null}
     </div>
   );
@@ -77,22 +131,30 @@ function StackedCell({ title, subtitle }: { title: string; subtitle: string }) {
 export function EodReportsPage() {
   const router = useRouter();
   const [query, setQuery] = React.useState("");
-  const [chips, setChips] = React.useState(DEFAULT_CHIPS);
+  const [chips, setChips] = React.useState<{ id: string; label: string }[]>([]);
   const [sortField, setSortField] = React.useState("date");
-  const [sortDirection, setSortDirection] = React.useState<DashboardSortDirection>("desc");
+  const [sortDirection, setSortDirection] =
+    React.useState<DashboardSortDirection>("desc");
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
-  const [savedViews, setSavedViews] = React.useState<DashboardSavedView[]>(EOD_REPORTS_SAVED_VIEWS);
-  const [activeViewId, setActiveViewId] = React.useState<string | null>("view-1");
+  const [savedViews, setSavedViews] = React.useState<DashboardSavedView[]>(
+    EOD_REPORTS_SAVED_VIEWS,
+  );
+  const [activeViewId, setActiveViewId] = React.useState<string | null>(
+    "view-1",
+  );
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     let rows = EOD_REPORTS_ROWS.filter((row) => {
       if (!q) return true;
-      return [row.reportId, row.rep, row.date, row.status.label].join(" ").toLowerCase().includes(q);
+      return [row.reportId, row.rep, row.date, row.status.label]
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
     });
     return sortRows(rows, sortField, sortDirection);
   }, [query, sortField, sortDirection]);
@@ -100,9 +162,14 @@ export function EodReportsPage() {
   const bulkOpen = selectedIds.length > 0;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, pageCount);
-  const pageRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const pageRows = filtered.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize,
+  );
 
-  React.useEffect(() => { setPage(1); }, [query, sortField, sortDirection, pageSize]);
+  React.useEffect(() => {
+    setPage(1);
+  }, [query, sortField, sortDirection, pageSize]);
 
   const columns: DashboardDataTableColumn<EodReportRow>[] = React.useMemo(
     () => [
@@ -111,7 +178,11 @@ export function EodReportsPage() {
         header: "Report ID",
         className: "min-w-[110px] max-w-[150px]",
         cell: (row) => (
-          <DashboardTablePrimaryCell title={row.reportId} subtitle={row.submittedTime} underline />
+          <DashboardTablePrimaryCell
+            title={row.reportId}
+            subtitle={row.submittedTime}
+            underline
+          />
         ),
       },
       {
@@ -136,29 +207,36 @@ export function EodReportsPage() {
         id: "calls",
         header: "Calls",
         className: "min-w-[80px] hidden md:table-cell",
-        cell: (row) => <StackedCell title={row.calls} subtitle={row.callsDetail} />,
+        cell: (row) => (
+          <StackedCell title={row.calls} subtitle={row.callsDetail} />
+        ),
       },
       {
         id: "visits",
         header: "Visits",
         className: "min-w-[110px] hidden lg:table-cell",
-        cell: (row) =>
-          row.visitsBadge ? (
-            <div className="space-y-1">
-              <StackedCell title={row.visits} subtitle={row.visitsDetail} />
-              <DashboardBadge variant={row.visitsBadge.variant} pill className="max-w-full">
-                {row.visitsBadge.label}
-              </DashboardBadge>
-            </div>
-          ) : (
-            <StackedCell title={row.visits} subtitle={row.visitsDetail} />
-          ),
+        cell: (row) => (
+          <StackedCell title={row.visits} subtitle={row.visitsDetail} />
+        ),
       },
       {
         id: "meetings",
         header: "Meetings",
-        className: "min-w-[80px] hidden lg:table-cell",
-        cell: (row) => row.meetings || "—",
+        className: "min-w-[90px] hidden lg:table-cell",
+        cell: (row) =>
+          row.meetingsBadge ? (
+            <DashboardBadge
+              variant={row.meetingsBadge.variant}
+              pill
+              className="max-w-full"
+            >
+              {row.meetingsBadge.label}
+            </DashboardBadge>
+          ) : (
+            <span className="underline underline-offset-2">
+              {row.meetings || "—"}
+            </span>
+          ),
       },
       {
         id: "quotes",
@@ -177,7 +255,11 @@ export function EodReportsPage() {
         header: "Status",
         className: "min-w-[110px]",
         cell: (row) => (
-          <DashboardBadge variant={row.status.variant} pill className="max-w-full">
+          <DashboardBadge
+            variant={row.status.variant}
+            pill
+            className="max-w-full"
+          >
             {row.status.label}
           </DashboardBadge>
         ),
@@ -189,10 +271,15 @@ export function EodReportsPage() {
         cell: (row) => (
           <DashboardRowActionMenu
             items={[
-              { id: "open",      label: "Open Report",                    onSelect: () => router.push(`/crm/eod-reports/${row.id}`) },
-              { id: "activities",label: "View Reps Activities That Day" },
-              { id: "reminder",  label: "Send Reminder" },
-              { id: "export",    label: "Export" },
+              {
+                id: "open",
+                label: "Open Report",
+                onSelect: () =>
+                  router.push(`/crm/eod-reports/${row.id}`),
+              },
+              { id: "activities", label: "View Reps Activities That Day" },
+              { id: "reminder", label: "Send Reminder" },
+              { id: "export", label: "Export" },
             ]}
           />
         ),
@@ -203,15 +290,6 @@ export function EodReportsPage() {
 
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="font-sans text-[18px] font-normal uppercase leading-none tracking-[-0.02em] text-foreground md:text-[24px]">
-          EOD Reports
-        </h1>
-        <DashboardToolbarButton variant="primary" showChevron>
-          Create Work Order
-        </DashboardToolbarButton>
-      </div>
-
       <DashboardStatGrid>
         <DashboardStatRow columns={5}>
           {EOD_REPORTS_KPI.map((cell) => (
@@ -230,8 +308,8 @@ export function EodReportsPage() {
                 triggerLabel="Export selected"
                 items={[
                   { id: "selected-csv", label: "Export selected view • CSV" },
-                  { id: "all-csv",      label: "Export all • CSV" },
-                  { id: "pdf",          label: "Export as PDF" },
+                  { id: "all-csv", label: "Export all • CSV" },
+                  { id: "pdf", label: "Export as PDF" },
                 ]}
               />
             </>
@@ -249,28 +327,36 @@ export function EodReportsPage() {
           filters={
             <DashboardToolbarButton
               leftIcon={<DashboardToolbarIcons.Filter className="shrink-0" />}
+              rightIcon={
+                <FilterCheckMarkIcon className="shrink-0 text-[#959597]" />
+              }
             >
-              {`Filter (${chips.length > 0 ? chips.length : "-"})`}
+              Filter
             </DashboardToolbarButton>
           }
           actions={
             <>
-              <DashboardToolbarButton onClick={() => setSavedViewsOpen(true)}>
-                Review Exceptions
-              </DashboardToolbarButton>
-              <DashboardExportMenu
-                items={[
-                  { id: "view-csv", label: "Export current view • CSV" },
-                  { id: "all-csv",  label: "Export all • CSV" },
-                  { id: "pdf",      label: "Export as PDF" },
-                ]}
-              />
               <DashboardSortMenu
                 options={EOD_REPORTS_SORT_OPTIONS}
                 field={sortField}
                 direction={sortDirection}
                 onFieldChange={setSortField}
                 onDirectionChange={setSortDirection}
+                showDirectionInTrigger={false}
+              />
+              <DashboardToolbarButton
+                leftIcon={<ClockIcon className="shrink-0" />}
+                showChevron
+                onClick={() => setSavedViewsOpen(true)}
+              >
+                Review Exceptions
+              </DashboardToolbarButton>
+              <DashboardExportMenu
+                items={[
+                  { id: "view-csv", label: "Export current view • CSV" },
+                  { id: "all-csv", label: "Export all • CSV" },
+                  { id: "pdf", label: "Export as PDF" },
+                ]}
               />
             </>
           }
@@ -278,7 +364,9 @@ export function EodReportsPage() {
             chips.length > 0 ? (
               <DashboardFilterChips
                 chips={chips}
-                onRemove={(id) => setChips((prev) => prev.filter((c) => c.id !== id))}
+                onRemove={(id) =>
+                  setChips((prev) => prev.filter((c) => c.id !== id))
+                }
                 onClearAll={() => setChips([])}
               />
             ) : null
@@ -321,7 +409,10 @@ export function EodReportsPage() {
             const source = savedViews.find((v) => v.id === viewId);
             if (!source) return;
             const id = `view-${Date.now()}`;
-            setSavedViews((prev) => [...prev, { id, label: `${source.label} copy` }]);
+            setSavedViews((prev) => [
+              ...prev,
+              { id, label: `${source.label} copy` },
+            ]);
           }
         }}
       />

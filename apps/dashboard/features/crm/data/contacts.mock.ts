@@ -62,14 +62,6 @@ export const CONTACTS_SAVED_VIEWS = [
 ];
 
 /* ── contact detail mock ── */
-export type ContactActivity = {
-  id: string;
-  code: string;
-  type: string;
-  date: string;
-  note: string;
-};
-
 export const CONTACT_DETAIL = {
   id: "1",
   name: "J. Whitfield",
@@ -87,17 +79,42 @@ export const CONTACT_DETAIL = {
 };
 
 export const CONTACT_RELATED = [
-  { label: "Open Quotes",        value: "Q-1042 · $24,500" },
-  { label: "Won Deals",          value: "3" },
-  { label: "Open Opportunities", value: "$24,500" },
+  { label: "Open Quotes",        value: "Q-1042 · $24,500", highlight: false },
+  { label: "Won Deals",          value: "3", highlight: false },
+  { label: "Open Opportunities", value: "$24,500", highlight: false },
   { label: "Lifetime Value",     value: "$182,400", highlight: true },
 ];
 
+export type ContactActivity = {
+  id: string;
+  code: string;
+  type: string;
+  date: string;
+  subject: string;
+  status: string;
+};
+
 export const CONTACT_ACTIVITY: ContactActivity[] = [
-  { id: "1", code: "SA-2041", type: "Call",  date: "Jun 12", note: "Quote follow-up · Positive" },
-  { id: "2", code: "SA-2037", type: "Call",  date: "Jun 10", note: "Intro call · No Answer" },
-  { id: "3", code: "SA-2019", type: "Email", date: "Jun 02", note: "Proposal Sent" },
+  { id: "1", code: "SA-2041", type: "Call",  date: "Jun 12", subject: "Quote Follow-up", status: "Positive" },
+  { id: "2", code: "SA-2037", type: "Call",  date: "Jun 10", subject: "Intro Call",      status: "No Answer" },
+  { id: "3", code: "SA-2019", type: "Email", date: "Jun 02", subject: "Proposal Sent",   status: "" },
 ];
 
 export const CONTACT_NOTES =
   "Decision-maker for safety services. Budget approved for Q-1042; needs final H2S pricing before signing.";
+
+export const CONTACT_CUSTOMERS = [
+  { id: "1", name: "Permian Basin Energy", primary: true },
+  { id: "2", name: "West Texas Well Services", primary: false },
+  { id: "3", name: "Cactus Midstream", primary: false },
+];
+
+export type ContactDetailTab = "overview" | "activity" | "quotes" | "work-orders" | "customers";
+
+export const CONTACT_DETAIL_TABS: { id: ContactDetailTab; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "activity", label: "Activity" },
+  { id: "quotes", label: "Quotes" },
+  { id: "work-orders", label: "Work Orders" },
+  { id: "customers", label: "Customers" },
+];

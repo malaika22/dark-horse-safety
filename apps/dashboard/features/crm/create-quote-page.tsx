@@ -12,6 +12,7 @@ import {
   DashboardToolbarButton,
 } from "@dark-horse-safety/ui";
 import { SendQuoteModal } from "./send-quote-modal";
+import { DocumentPlusIcon } from "./crm-list-page-shell";
 import { QUOTE_DETAIL } from "./data/quotes.mock";
 
 function PanelHeading({ children }: { children: React.ReactNode }) {
@@ -45,7 +46,11 @@ export function CreateQuotePage() {
             <DashboardToolbarButton>Discard</DashboardToolbarButton>
           </Link>
           <DashboardToolbarButton>Save Draft</DashboardToolbarButton>
-          <DashboardToolbarButton variant="primary" onClick={() => setSendOpen(true)}>
+          <DashboardToolbarButton
+            variant="primary"
+            leftIcon={<DocumentPlusIcon className="shrink-0" />}
+            onClick={() => setSendOpen(true)}
+          >
             Send Quote
           </DashboardToolbarButton>
         </div>

@@ -7,11 +7,25 @@ import {
 } from "@dark-horse-safety/ui";
 import { CrmFormPageShell } from "./crm-form-page-shell";
 import {
-  CRM_CUSTOMERS,
   PRICING_FORM,
+  PRICING_FORM_EDIT_DEFAULTS,
 } from "./data/crm-forms.mock";
 
-export function PricingRuleFormPage() {
+/**
+ * Shared Add / Edit Pricing Rule screen — same UI for both modes.
+ * Header title (Add vs Edit) comes from app-shell path.
+ */
+export function PricingRuleFormPage({
+  mode = "create",
+  ruleId,
+}: {
+  mode?: "create" | "edit";
+  ruleId?: string;
+}) {
+  void ruleId;
+  const isEdit = mode === "edit";
+  const d = isEdit ? PRICING_FORM_EDIT_DEFAULTS : null;
+
   return (
     <CrmFormPageShell
       cancelHref="/crm/pricing-rules"
@@ -21,56 +35,55 @@ export function PricingRuleFormPage() {
           title: "Rule Details",
           content: (
             <DashboardFormGrid className="gap-x-4 gap-y-5">
-              <DashboardSelectField
+              <DashboardTextField
                 label="Customer *"
-                defaultValue="pbe"
-                options={CRM_CUSTOMERS}
+                defaultValue={d?.customer}
+                placeholder="Customer name"
               />
               <DashboardSelectField
                 label="Service / Item *"
-                defaultValue="wireline"
+                defaultValue={d?.service ?? "wireline"}
                 options={PRICING_FORM.services}
               />
               <DashboardSelectField
                 label="Rate Type *"
-                defaultValue="per-job"
+                defaultValue={d?.rateType ?? "per-job"}
                 options={PRICING_FORM.rateTypes}
               />
               <DashboardTextField
                 label="Rate *"
-                defaultValue="$1,250"
+                defaultValue={d?.rate}
                 placeholder="$0.00"
               />
               <DashboardSelectField
                 label="Unit of Measurement"
-                defaultValue="job"
+                defaultValue={d?.unit ?? "job"}
                 options={PRICING_FORM.units}
               />
               <DashboardTextField
                 label="Minimum Charge"
-                defaultValue="$1,250"
+                defaultValue={d?.minimumCharge}
                 placeholder="$0.00"
               />
               <DashboardTextField
                 label="Overtime Multiplier"
-                defaultValue="1.5X"
+                defaultValue={d?.overtimeMultiplier}
                 placeholder="1.0X"
               />
               <DashboardTextField
                 label="Effective From *"
-                defaultValue="09/01/2026"
+                defaultValue={d?.effectiveFrom}
                 placeholder="MM/DD/YYYY"
               />
               <DashboardTextField
                 label="Effective To"
-                defaultValue="12/31/2026"
+                defaultValue={d?.effectiveTo}
                 placeholder="MM/DD/YYYY"
               />
               <DashboardTextField
                 label="Notes/Justification *"
-                defaultValue="Approved discounted rate for Q4 high-volume wireline logging contract, PE..."
+                defaultValue={d?.notes}
                 placeholder="Notes"
-                containerClassName="md:col-span-2"
               />
             </DashboardFormGrid>
           ),

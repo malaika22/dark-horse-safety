@@ -3,20 +3,15 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  DashboardField,
   DashboardFormGrid,
   DashboardSelectField,
   DashboardTextField,
   DashboardToggle,
+  DashboardToolbarButton,
 } from "@dark-horse-safety/ui";
 import { CrmFormPageShell } from "./crm-form-page-shell";
-import {
-  CONTACT_FORM,
-  CRM_CUSTOMERS,
-} from "./data/crm-forms.mock";
-
-const textareaClass =
-  "min-h-[80px] w-full rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] px-3 py-2.5 font-sans text-[12px] font-normal uppercase leading-normal tracking-[-0.02em] text-[#FDFDFF] outline-none transition-colors placeholder:text-[#959597] focus:border-[#5A5A5A] md:text-[13px]";
+import { CONTACT_FORM, CRM_CUSTOMERS } from "./data/crm-forms.mock";
+import { LinkToExistingContactModal } from "./link-to-existing-contact-modal";
 
 function customerValueFromQuery(name: string | null) {
   if (!name) return "pbe";
@@ -29,17 +24,23 @@ function customerValueFromQuery(name: string | null) {
 export function ContactFormPage() {
   const searchParams = useSearchParams();
   const [primaryContact, setPrimaryContact] = React.useState(false);
+  const [linkOpen, setLinkOpen] = React.useState(false);
   const customerDefault = customerValueFromQuery(searchParams.get("customer"));
 
   return (
-    <CrmFormPageShell
-      cancelHref="/crm/contacts"
-      submitLabel="Save"
-      sections={[
-        {
-          title: "Details",
-          content: (
-            <div className="space-y-5">
+    <>
+      <CrmFormPageShell
+        cancelHref="/crm/contacts"
+        submitLabel="Save"
+        extraFooterActions={
+          <DashboardToolbarButton onClick={() => setLinkOpen(true)}>
+            Link to Existing Contact
+          </DashboardToolbarButton>
+        }
+        sections={[
+          {
+            title: "Details",
+            content: (
               <DashboardFormGrid className="gap-x-4 gap-y-5">
                 <DashboardTextField
                   label="Full Name *"
@@ -87,23 +88,27 @@ export function ContactFormPage() {
                   checked={primaryContact}
                   onCheckedChange={setPrimaryContact}
                 />
-                <DashboardField label="Notes">
-                  <textarea
-                    className={textareaClass}
-                    defaultValue="Prefers morning calls. On-site Mon-Thu."
-                    rows={3}
-                  />
-                </DashboardField>
+                <DashboardTextField
+                  label="Notes"
+                  defaultValue="Prefers morning calls. On-site Mon-Thu."
+                  placeholder="Notes"
+                />
+                <DashboardTextField
+                  label="Linked from Business Card Scan"
+                  defaultValue="Midland, TX"
+                  placeholder="Scan source"
+                  containerClassName="md:col-span-2"
+                />
               </DashboardFormGrid>
-              <DashboardTextField
-                label="Linked from Business Card Scan"
-                defaultValue="Midland, TX"
-                placeholder="Scan source"
-              />
-            </div>
-          ),
-        },
-      ]}
-    />
+            ),
+          },
+        ]}
+      />
+
+      <LinkToExistingContactModal
+        open={linkOpen}
+        onClose={() => setLinkOpen(false)}
+      />
+    </>
   );
 }

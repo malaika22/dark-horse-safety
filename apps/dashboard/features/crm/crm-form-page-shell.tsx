@@ -16,17 +16,20 @@ export type CrmFormSection = {
 
 /**
  * Shared Add / Edit form shell — same layout as Add Customer:
- * ← Cancel · titled panels with divider · footer Cancel + primary CTA
+ * ← Cancel · titled panels with divider · footer Cancel + optional extras + Save & Add Another + Save
  */
 export function CrmFormPageShell({
   cancelHref,
   submitLabel = "Save",
   saveAndAddAnotherLabel = "Save & Add Another",
+  extraFooterActions,
   sections,
 }: {
   cancelHref: string;
   submitLabel?: string;
   saveAndAddAnotherLabel?: string;
+  /** Extra footer buttons between Cancel and Save & Add Another (e.g. Link to Existing). */
+  extraFooterActions?: React.ReactNode;
   sections: CrmFormSection[];
 }) {
   return (
@@ -55,6 +58,7 @@ export function CrmFormPageShell({
         <Link href={cancelHref} className="inline-flex shrink-0">
           <DashboardToolbarButton>Cancel</DashboardToolbarButton>
         </Link>
+        {extraFooterActions}
         <DashboardToolbarButton>{saveAndAddAnotherLabel}</DashboardToolbarButton>
         <DashboardToolbarButton variant="primary">
           {submitLabel}

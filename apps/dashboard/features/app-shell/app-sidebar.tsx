@@ -9,10 +9,37 @@ import { APP_NAV } from "./nav";
 import { ChevronIcon, NavIcon, SettingsGearIcon } from "./icons";
 import { sessionDisplayName, sessionRoleLabel, useSession } from "./session-context";
 
-function isActivePath(pathname: string, href?: string) {
+function isActivePath(
+  pathname: string,
+  href?: string,
+  siblings?: ReadonlyArray<{ href: string }>,
+) {
   if (!href) return false;
   if (href === "/dashboard") return pathname === "/dashboard";
-  return pathname === href || pathname.startsWith(`${href}/`);
+
+  const matches = (h: string) =>
+    pathname === h || pathname.startsWith(`${h}/`);
+
+  if (!matches(href)) return false;
+
+  // Among siblings, only the longest (most specific) match is active —
+  // so /crm does not stay active on /crm/accounts, etc.
+  if (siblings && siblings.length > 0) {
+    let best = href;
+    for (const sibling of siblings) {
+      if (matches(sibling.href) && sibling.href.length > best.length) {
+        best = sibling.href;
+      }
+    }
+    return best === href;
+  }
+
+  // Bare section roots (/crm, /hr, …) are exact-only when used alone
+  if (href.split("/").filter(Boolean).length === 1) {
+    return pathname === href;
+  }
+
+  return true;
 }
 
 function sectionOpen(pathname: string, item: (typeof APP_NAV)[number]) {
@@ -233,7 +260,11 @@ function SidebarNav({ onClose }: { onClose?: () => void }) {
               {hasChildren && open ? (
                 <ul className="relative ml-5 mt-1 space-y-0.5 border-l border-border-strong pl-3">
                   {item.children!.map((child) => {
-                    const active = isActivePath(pathname, child.href);
+                    const active = isActivePath(
+                      pathname,
+                      child.href,
+                      item.children,
+                    );
                     return (
                       <li key={child.id}>
                         <Link

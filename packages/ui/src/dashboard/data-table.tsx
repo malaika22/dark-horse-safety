@@ -138,12 +138,18 @@ export function DashboardDataTable<T>({
                   key={col.id}
                   scope="col"
                   className={cn(
-                    "h-12 bg-[rgba(28,28,30,0.8078)] px-4 align-middle font-sans text-[12px] font-[510] uppercase leading-none tracking-[-0.4px] text-foreground-muted",
+                    "h-12 min-w-0 overflow-hidden bg-[rgba(28,28,30,0.8078)] px-4 align-middle font-sans text-[12px] font-[510] uppercase leading-none tracking-[-0.4px] text-foreground-muted",
                     alignClass(col.align),
                     col.className,
                   )}
                 >
-                  {col.header}
+                  {typeof col.header === "string" && col.header ? (
+                    <DashboardTableTruncatedText className="min-w-0 max-w-full text-foreground-muted">
+                      {col.header}
+                    </DashboardTableTruncatedText>
+                  ) : (
+                    col.header
+                  )}
                 </th>
               ))}
             </tr>
@@ -184,7 +190,7 @@ export function DashboardDataTable<T>({
                       <td
                         key={col.id}
                         className={cn(
-                          "box-border h-[60px] px-4 py-4 align-middle font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-white",
+                          "box-border h-[60px] min-w-0 overflow-hidden px-4 py-4 align-middle font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-white",
                           alignClass(col.align),
                           col.className,
                         )}
@@ -238,7 +244,10 @@ export function DashboardTableTruncatedText({
 
   function openTip() {
     const el = ref.current;
-    if (!el || el.scrollWidth <= el.clientWidth + 1) return;
+    if (!el) return;
+    const isTruncated = el.scrollWidth > el.clientWidth + 1;
+    setTruncated(isTruncated);
+    if (!isTruncated) return;
     const rect = el.getBoundingClientRect();
     setTip({ top: rect.bottom + 6, left: rect.left });
   }
@@ -283,7 +292,7 @@ export function DashboardTableTruncatedText({
 function renderTableCellContent(content: React.ReactNode) {
   if (typeof content === "string" || typeof content === "number") {
     return (
-      <DashboardTableTruncatedText className="min-w-0 max-w-[180px]">
+      <DashboardTableTruncatedText className="min-w-0 w-full max-w-full">
         {String(content)}
       </DashboardTableTruncatedText>
     );

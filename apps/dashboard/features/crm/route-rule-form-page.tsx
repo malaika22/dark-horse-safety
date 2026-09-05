@@ -2,86 +2,83 @@
 
 import * as React from "react";
 import {
-  DashboardChoiceChips,
   DashboardFormGrid,
   DashboardSelectField,
   DashboardTextField,
+  DashboardToggle,
 } from "@dark-horse-safety/ui";
 import { CrmFormPageShell } from "./crm-form-page-shell";
 import {
-  CRM_CUSTOMERS,
-  CRM_OWNERS,
   ROUTE_RULE_FORM,
+  ROUTE_RULE_FORM_DEFAULTS,
 } from "./data/crm-forms.mock";
 
-export function RouteRuleFormPage() {
-  const [alerts, setAlerts] = React.useState(["entry", "exit"]);
+/**
+ * Shared Add / Edit Route Rule screen — same UI for both modes.
+ * Header title (Add vs Edit) comes from app-shell path.
+ */
+export function RouteRuleFormPage({
+  mode = "create",
+  ruleId,
+}: {
+  mode?: "create" | "edit";
+  ruleId?: string;
+}) {
+  void mode;
+  void ruleId;
+  const d = ROUTE_RULE_FORM_DEFAULTS;
+  const [gpsRequired, setGpsRequired] = React.useState(d.gpsRequired);
 
   return (
     <CrmFormPageShell
       cancelHref="/crm/route-rules"
-      submitLabel="Add route rule"
+      submitLabel="Save"
       sections={[
         {
-          title: "Rule details",
+          title: "Rule Details",
           content: (
             <DashboardFormGrid className="gap-x-4 gap-y-5">
-              <DashboardSelectField
-                label="Customer"
-                defaultValue="pbe"
-                options={CRM_CUSTOMERS}
+              <DashboardTextField
+                label="Customer *"
+                defaultValue={d.customer}
+                placeholder="Customer name"
               />
               <DashboardSelectField
-                label="Location / well"
-                defaultValue="wolfcamp"
+                label="Site *"
+                defaultValue={d.site}
                 options={ROUTE_RULE_FORM.locations}
               />
               <DashboardTextField
-                label="Route"
-                defaultValue="Route A"
-                placeholder="Route name"
+                label="Geofence Radius *"
+                defaultValue={d.geofenceRadius}
+                placeholder="500 FT"
               />
-              <DashboardSelectField
-                label="Owner"
-                defaultValue="r-crawford"
-                options={CRM_OWNERS}
-              />
-              <DashboardSelectField
-                label="Geofence"
-                defaultValue="enabled"
-                options={ROUTE_RULE_FORM.geofence}
+              <DashboardToggle
+                label="GPS Required?"
+                checked={gpsRequired}
+                onCheckedChange={setGpsRequired}
               />
               <DashboardTextField
-                label="Radius (ft)"
-                defaultValue="500"
-                placeholder="500"
+                label="Allowed Clock In Window"
+                defaultValue={d.clockInWindow}
+                placeholder="Clock in window"
+              />
+              <DashboardSelectField
+                label="Route From"
+                defaultValue={d.routeFrom}
+                options={ROUTE_RULE_FORM.routesFrom}
+              />
+              <DashboardTextField
+                label="Expected Travel Time"
+                defaultValue={d.expectedTravelTime}
+                placeholder="Travel time"
+              />
+              <DashboardTextField
+                label="Mileage Rate Override"
+                defaultValue={d.mileageRateOverride}
+                placeholder="$0.00/Mi"
               />
             </DashboardFormGrid>
-          ),
-        },
-        {
-          title: "Geofence",
-          content: (
-            <div className="space-y-5">
-              <DashboardFormGrid className="gap-x-4 gap-y-5">
-                <DashboardSelectField
-                  label="GPS required"
-                  defaultValue="yes"
-                  options={ROUTE_RULE_FORM.gpsRequired}
-                />
-                <DashboardSelectField
-                  label="Status"
-                  defaultValue="active"
-                  options={ROUTE_RULE_FORM.statuses}
-                />
-              </DashboardFormGrid>
-              <DashboardChoiceChips
-                label="Alerts"
-                options={ROUTE_RULE_FORM.alerts}
-                value={alerts}
-                onChange={setAlerts}
-              />
-            </div>
           ),
         },
       ]}

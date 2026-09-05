@@ -21,6 +21,7 @@ import {
   DashboardStatRow,
   DashboardTableBadgeStack,
   DashboardTablePrimaryCell,
+  DashboardTableTruncatedText,
   DashboardToolbarButton,
   DashboardToolbarIcons,
   DEFAULT_LIST_FILTERS,
@@ -45,6 +46,12 @@ function sortRows(
   const sorted = [...rows].sort((a, b) => {
     const dir = direction === "asc" ? 1 : -1;
     switch (field) {
+      case "accountOwner":
+        return a.accountOwner.localeCompare(b.accountOwner) * dir;
+      case "primaryContact":
+        return a.primaryContact.localeCompare(b.primaryContact) * dir;
+      case "locationWell":
+        return a.locationWell.localeCompare(b.locationWell) * dir;
       case "status":
         return a.status.label.localeCompare(b.status.label) * dir;
       case "openJobs":
@@ -129,6 +136,7 @@ export function CustomersPage() {
           row.code,
           row.accountOwner,
           row.primaryContact,
+          row.locationWell,
         ]
           .join(" ")
           .toLowerCase();
@@ -179,9 +187,13 @@ export function CustomersPage() {
       },
       {
         id: "owner",
-        header: "Account",
-        className: "min-w-[110px] max-w-[160px]",
-        cell: (row) => row.accountOwner,
+        header: "Account Owner",
+        className: "min-w-[150px] whitespace-nowrap",
+        cell: (row) => (
+          <DashboardTableTruncatedText className="min-w-0 max-w-[12rem] sm:max-w-[14rem] lg:max-w-none">
+            {row.accountOwner}
+          </DashboardTableTruncatedText>
+        ),
       },
       {
         id: "status",
@@ -195,9 +207,13 @@ export function CustomersPage() {
       },
       {
         id: "contact",
-        header: "Primary",
-        className: "hidden min-w-[110px] max-w-[160px] lg:table-cell",
-        cell: (row) => row.primaryContact,
+        header: "Primary Contact",
+        className: "hidden min-w-[140px] whitespace-nowrap lg:table-cell",
+        cell: (row) => (
+          <DashboardTableTruncatedText className="min-w-0 max-w-[12rem] sm:max-w-[14rem] lg:max-w-none">
+            {row.primaryContact}
+          </DashboardTableTruncatedText>
+        ),
       },
       {
         id: "jobs",
@@ -208,10 +224,13 @@ export function CustomersPage() {
       },
       {
         id: "locations",
-        header: "Locations",
-        align: "center",
-        className: "hidden min-w-[90px] max-w-[110px] md:table-cell",
-        cell: (row) => row.locations,
+        header: "Location / Wells",
+        className: "hidden min-w-[160px] whitespace-nowrap md:table-cell",
+        cell: (row) => (
+          <DashboardTableTruncatedText className="min-w-0 max-w-[12rem] sm:max-w-[16rem] lg:max-w-none">
+            {row.locationWell}
+          </DashboardTableTruncatedText>
+        ),
       },
       {
         id: "route",
@@ -280,14 +299,6 @@ export function CustomersPage() {
                 onSelect: () =>
                   router.push(
                     `/crm/quotes/new?customerId=${encodeURIComponent(row.id)}&customer=${encodeURIComponent(row.name)}`,
-                  ),
-              },
-              {
-                id: "create-wo",
-                label: "Create work order",
-                onSelect: () =>
-                  router.push(
-                    `/operations/work-orders/new?customerId=${encodeURIComponent(row.id)}&customer=${encodeURIComponent(row.name)}`,
                   ),
               },
               {

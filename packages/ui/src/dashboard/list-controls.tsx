@@ -29,7 +29,7 @@ export function DashboardPageSizeControl({
         ref={anchorRef}
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex items-center gap-1.5 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] transition-colors hover:text-[#FDFDFF] md:text-[12px]"
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#2D2D30] bg-[#1A1A1A] px-3 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] transition-colors hover:border-[#3E3E3E] hover:bg-[#2A2A2A] hover:text-[#FDFDFF] md:text-[12px]"
       >
         Page size: {value}
         <ChevronDownIcon className="shrink-0 opacity-70" />
@@ -105,7 +105,7 @@ export function DashboardPagination({
             }}
           />
         ) : null}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           <PageNavButton
             label="First page"
             disabled={safePage <= 1}
@@ -126,10 +126,10 @@ export function DashboardPagination({
               type="button"
               onClick={() => onPageChange(n)}
               className={cn(
-                "inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 font-sans text-[12px] font-[510] uppercase tabular-nums leading-none tracking-[-0.02em] transition-colors",
+                "inline-flex h-8 min-w-8 items-center justify-center rounded-md border px-2 font-sans text-[12px] font-[510] uppercase tabular-nums leading-none tracking-[-0.02em] transition-colors",
                 n === safePage
-                  ? "bg-[#2A2A2A] text-[#FDFDFF]"
-                  : "text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]",
+                  ? "border-[#3E3E3E] bg-[#2A2A2A] text-[#FDFDFF]"
+                  : "border-[#2D2D30] bg-[#1A1A1A] text-[#959597] hover:border-[#3E3E3E] hover:bg-[#2A2A2A] hover:text-[#FDFDFF]",
               )}
             >
               {n}
@@ -172,7 +172,7 @@ function PageNavButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-8 min-w-8 items-center justify-center rounded-md px-1.5 font-sans text-[14px] leading-none text-[#959597] transition-colors hover:bg-white/5 hover:text-[#FDFDFF] disabled:cursor-not-allowed disabled:opacity-40"
+      className="inline-flex h-8 min-w-8 items-center justify-center px-1 font-sans text-[14px] leading-none text-[#959597] transition-colors hover:text-[#FDFDFF] disabled:cursor-not-allowed disabled:opacity-40"
     >
       {children}
     </button>
@@ -288,6 +288,8 @@ export interface DashboardSortMenuProps {
   direction: DashboardSortDirection;
   onFieldChange: (field: string) => void;
   onDirectionChange: (direction: DashboardSortDirection) => void;
+  /** When false, trigger shows field label only (no A-Z / Z-A). Default true. */
+  showDirectionInTrigger?: boolean;
   className?: string;
 }
 
@@ -298,6 +300,7 @@ export function DashboardSortMenu({
   direction,
   onFieldChange,
   onDirectionChange,
+  showDirectionInTrigger = true,
   className,
 }: DashboardSortMenuProps) {
   const [open, setOpen] = React.useState(false);
@@ -305,6 +308,9 @@ export function DashboardSortMenu({
   const activeLabel =
     options.find((option) => option.id === field)?.label ?? "Sort";
   const directionLabel = direction === "asc" ? "A-Z" : "Z-A";
+  const triggerValue = showDirectionInTrigger
+    ? `${activeLabel} (${directionLabel})`
+    : activeLabel;
 
   return (
     <div className={cn("relative", className)}>
@@ -316,9 +322,10 @@ export function DashboardSortMenu({
         aria-expanded={open}
         className="max-w-full"
       >
-        <span className="sm:hidden">Sort</span>
-        <span className="hidden max-w-[12rem] truncate sm:inline">
-          {`Sort: ${activeLabel} (${directionLabel})`}
+        <span className="sm:hidden text-foreground-muted">Sort</span>
+        <span className="hidden max-w-[14rem] truncate sm:inline">
+          <span className="text-foreground-muted">Sort: </span>
+          <span className="text-white">{triggerValue}</span>
         </span>
       </DashboardToolbarButton>
       <DashboardMenuPopover

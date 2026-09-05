@@ -37,6 +37,7 @@ export type CustomerRow = {
   primaryContact: string;
   openJobs: number;
   locations: number;
+  locationWell: string;
   requirements: { label: string; variant: DashboardBadgeVariant }[];
   routeGps: { label: string; variant: DashboardBadgeVariant }[];
   createdAt: string;
@@ -47,11 +48,12 @@ export type CustomerRow = {
 const BASE_CUSTOMERS: Omit<CustomerRow, "id" | "code">[] = [
   {
     name: "Permian Basin Energy",
-    accountOwner: "R. Crawford",
+    accountOwner: "Ryan Crawford",
     status: { label: "Active", variant: "success" },
-    primaryContact: "J. Martin",
+    primaryContact: "James Martin",
     openJobs: 4,
     locations: 12,
+    locationWell: "Wolfcamp 12-4H",
     requirements: [
       { label: "None", variant: "success" },
       { label: "Gps outside", variant: "error" },
@@ -66,11 +68,12 @@ const BASE_CUSTOMERS: Omit<CustomerRow, "id" | "code">[] = [
   },
   {
     name: "Apex Drilling Co",
-    accountOwner: "M. Ellis",
+    accountOwner: "Morgan Ellis",
     status: { label: "Needs review", variant: "review" },
-    primaryContact: "S. Kim",
+    primaryContact: "Sarah Kim",
     openJobs: 2,
     locations: 6,
+    locationWell: "Midland Hub Yard",
     requirements: [{ label: "Missing c.o", variant: "error" }],
     routeGps: [{ label: "Needs attention", variant: "review" }],
     createdAt: "2024-03-02",
@@ -79,11 +82,12 @@ const BASE_CUSTOMERS: Omit<CustomerRow, "id" | "code">[] = [
   },
   {
     name: "West Pad Services",
-    accountOwner: "R. Crawford",
+    accountOwner: "Ryan Crawford",
     status: { label: "Offline", variant: "offline" },
-    primaryContact: "A. Brooks",
+    primaryContact: "Alex Brooks",
     openJobs: 1,
     locations: 3,
+    locationWell: "Bone Spring Pad 7",
     requirements: [
       { label: "Late c.o", variant: "review" },
       { label: "Long break", variant: "review" },
@@ -95,11 +99,12 @@ const BASE_CUSTOMERS: Omit<CustomerRow, "id" | "code">[] = [
   },
   {
     name: "Eagle Ford Ops",
-    accountOwner: "L. Nguyen",
+    accountOwner: "Linh Nguyen",
     status: { label: "Active", variant: "success" },
-    primaryContact: "D. Ortiz",
+    primaryContact: "Diego Ortiz",
     openJobs: 5,
     locations: 18,
+    locationWell: "Eagle Ford A-3",
     requirements: [{ label: "None", variant: "success" }],
     routeGps: [{ label: "Compliance", variant: "success" }],
     createdAt: "2024-05-21",
@@ -108,11 +113,12 @@ const BASE_CUSTOMERS: Omit<CustomerRow, "id" | "code">[] = [
   },
   {
     name: "North Slope Partners",
-    accountOwner: "M. Ellis",
+    accountOwner: "Morgan Ellis",
     status: { label: "Active", variant: "success" },
-    primaryContact: "K. Patel",
+    primaryContact: "Kiran Patel",
     openJobs: 0,
     locations: 2,
+    locationWell: "North Slope 9",
     requirements: [{ label: "None", variant: "success" }],
     routeGps: [{ label: "Compliance", variant: "success" }],
     createdAt: "2024-07-09",
@@ -121,11 +127,12 @@ const BASE_CUSTOMERS: Omit<CustomerRow, "id" | "code">[] = [
   },
   {
     name: "Bakken Field Services",
-    accountOwner: "L. Nguyen",
+    accountOwner: "Linh Nguyen",
     status: { label: "Active", variant: "success" },
-    primaryContact: "T. Reed",
+    primaryContact: "Taylor Reed",
     openJobs: 3,
     locations: 9,
+    locationWell: "Bakken 22-1H",
     requirements: [{ label: "Gps outside", variant: "error" }],
     routeGps: [{ label: "Needs attention", variant: "review" }],
     createdAt: "2024-08-14",
@@ -134,11 +141,12 @@ const BASE_CUSTOMERS: Omit<CustomerRow, "id" | "code">[] = [
   },
   {
     name: "Lonestar Operating",
-    accountOwner: "S. Vance",
+    accountOwner: "Sam Vance",
     status: { label: "Needs review", variant: "review" },
-    primaryContact: "M. Diaz",
+    primaryContact: "Maria Diaz",
     openJobs: 6,
     locations: 14,
+    locationWell: "Lonestar South Pad",
     requirements: [{ label: "Missing c.o", variant: "error" }],
     routeGps: [{ label: "Not bill", variant: "error" }],
     createdAt: "2023-09-01",
@@ -147,11 +155,12 @@ const BASE_CUSTOMERS: Omit<CustomerRow, "id" | "code">[] = [
   },
   {
     name: "Cactus Well Services",
-    accountOwner: "K. Lee",
+    accountOwner: "Kelly Lee",
     status: { label: "Active", variant: "success" },
-    primaryContact: "C. Holmes",
+    primaryContact: "Chris Holmes",
     openJobs: 2,
     locations: 7,
+    locationWell: "Cactus Well 4B",
     requirements: [{ label: "None", variant: "success" }],
     routeGps: [{ label: "Compliance", variant: "success" }],
     createdAt: "2024-02-28",
@@ -185,9 +194,11 @@ export const CUSTOMERS_DEFAULT_CHIPS = [
 
 export const CUSTOMERS_SORT_OPTIONS = [
   { id: "name", label: "Customer name" },
+  { id: "accountOwner", label: "Account owner" },
   { id: "status", label: "Status" },
+  { id: "primaryContact", label: "Primary contact" },
   { id: "openJobs", label: "Open jobs" },
-  { id: "locations", label: "Locations" },
+  { id: "locationWell", label: "Location / Wells" },
   { id: "msaExpiry", label: "Msa expiry" },
   { id: "lastActivity", label: "Last activity" },
   { id: "createdAt", label: "Created date" },
