@@ -31,7 +31,7 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Dark Horse Safety API')
     .setDescription(
-      'Admin auth APIs — email/password login, Google OAuth, password reset, and invites.',
+      'Admin auth APIs (email/password login, Google OAuth, password reset, invites) and CRM APIs (customers, contacts, locations, pricing/requirements/form/route rules, EOD reports, sales activities, quotes, saved views, lookups).',
     )
     .setVersion('1.0')
     .addBearerAuth(
@@ -40,6 +40,19 @@ async function bootstrap() {
     )
     .addTag('health', 'Service health')
     .addTag('auth', 'Authentication & account flows')
+    .addTag('crm-dashboard', 'CRM overview dashboard')
+    .addTag('crm-customers', 'CRM customers / accounts')
+    .addTag('crm-contacts', 'CRM contacts')
+    .addTag('crm-locations', 'CRM locations / wells')
+    .addTag('crm-pricing-rules', 'CRM pricing rules')
+    .addTag('crm-requirements', 'CRM customer requirements')
+    .addTag('crm-form-rules', 'CRM required form rules')
+    .addTag('crm-route-rules', 'CRM route / GPS rules')
+    .addTag('crm-eod-reports', 'CRM EOD reports')
+    .addTag('crm-sales-activities', 'CRM sales activities')
+    .addTag('crm-quotes', 'CRM quotes')
+    .addTag('crm-saved-views', 'CRM saved list views')
+    .addTag('crm-lookups', 'CRM form lookups / autocomplete')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

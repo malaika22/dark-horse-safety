@@ -7,6 +7,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
 enum UserRole {
   ADMIN
   SUPERVISOR
@@ -47,6 +49,19 @@ model User {
   passwordResetTokens PasswordResetToken[]
   invitesSent         Invite[]             @relation("Inviter")
   invitesReceived     Invite[]             @relation("Invitee")
+
+  // CRM ownership
+  customersOwned      Customer[]           @relation("CustomerAssignedRep")
+  contactsOwned       Contact[]            @relation("ContactAssignedRep")
+  pricingRulesOwned   PricingRule[]        @relation("PricingRuleOwner")
+  requirementsOwned   CustomerRequirement[] @relation("RequirementOwner")
+  formRulesOwned      FormRule[]           @relation("FormRuleOwner")
+  routeRulesOwned     RouteRule[]          @relation("RouteRuleOwner")
+  eodReports          EodReport[]          @relation("EodReportRep")
+  salesActivities     SalesActivity[]      @relation("SalesActivityRep")
+  quotesOwned         Quote[]              @relation("QuoteOwner")
+  workOrdersOwned     WorkOrder[]          @relation("WorkOrderAssignedRep")
+  savedViews          SavedView[]
 }
 
 model PasswordResetToken {
@@ -78,4 +93,518 @@ model Invite {
 
   @@index([email])
   @@index([inviterId])
+}
+
+// ─── CRM shared enums ────────────────────────────────────────────────────────
+
+enum CrmRecordStatus {
+  ACTIVE
+  INACTIVE
+  DRAFT
+  ARCHIVED
+  NEEDS_REVIEW
+  EXPIRED
+  PENDING
+  COMPLETE
+  IN_PROGRESS
+  ON_HOLD
+  SUBMITTED
+  WON
+  LOST
+  SENT
+  OPEN
+}
+
+enum QuoteApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NOT_REQUIRED
+}
+
+enum SalesActivityType {
+  CALL
+  VISIT
+  MEETING
+  EMAIL
+  OTHER
+}
+
+enum EnforcementLevel {
+  HARD_GATE
+  SOFT_GATE
+  ADVISORY
+}
+
+enum SavedViewScope {
+  CUSTOMERS
+  CONTACTS
+  LOCATIONS
+  PRICING_RULES
+  REQUIREMENTS
+  FORM_RULES
+  ROUTE_RULES
+  EOD_REPORTS
+  SALES_ACTIVITIES
+  QUOTES
+}
+
+// ─── Customer (Account) ──────────────────────────────────────────────────────
+
+model Customer {
+  id                   String          @id @default(uuid())
+  code                 String          @unique
+  name                 String
+  legalEntityName      String?
+  status               CrmRecordStatus @default(ACTIVE)
+  industry             String?
+  website              String?
+  phone                String?
+  email                String?
+  billingAddress       String?
+  mailingAddress       String?
+  paymentTerms         String?
+  creditLimit          Decimal?        @db.Decimal(14, 2)
+  taxExempt            Boolean         @default(false)
+  taxId                String?
+  pricingTier          String?
+  netsuiteId           String?
+  isnId                String?
+  veriforceId          String?
+  msaOnFile            Boolean         @default(false)
+  msaExpiry            DateTime?
+  coiExpiry            DateTime?
+  w9OnFile             String?
+  clockInRadius        String?
+  requiresPo           Boolean         @default(false)
+  defaultRequiredForms String?
+  openJobs             Int             @default(0)
+  lastActivityAt       DateTime?
+  archivedAt           DateTime?
+  assignedRepId        String?
+  assignedRep          User?           @relation("CustomerAssignedRep", fields: [assignedRepId], references: [id], onDelete: SetNull)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  contacts      Contact[]
+  locations     Location[]
+  pricingRules  PricingRule[]
+  requirements  CustomerRequirement[]
+  formRules     FormRule[]
+  routeRules    RouteRule[]
+  quotes        Quote[]
+  workOrders    WorkOrder[]
+  activities    SalesActivity[]
+  documents     CrmDocument[]
+  contactLinks  ContactCustomer[]
+
+  @@index([status])
+  @@index([assignedRepId])
+  @@index([name])
+  @@index([archivedAt])
+}
+
+// ─── Contact ─────────────────────────────────────────────────────────────────
+
+model Contact {
+  id               String          @id @default(uuid())
+  code             String          @unique
+  fullName         String
+  roleTitle        String?
+  email            String?
+  mobile           String?
+  officePhone      String?
+  preferredMethod  String?
+  isPrimary        Boolean         @default(false)
+  notes            String?
+  linkedFromScan   String?
+  status           CrmRecordStatus @default(ACTIVE)
+  lastActivityAt   DateTime?
+  archivedAt       DateTime?
+  assignedRepId    String?
+  assignedRep      User?           @relation("ContactAssignedRep", fields: [assignedRepId], references: [id], onDelete: SetNull)
+  /// Primary / default customer (also mirrored in ContactCustomer)
+  primaryCustomerId String?
+  primaryCustomer   Customer?      @relation(fields: [primaryCustomerId], references: [id], onDelete: SetNull)
+  locationLabel    String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  customers  ContactCustomer[]
+  quotes     Quote[]
+  activities SalesActivity[]
+
+  @@index([status])
+  @@index([assignedRepId])
+  @@index([primaryCustomerId])
+  @@index([fullName])
+}
+
+model ContactCustomer {
+  id         String   @id @default(uuid())
+  contactId  String
+  customerId String
+  roleAtCustomer String?
+  isPrimary  Boolean  @default(false)
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([contactId, customerId])
+  @@index([customerId])
+}
+
+// ─── Location / Well ─────────────────────────────────────────────────────────
+
+model Location {
+  id              String          @id @default(uuid())
+  code            String          @unique
+  name            String
+  wellPadNumber   String?
+  apiNumber       String?
+  county          String?
+  state           String?
+  latitude        Float?
+  longitude       Float?
+  siteType        String?
+  status          CrmRecordStatus @default(ACTIVE)
+  accessNotes     String?
+  siteContact     String?
+  geofenceRadius  String?
+  gpsRequired     Boolean         @default(false)
+  nearestHospital String?
+  openJobs        Int             @default(0)
+  gpsStatus       String?
+  city            String?
+  archivedAt      DateTime?
+  customerId      String
+  customer        Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  routeRules RouteRule[]
+  workOrders WorkOrder[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([name])
+}
+
+// ─── Pricing Rule ────────────────────────────────────────────────────────────
+
+model PricingRule {
+  id                  String          @id @default(uuid())
+  code                String          @unique
+  serviceItem         String
+  rateType            String?
+  rate                Decimal         @db.Decimal(14, 2)
+  unit                String?
+  minimumCharge       Decimal?        @db.Decimal(14, 2)
+  overtimeMultiplier  String?
+  effectiveFrom       DateTime?
+  effectiveTo         DateTime?
+  notes               String?
+  status              CrmRecordStatus @default(ACTIVE)
+  archivedAt          DateTime?
+  customerId          String
+  customer            Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  ownerId             String?
+  owner               User?           @relation("PricingRuleOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@index([serviceItem])
+}
+
+// ─── Customer Requirement ────────────────────────────────────────────────────
+
+model CustomerRequirement {
+  id                String           @id @default(uuid())
+  code              String           @unique
+  name              String
+  requirementType   String?
+  appliesTo         String?
+  enforcementLevel  EnforcementLevel @default(SOFT_GATE)
+  evidenceRequired  Boolean          @default(false)
+  renewalPeriod     String?
+  notes             String?
+  dueDate           DateTime?
+  reviewCycle       String?
+  docsRequired      Boolean          @default(false)
+  status            CrmRecordStatus  @default(ACTIVE)
+  archivedAt        DateTime?
+  customerId        String
+  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  ownerId           String?
+  owner             User?            @relation("RequirementOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@index([enforcementLevel])
+}
+
+// ─── Form Rule ───────────────────────────────────────────────────────────────
+
+model FormRule {
+  id            String          @id @default(uuid())
+  code          String          @unique
+  jobType       String?
+  formTemplate  String
+  required      Boolean         @default(true)
+  hardGate      Boolean         @default(false)
+  blocksToggle  Boolean         @default(false)
+  due           String?
+  appliesFrom   DateTime?
+  trigger       String?
+  appliesTo     String?
+  version       String?
+  status        CrmRecordStatus @default(ACTIVE)
+  archivedAt    DateTime?
+  customerId    String
+  customer      Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  ownerId       String?
+  owner         User?           @relation("FormRuleOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@index([formTemplate])
+}
+
+// ─── Route / GPS Rule ────────────────────────────────────────────────────────
+
+model RouteRule {
+  id                   String          @id @default(uuid())
+  code                 String          @unique
+  geofenceRadius       String?
+  gpsRequired          Boolean         @default(false)
+  clockInWindow        String?
+  routeFrom            String?
+  expectedTravelTime   String?
+  mileageRateOverride  String?
+  routeLabel           String?
+  status               CrmRecordStatus @default(ACTIVE)
+  archivedAt           DateTime?
+  customerId           String
+  customer             Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  locationId           String?
+  location             Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  ownerId              String?
+  owner                User?           @relation("RouteRuleOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@index([customerId])
+  @@index([locationId])
+  @@index([status])
+}
+
+// ─── EOD Report ──────────────────────────────────────────────────────────────
+
+model EodReport {
+  id             String          @id @default(uuid())
+  reportCode     String          @unique
+  reportDate     DateTime
+  submittedAt    DateTime?
+  activitiesCount Int            @default(0)
+  callsCount     Int             @default(0)
+  callsDetail    String?
+  visitsCount    Int             @default(0)
+  visitsDetail   String?
+  meetingsCount  Int             @default(0)
+  meetingsNote   String?
+  quotesNote     String?
+  pipelineNote   String?
+  notes          String?
+  status         CrmRecordStatus @default(SUBMITTED)
+  pipelineValue  Decimal?        @db.Decimal(14, 2)
+  quotesSent     Int             @default(0)
+  closedToday    Decimal?        @db.Decimal(14, 2)
+  nextDayPlan    String?
+  repId          String
+  rep            User            @relation("EodReportRep", fields: [repId], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  activityLines EodActivityLine[]
+
+  @@index([repId])
+  @@index([reportDate])
+  @@index([status])
+}
+
+model EodActivityLine {
+  id          String    @id @default(uuid())
+  eodReportId String
+  eodReport   EodReport @relation(fields: [eodReportId], references: [id], onDelete: Cascade)
+  summary     String
+  sortOrder   Int       @default(0)
+
+  @@index([eodReportId])
+}
+
+// ─── Sales Activity ──────────────────────────────────────────────────────────
+
+model SalesActivity {
+  id           String             @id @default(uuid())
+  activityCode String             @unique
+  type         SalesActivityType  @default(CALL)
+  subject      String?
+  outcome      String?
+  duration     String?
+  notes        String?
+  followUpAt   DateTime?
+  status       CrmRecordStatus    @default(COMPLETE)
+  activityAt   DateTime           @default(now())
+  archivedAt   DateTime?
+  customerId   String?
+  customer     Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contactId    String?
+  contact      Contact?           @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  repId        String?
+  rep          User?              @relation("SalesActivityRep", fields: [repId], references: [id], onDelete: SetNull)
+  linkedQuoteId String?
+  linkedQuote  Quote?             @relation(fields: [linkedQuoteId], references: [id], onDelete: SetNull)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([customerId])
+  @@index([contactId])
+  @@index([repId])
+  @@index([activityAt])
+  @@index([type])
+}
+
+// ─── Quote ───────────────────────────────────────────────────────────────────
+
+model Quote {
+  id             String              @id @default(uuid())
+  quoteNumber    String              @unique
+  amount         Decimal             @default(0) @db.Decimal(14, 2)
+  status         CrmRecordStatus     @default(DRAFT)
+  approvalStatus QuoteApprovalStatus @default(NOT_REQUIRED)
+  expiresAt      DateTime?
+  sentAt         DateTime?
+  terms          String?
+  notes          String?
+  archivedAt     DateTime?
+  customerId     String
+  customer       Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  contactId      String?
+  contact        Contact?            @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  ownerId        String?
+  owner          User?               @relation("QuoteOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  lineItems   QuoteLineItem[]
+  activities  SalesActivity[]
+  workOrders  WorkOrder[]
+  attachments QuoteAttachment[]
+
+  @@index([customerId])
+  @@index([contactId])
+  @@index([status])
+  @@index([ownerId])
+}
+
+model QuoteLineItem {
+  id          String  @id @default(uuid())
+  quoteId     String
+  quote       Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  item        String
+  quantity    Decimal @default(1) @db.Decimal(14, 2)
+  rate        Decimal @default(0) @db.Decimal(14, 2)
+  amount      Decimal @default(0) @db.Decimal(14, 2)
+  sortOrder   Int     @default(0)
+
+  @@index([quoteId])
+}
+
+model QuoteAttachment {
+  id          String   @id @default(uuid())
+  quoteId     String
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  fileName    String
+  mimeType    String?
+  sizeBytes   Int?
+  storagePath String // relative path under uploads/
+  createdAt   DateTime @default(now())
+
+  @@index([quoteId])
+}
+
+// ─── Work Order ──────────────────────────────────────────────────────────────
+
+model WorkOrder {
+  id             String          @id @default(uuid())
+  code           String          @unique
+  title          String?
+  category       String?
+  status         CrmRecordStatus @default(DRAFT)
+  serviceDate    DateTime?
+  scheduledStart String?
+  scheduledEnd   String?
+  notes          String?
+  customerId     String
+  customer       Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  locationId     String?
+  location       Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  quoteId        String?
+  quote          Quote?          @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  assignedRepId  String?
+  assignedRep    User?           @relation("WorkOrderAssignedRep", fields: [assignedRepId], references: [id], onDelete: SetNull)
+  archivedAt     DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([customerId])
+  @@index([locationId])
+  @@index([quoteId])
+  @@index([status])
+}
+
+// ─── CRM sync state ──────────────────────────────────────────────────────────
+
+model CrmSyncState {
+  id        String   @id @default("crm")
+  syncedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Documents (customer hub) ────────────────────────────────────────────────
+
+model CrmDocument {
+  id         String    @id @default(uuid())
+  name       String
+  kind       String?
+  url        String?
+  expiresAt  DateTime?
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([customerId])
+}
+
+// ─── Saved views (generalized per list scope) ────────────────────────────────
+
+model SavedView {
+  id        String         @id @default(uuid())
+  name      String
+  scope     SavedViewScope
+  payload   Json
+  isDefault Boolean        @default(false)
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([userId, scope])
 }
