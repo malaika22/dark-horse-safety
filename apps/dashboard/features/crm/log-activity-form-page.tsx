@@ -12,14 +12,100 @@ import {
   DashboardTextField,
   DashboardToolbarButton,
 } from "@dark-horse-safety/ui";
-import {
-  CRM_CUSTOMERS,
-  CRM_OWNERS,
-} from "./data/crm-forms.mock";
-import { LOG_ACTIVITY_FORM } from "./data/sales-activity.mock";
+import type { DashboardSelectOption } from "@dark-horse-safety/ui";
+import { crmApi } from "@/lib/crm-api";
+import { toastApiError, toastSuccess } from "@/lib/toast";
+import { useRouter } from "next/navigation";
+
+const TYPE_OPTIONS: DashboardSelectOption[] = [
+  { value: "CALL", label: "Call" },
+  { value: "VISIT", label: "Visit" },
+  { value: "MEETING", label: "Meeting" },
+  { value: "EMAIL", label: "Email" },
+];
+const DURATION_OPTIONS: DashboardSelectOption[] = [
+  { value: "15", label: "15 min" },
+  { value: "30", label: "30 min" },
+  { value: "60", label: "60 min" },
+];
+const OUTCOME_OPTIONS: DashboardSelectOption[] = [
+  { value: "Positive", label: "Positive" },
+  { value: "Neutral", label: "Neutral" },
+  { value: "No Answer", label: "No Answer" },
+];
+const SUBJECT_CHIPS = [
+  { id: "quote", label: "Quote" },
+  { id: "call", label: "Call" },
+  { id: "follow-up", label: "Follow-up" },
+];
 
 export function LogActivityFormPage() {
+  const router = useRouter();
   const [subjects, setSubjects] = React.useState(["quote", "call"]);
+  const [customerOptions, setCustomerOptions] = React.useState<DashboardSelectOption[]>([]);
+  const [repOptions, setRepOptions] = React.useState<DashboardSelectOption[]>([]);
+  const [customerId, setCustomerId] = React.useState("");
+  const [repId, setRepId] = React.useState("");
+  const [type, setType] = React.useState("CALL");
+  const [duration, setDuration] = React.useState("30");
+  const [outcome, setOutcome] = React.useState("Positive");
+  const [notes, setNotes] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [customers, reps] = await Promise.all([
+          crmApi.lookupCustomers(),
+          crmApi.lookupReps(),
+        ]);
+        if (cancelled) return;
+        setCustomerOptions(customers.data.map((c) => ({ value: c.id, label: c.name })));
+        setRepOptions(
+          reps.data.map((r) => ({
+            value: r.id,
+            label:
+              [r.firstName, r.lastName].filter(Boolean).join(" ").trim() ||
+              r.email ||
+              r.id,
+          })),
+        );
+      } catch (err) {
+        toastApiError(err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleSave() {
+    if (!customerId) {
+      toastApiError(new Error("Customer is required"));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await crmApi.createSalesActivity({
+        customerId,
+        repId: repId || undefined,
+        type,
+        subject: subjects.join(", ") || undefined,
+        outcome,
+        durationMinutes: Number(duration) || undefined,
+        notes: notes || undefined,
+        activityAt: new Date().toISOString(),
+        status: "COMPLETE",
+      });
+      toastSuccess("Activity logged");
+      router.push("/crm/sales");
+    } catch (err) {
+      toastApiError(err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:p-6">
@@ -45,24 +131,24 @@ export function LogActivityFormPage() {
             <DashboardSelectField
               label="Type"
               defaultValue="call"
-              options={LOG_ACTIVITY_FORM.types}
+              options={TYPE_OPTIONS}
             />
             <DashboardTextField label="Date" defaultValue="Jun 12, 2026" />
             <DashboardSelectField
               label="Customer"
               defaultValue="pbe"
-              options={CRM_CUSTOMERS}
+              options={customerOptions}
             />
             <DashboardTextField label="Contact" defaultValue="J. Whitfield" />
             <DashboardSelectField
               label="Rep"
               defaultValue="r-crawford"
-              options={CRM_OWNERS}
+              options={repOptions}
             />
             <DashboardSelectField
               label="Duration"
               defaultValue="15"
-              options={LOG_ACTIVITY_FORM.durations}
+              options={DURATION_OPTIONS}
             />
           </DashboardFormGrid>
         </div>
@@ -78,7 +164,7 @@ export function LogActivityFormPage() {
             <DashboardSelectField
               label="Outcome"
               defaultValue="positive"
-              options={LOG_ACTIVITY_FORM.outcomes}
+              options={OUTCOME_OPTIONS}
             />
             <DashboardTextField
               label="Follow-up Date"
@@ -87,7 +173,7 @@ export function LogActivityFormPage() {
           </DashboardFormGrid>
           <DashboardChoiceChips
             label="Subject"
-            options={LOG_ACTIVITY_FORM.subjects}
+            options={SUBJECT_CHIPS}
             value={subjects}
             onChange={setSubjects}
           />

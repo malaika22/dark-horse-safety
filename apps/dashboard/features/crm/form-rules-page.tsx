@@ -22,16 +22,17 @@ import {
   DashboardToolbarButton,
   DashboardToolbarIcons,
   type DashboardDataTableColumn,
-  type DashboardSavedView,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
-import {
-  FORM_RULES_KPI,
-  FORM_RULES_ROWS,
-  FORM_RULES_SAVED_VIEWS,
-  FORM_RULES_SORT_OPTIONS,
-  type FormRuleRow,
-} from "./data/form-rules.mock";
+import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { mapFormRuleRow } from "@/lib/crm-mappers";
+import { kpiCellsFromApi } from "@/lib/crm-ui";
+import { useCrmList } from "@/lib/use-crm-list";
+import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
+import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
+import { toastApiError, toastSuccess } from "@/lib/toast";
+import { FORM_RULES_KPI_SHELL, FORM_RULES_SORT_OPTIONS } from "./crm-constants";
+import type { FormRuleRow } from "./crm-types";
 
 type FormRuleFilters = {
   customer: string;
@@ -48,17 +49,6 @@ const DEFAULT_FILTERS: FormRuleFilters = {
   hardGate: false,
   payrollBlocking: false,
 };
-
-const CUSTOMER_OPTIONS = [
-  "Permian Basin Energy",
-  "Lonestar Oilfield",
-  "Cactus Well Services",
-  "Rio Grande Resources",
-  "Delaware Basin Co.",
-  "Frontier Energy LLC",
-  "Summit Production",
-  "Vaquero Oil & Gas",
-];
 
 function FilterCheckMarkIcon({ className }: { className?: string }) {
   return (
@@ -132,7 +122,7 @@ function FilterSelectRow({
 }: {
   label: string;
   value: string;
-  options: string[];
+  options: { value: string; label: string }[];
   onChange: (v: string) => void;
 }) {
   return (
@@ -148,8 +138,8 @@ function FilterSelectRow({
         >
           <option value="" />
           {options.map((o) => (
-            <option key={o} value={o}>
-              {o}
+            <option key={o.value} value={o.value}>
+              {o.label}
             </option>
           ))}
         </select>
@@ -157,30 +147,6 @@ function FilterSelectRow({
           <FilterChevronIcon />
         </span>
       </div>
-    </div>
-  );
-}
-
-function FilterTextRow({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <p className="min-w-0 shrink truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-        {label}
-      </p>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-8 w-full max-w-[200px] rounded-md border-0 bg-[#2A2A2A] px-2.5 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
-      />
     </div>
   );
 }
@@ -227,6 +193,9 @@ function FormRulesFiltersDrawer({
   onChange,
   onApply,
   onClearAll,
+  customerOptions,
+  formOptions,
+  jobTypeOptions,
 }: {
   open: boolean;
   onClose: () => void;
@@ -234,6 +203,9 @@ function FormRulesFiltersDrawer({
   onChange: (f: FormRuleFilters) => void;
   onApply: () => void;
   onClearAll: () => void;
+  customerOptions: { value: string; label: string }[];
+  formOptions: { value: string; label: string }[];
+  jobTypeOptions: { value: string; label: string }[];
 }) {
   function patch(p: Partial<FormRuleFilters>) {
     onChange({ ...value, ...p });
@@ -294,17 +266,19 @@ function FormRulesFiltersDrawer({
           <FilterSelectRow
             label="Customer"
             value={value.customer}
-            options={CUSTOMER_OPTIONS}
+            options={customerOptions}
             onChange={(v) => patch({ customer: v })}
           />
-          <FilterTextRow
+          <FilterSelectRow
             label="Form"
             value={value.form}
+            options={formOptions}
             onChange={(v) => patch({ form: v })}
           />
-          <FilterTextRow
+          <FilterSelectRow
             label="Job Type"
             value={value.jobType}
+            options={jobTypeOptions}
             onChange={(v) => patch({ jobType: v })}
           />
           <FilterToggleRow
@@ -342,35 +316,6 @@ function FormRulesFiltersDrawer({
   );
 }
 
-function sortRows(
-  rows: FormRuleRow[],
-  field: string,
-  direction: DashboardSortDirection,
-) {
-  const dir = direction === "asc" ? 1 : -1;
-  return [...rows].sort((a, b) => {
-    switch (field) {
-      case "status":
-        return a.status.label.localeCompare(b.status.label) * dir;
-      case "formTemplate":
-      case "template":
-        return a.formTemplate.localeCompare(b.formTemplate) * dir;
-      case "trigger":
-        return a.trigger.localeCompare(b.trigger) * dir;
-      case "hardGate":
-        return a.hardGate.localeCompare(b.hardGate) * dir;
-      case "appliesTo":
-        return a.appliesTo.localeCompare(b.appliesTo) * dir;
-      case "version":
-        return a.version.localeCompare(b.version) * dir;
-      case "owner":
-        return a.owner.localeCompare(b.owner) * dir;
-      case "customer":
-      default:
-        return a.customer.localeCompare(b.customer) * dir;
-    }
-  });
-}
 
 export function FormRulesPage() {
   const router = useRouter();
@@ -389,64 +334,65 @@ export function FormRulesPage() {
   const [filtersApplied, setFiltersApplied] = React.useState(false);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
-  const [savedViews, setSavedViews] =
-    React.useState<DashboardSavedView[]>(FORM_RULES_SAVED_VIEWS);
-  const [activeViewId, setActiveViewId] = React.useState<string | null>(
-    "view-1",
-  );
+  const {
+    savedViews,
+    activeViewId,
+    setActiveViewId,
+    createView,
+    deleteView,
+  } = useCrmSavedViews("FORM_RULES");
 
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let rows = FORM_RULES_ROWS.filter((row) => {
-      if (q) {
-        const hay = [row.customer, row.code, row.formTemplate, row.owner]
-          .join(" ")
-          .toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      if (filtersApplied) {
-        if (
-          appliedFilters.customer &&
-          row.customer !== appliedFilters.customer
-        ) {
-          return false;
-        }
-        if (
-          appliedFilters.form &&
-          !row.formTemplate
-            .toLowerCase()
-            .includes(appliedFilters.form.toLowerCase())
-        ) {
-          return false;
-        }
-        if (
-          appliedFilters.jobType &&
-          !row.appliesTo
-            .toLowerCase()
-            .includes(appliedFilters.jobType.toLowerCase())
-        ) {
-          return false;
-        }
-        if (appliedFilters.hardGate && row.hardGate.toLowerCase() !== "yes") {
-          return false;
-        }
-      }
-      return true;
-    });
-    return sortRows(rows, sortField, sortDirection);
-  }, [query, sortField, sortDirection, appliedFilters, filtersApplied]);
+  const { lookups, customers } = useCrmLookups({ includeLocations: false });
+  const formOptions = lookupOptions(lookups, "formTemplates");
+  const jobTypeOptions = lookupOptions(lookups, "jobTypes");
+
+  const extraParams = React.useMemo(() => {
+    if (!filtersApplied) return undefined;
+    const params: Record<string, string | boolean | undefined> = {};
+    if (appliedFilters.customer) params.customerId = appliedFilters.customer;
+    if (appliedFilters.form) params.formTemplate = appliedFilters.form;
+    if (appliedFilters.jobType) params.jobType = appliedFilters.jobType;
+    if (appliedFilters.hardGate) params.hardGate = true;
+    return Object.keys(params).length ? params : undefined;
+  }, [appliedFilters, filtersApplied]);
+
+  const { rows, total, kpiData, loading } = useCrmList({
+    list: (p) => crmApi.listFormRules(p),
+    mapRow: mapFormRuleRow,
+    kpi: () => crmApi.formRulesKpi(),
+    q: query,
+    page,
+    pageSize,
+    sort: sortField,
+    direction: sortDirection,
+    extraParams,
+  });
+
+  const kpiCells = React.useMemo(
+    () => kpiCellsFromApi(FORM_RULES_KPI_SHELL, kpiData),
+    [kpiData],
+  );
 
   const bulkOpen = selectedIds.length > 0;
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, pageCount);
-  const pageRows = filtered.slice(
-    (safePage - 1) * pageSize,
-    safePage * pageSize,
-  );
 
-  React.useEffect(() => {
-    setPage(1);
-  }, [query, sortField, sortDirection, pageSize, filtersApplied]);
+  React.useEffect(() => { setPage(1); }, [query, sortField, sortDirection, pageSize, filtersApplied]);
+
+  async function handleExport() {
+    try {
+      const res = await crmApi.exportFormRules({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDirection,
+        ...extraParams,
+      });
+      downloadCsv(res.data.csv, res.data.filename);
+      toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
 
   const columns: DashboardDataTableColumn<FormRuleRow>[] = React.useMemo(
     () => [
@@ -541,7 +487,7 @@ export function FormRulesPage() {
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
-          {FORM_RULES_KPI.map((cell) => (
+          {kpiCells.map((cell) => (
             <DashboardStatCell key={cell.title} {...cell} />
           ))}
         </DashboardStatRow>
@@ -558,8 +504,8 @@ export function FormRulesPage() {
               <DashboardExportMenu
                 triggerLabel="Export selected"
                 items={[
-                  { id: "selected-csv", label: "Export selected view • CSV" },
-                  { id: "all-csv", label: "Export all • CSV" },
+                  { id: "selected-csv", label: "Export selected view • CSV", onSelect: () => void handleExport() },
+                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
                   { id: "pdf", label: "Export as PDF" },
                 ]}
               />
@@ -607,8 +553,8 @@ export function FormRulesPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV" },
-                  { id: "all-csv", label: "Export all • CSV" },
+                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
+                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
                   { id: "pdf", label: "Export as PDF" },
                 ]}
               />
@@ -619,9 +565,9 @@ export function FormRulesPage() {
 
       <DashboardDataTable
         columns={columns}
-        rows={pageRows}
+        rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage="No form rules found"
+        emptyMessage={loading ? "Loading…" : "No form rules found"}
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -631,7 +577,7 @@ export function FormRulesPage() {
       <DashboardPagination
         page={safePage}
         pageSize={pageSize}
-        total={filtered.length}
+        total={total}
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
@@ -650,6 +596,9 @@ export function FormRulesPage() {
           setAppliedFilters(DEFAULT_FILTERS);
           setFiltersApplied(false);
         }}
+        customerOptions={customers}
+        formOptions={formOptions}
+        jobTypeOptions={jobTypeOptions}
       />
 
       <DashboardSaveViewsModal
@@ -660,18 +609,10 @@ export function FormRulesPage() {
         onSelectView={setActiveViewId}
         onSaveNewView={() => setSaveNewViewOpen(true)}
         onViewAction={(viewId, action) => {
-          if (action === "delete") {
-            setSavedViews((prev) => prev.filter((v) => v.id !== viewId));
-            if (activeViewId === viewId) setActiveViewId(null);
-          }
+          if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((v) => v.id === viewId);
-            if (!source) return;
-            const id = `view-${Date.now()}`;
-            setSavedViews((prev) => [
-              ...prev,
-              { id, label: `${source.label} copy` },
-            ]);
+            if (source) void createView(`${source.label} copy`);
           }
         }}
       />
@@ -680,9 +621,7 @@ export function FormRulesPage() {
         open={saveNewViewOpen}
         onClose={() => setSaveNewViewOpen(false)}
         onConfirm={({ name }) => {
-          const id = `view-${Date.now()}`;
-          setSavedViews((prev) => [...prev, { id, label: name }]);
-          setActiveViewId(id);
+          void createView(name);
         }}
       />
     </div>

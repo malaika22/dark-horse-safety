@@ -1,18 +1,19 @@
 "use client";
 
 import * as React from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   DashboardField,
   DashboardFormGrid,
   DashboardSelectField,
   DashboardTextField,
   DashboardToggle,
+  type DashboardSelectOption,
 } from "@dark-horse-safety/ui";
+import { crmApi } from "@/lib/crm-api";
+import { toApiStatus } from "@/lib/crm-ui";
+import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmFormPageShell } from "./crm-form-page-shell";
-import {
-  LOCATION_FORM,
-  LOCATION_FORM_EDIT_DEFAULTS,
-} from "./data/crm-forms.mock";
 
 function MapPinIcon({ className }: { className?: string }) {
   return (
@@ -38,10 +39,28 @@ function MapPinIcon({ className }: { className?: string }) {
 const controlClass =
   "h-10 w-full rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] px-3 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] outline-none transition-colors placeholder:text-[#959597] focus:border-[#5A5A5A] md:text-[13px]";
 
-/**
- * Shared Add / Edit Location screen — same UI for both modes.
- * Header title (Add Location vs Edit Location) comes from app-shell path.
- */
+const LOCATION_FORM = {
+  counties: [
+    { value: "Midland", label: "Midland" },
+    { value: "Ector", label: "Ector" },
+    { value: "Reeves", label: "Reeves" },
+  ] as DashboardSelectOption[],
+  states: [
+    { value: "TX", label: "TX" },
+    { value: "NM", label: "NM" },
+    { value: "OK", label: "OK" },
+  ] as DashboardSelectOption[],
+  siteTypes: [
+    { value: "well", label: "Well" },
+    { value: "pad", label: "Pad" },
+    { value: "facility", label: "Facility" },
+  ] as DashboardSelectOption[],
+  statuses: [
+    { value: "active", label: "Active" },
+    { value: "idle", label: "Idle" },
+  ] as DashboardSelectOption[],
+};
+
 export function LocationFormPage({
   mode = "create",
   locationId,
@@ -49,15 +68,142 @@ export function LocationFormPage({
   mode?: "create" | "edit";
   locationId?: string;
 }) {
-  void locationId;
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const isEdit = mode === "edit";
-  const d = isEdit ? LOCATION_FORM_EDIT_DEFAULTS : null;
-  const [gpsRequired, setGpsRequired] = React.useState(d?.gpsRequired ?? false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [ready, setReady] = React.useState(!isEdit);
+  const [customers, setCustomers] = React.useState<DashboardSelectOption[]>([]);
+  const [customerId, setCustomerId] = React.useState(
+    searchParams.get("customerId") ?? "",
+  );
+  const [gpsRequired, setGpsRequired] = React.useState(false);
+  const [name, setName] = React.useState("");
+  const [wellPadNumber, setWellPadNumber] = React.useState("");
+  const [apiNumber, setApiNumber] = React.useState("");
+  const [county, setCounty] = React.useState("");
+  const [state, setState] = React.useState("");
+  const [coordinates, setCoordinates] = React.useState("");
+  const [siteType, setSiteType] = React.useState("");
+  const [status, setStatus] = React.useState("active");
+  const [accessNotes, setAccessNotes] = React.useState("");
+  const [siteContact, setSiteContact] = React.useState("");
+  const [geofenceRadius, setGeofenceRadius] = React.useState("");
+  const [nearestHospital, setNearestHospital] = React.useState("");
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.lookupCustomers();
+        if (cancelled) return;
+        const opts = res.data.map((c) => ({ value: c.id, label: c.name }));
+        const qName = searchParams.get("customer");
+        const qId = searchParams.get("customerId");
+        if (qId && qName && !opts.some((o) => o.value === qId)) {
+          opts.unshift({ value: qId, label: qName });
+        }
+        setCustomers(opts);
+      } catch (err) {
+        toastApiError(err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
+
+  React.useEffect(() => {
+    if (!isEdit || !locationId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.getLocation(locationId);
+        if (cancelled) return;
+        const l = res.data;
+        setCustomerId(l.customerId);
+        setName(l.name ?? "");
+        setWellPadNumber(l.wellPadNumber ?? "");
+        setApiNumber(l.apiNumber ?? "");
+        setCounty(l.county ?? "");
+        setState(l.state ?? "");
+        setCoordinates(
+          l.latitude != null && l.longitude != null
+            ? `${l.latitude}, ${l.longitude}`
+            : "",
+        );
+        setSiteType(l.siteType ?? "");
+        setStatus((l.status ?? "ACTIVE").toLowerCase().replace(/_/g, "-"));
+        setAccessNotes(l.accessNotes ?? "");
+        setSiteContact(l.siteContact ?? "");
+        setGeofenceRadius(l.geofenceRadius ?? "");
+        setGpsRequired(Boolean(l.gpsRequired));
+        setNearestHospital(l.nearestHospital ?? "");
+        setReady(true);
+      } catch (err) {
+        toastApiError(err);
+        setReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEdit, locationId]);
+
+  async function handleSave() {
+    if (!customerId || !name.trim()) {
+      toastApiError(new Error("Customer and location name are required"));
+      return;
+    }
+    const [latRaw, lngRaw] = coordinates.split(",").map((p) => p.trim());
+    const latitude = latRaw ? Number(latRaw) : undefined;
+    const longitude = lngRaw ? Number(lngRaw) : undefined;
+    setSubmitting(true);
+    try {
+      const body = {
+        customerId,
+        name: name.trim(),
+        wellPadNumber: wellPadNumber.trim() || undefined,
+        apiNumber: apiNumber.trim() || undefined,
+        county: county || undefined,
+        state: state || undefined,
+        latitude: Number.isFinite(latitude) ? latitude : undefined,
+        longitude: Number.isFinite(longitude) ? longitude : undefined,
+        siteType: siteType || undefined,
+        status: toApiStatus(status),
+        accessNotes: accessNotes.trim() || undefined,
+        siteContact: siteContact.trim() || undefined,
+        geofenceRadius: geofenceRadius.trim() || undefined,
+        gpsRequired,
+        nearestHospital: nearestHospital.trim() || undefined,
+      };
+      if (isEdit && locationId) {
+        await crmApi.updateLocation(locationId, body);
+        toastSuccess("Location updated");
+      } else {
+        await crmApi.createLocation(body);
+        toastSuccess("Location created");
+      }
+      router.push("/crm/locations");
+    } catch (err) {
+      toastApiError(err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!ready) {
+    return (
+      <div className="bg-shell p-6 font-sans text-sm text-[#959597]">Loading…</div>
+    );
+  }
 
   return (
     <CrmFormPageShell
       cancelHref="/crm/locations"
       submitLabel="Save"
+      submitting={submitting}
+      onSave={() => void handleSave()}
       sections={[
         {
           title: "Location Details",
@@ -65,39 +211,46 @@ export function LocationFormPage({
             <DashboardFormGrid className="gap-x-4 gap-y-5">
               <DashboardTextField
                 label="Location Name *"
-                defaultValue={d?.locationName}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 placeholder="Location name"
               />
               <DashboardTextField
                 label="Well / Pad Number"
-                defaultValue={d?.wellPadNumber}
+                value={wellPadNumber}
+                onChange={(e) => setWellPadNumber(e.target.value)}
                 placeholder="WPC-0000"
               />
               <DashboardTextField
                 label="API Number"
-                defaultValue={d?.apiNumber}
+                value={apiNumber}
+                onChange={(e) => setApiNumber(e.target.value)}
                 placeholder="API number"
               />
-              <DashboardTextField
+              <DashboardSelectField
                 label="Customer *"
-                defaultValue={d?.customer}
-                placeholder="Customer name"
+                value={customerId}
+                onChange={(e) => setCustomerId(e.target.value)}
+                options={customers}
               />
               <DashboardSelectField
                 label="County *"
-                defaultValue={d?.county ?? "midland"}
+                value={county}
+                onChange={(e) => setCounty(e.target.value)}
                 options={LOCATION_FORM.counties}
               />
               <DashboardSelectField
                 label="State *"
-                defaultValue={d?.state ?? "tx"}
+                value={state}
+                onChange={(e) => setState(e.target.value)}
                 options={LOCATION_FORM.states}
               />
               <DashboardField label="Coordinates *">
                 <div className="relative">
                   <input
                     className={`${controlClass} pr-9`}
-                    defaultValue={d?.coordinates}
+                    value={coordinates}
+                    onChange={(e) => setCoordinates(e.target.value)}
                     placeholder="Lat, Long"
                   />
                   <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-[#959597]">
@@ -107,27 +260,32 @@ export function LocationFormPage({
               </DashboardField>
               <DashboardSelectField
                 label="Site Type"
-                defaultValue={d?.siteType ?? "well"}
+                value={siteType}
+                onChange={(e) => setSiteType(e.target.value)}
                 options={LOCATION_FORM.siteTypes}
               />
               <DashboardSelectField
                 label="Status"
-                defaultValue={d?.status ?? "active"}
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
                 options={LOCATION_FORM.statuses}
               />
               <DashboardTextField
                 label="Access Notes"
-                defaultValue={d?.accessNotes}
+                value={accessNotes}
+                onChange={(e) => setAccessNotes(e.target.value)}
                 placeholder="Access notes"
               />
-              <DashboardSelectField
+              <DashboardTextField
                 label="Site Contact"
-                defaultValue={d?.siteContact ?? "active"}
-                options={LOCATION_FORM.siteContacts}
+                value={siteContact}
+                onChange={(e) => setSiteContact(e.target.value)}
+                placeholder="Site contact"
               />
               <DashboardTextField
                 label="Geofence Radius"
-                defaultValue={d?.geofenceRadius}
+                value={geofenceRadius}
+                onChange={(e) => setGeofenceRadius(e.target.value)}
                 placeholder="Geofence radius"
               />
               <DashboardToggle
@@ -137,7 +295,8 @@ export function LocationFormPage({
               />
               <DashboardTextField
                 label="Nearest Hospital"
-                defaultValue={d?.nearestHospital}
+                value={nearestHospital}
+                onChange={(e) => setNearestHospital(e.target.value)}
                 placeholder="Hospital name"
               />
             </DashboardFormGrid>

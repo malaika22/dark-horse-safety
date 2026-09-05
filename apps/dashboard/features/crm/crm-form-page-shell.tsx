@@ -24,6 +24,9 @@ export function CrmFormPageShell({
   saveAndAddAnotherLabel = "Save & Add Another",
   extraFooterActions,
   sections,
+  onSave,
+  onSaveAndAddAnother,
+  submitting = false,
 }: {
   cancelHref: string;
   submitLabel?: string;
@@ -31,6 +34,9 @@ export function CrmFormPageShell({
   /** Extra footer buttons between Cancel and Save & Add Another (e.g. Link to Existing). */
   extraFooterActions?: React.ReactNode;
   sections: CrmFormSection[];
+  onSave?: () => void | Promise<void>;
+  onSaveAndAddAnother?: () => void | Promise<void>;
+  submitting?: boolean;
 }) {
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:p-6">
@@ -59,9 +65,18 @@ export function CrmFormPageShell({
           <DashboardToolbarButton>Cancel</DashboardToolbarButton>
         </Link>
         {extraFooterActions}
-        <DashboardToolbarButton>{saveAndAddAnotherLabel}</DashboardToolbarButton>
-        <DashboardToolbarButton variant="primary">
-          {submitLabel}
+        <DashboardToolbarButton
+          disabled={submitting}
+          onClick={() => void onSaveAndAddAnother?.()}
+        >
+          {saveAndAddAnotherLabel}
+        </DashboardToolbarButton>
+        <DashboardToolbarButton
+          variant="primary"
+          disabled={submitting}
+          onClick={() => void onSave?.()}
+        >
+          {submitting ? "Saving…" : submitLabel}
         </DashboardToolbarButton>
       </div>
     </div>

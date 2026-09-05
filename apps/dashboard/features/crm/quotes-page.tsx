@@ -22,25 +22,22 @@ import {
   DashboardToolbarButton,
   DashboardToolbarIcons,
   type DashboardDataTableColumn,
-  type DashboardSavedView,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
-import {
-  QUOTES_KPI,
-  QUOTES_ROWS,
-  QUOTES_SAVED_VIEWS,
-  QUOTES_SORT_OPTIONS,
-  type QuoteRow,
-} from "./data/quotes.mock";
+import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { mapQuoteRow } from "@/lib/crm-mappers";
+import { kpiCellsFromApi } from "@/lib/crm-ui";
+import { useCrmList } from "@/lib/use-crm-list";
+import { useCrmLookups, lookupOptions, optionLabel } from "@/lib/use-crm-lookups";
+import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
+import { toastApiError, toastSuccess } from "@/lib/toast";
+import { QUOTES_KPI_SHELL, QUOTES_SORT_OPTIONS } from "./crm-constants";
+import type { QuoteRow } from "./crm-types";
 import { SendQuoteModal } from "./send-quote-modal";
 import { DocumentPlusIcon } from "./crm-list-page-shell";
 import Link from "next/link";
 
-const DEFAULT_CHIPS = [
-  { id: "active",  label: "Active" },
-  { id: "current", label: "Current" },
-  { id: "future",  label: "Future" },
-];
+const DEFAULT_CHIPS: { id: string; label: string }[] = [];
 
 /* ─── filter state ──────────────────────────────────────────── */
 
@@ -67,31 +64,41 @@ const DEFAULT_FILTERS: QuoteFilters = {
 
 /* ─── sort ──────────────────────────────────────────────────── */
 
-function sortRows(rows: QuoteRow[], field: string, direction: DashboardSortDirection) {
-  const dir = direction === "asc" ? 1 : -1;
-  return [...rows].sort((a, b) => {
-    switch (field) {
-      case "customer":    return a.customer.localeCompare(b.customer) * dir;
-      case "amount":      return a.amount.localeCompare(b.amount) * dir;
-      case "status":      return a.status.label.localeCompare(b.status.label) * dir;
-      case "created":     return a.created.localeCompare(b.created) * dir;
-      case "expires":     return a.expires.localeCompare(b.expires) * dir;
-      case "owner":       return a.owner.localeCompare(b.owner) * dir;
-      case "quoteNumber":
-      default:            return a.quoteNumber.localeCompare(b.quoteNumber) * dir;
-    }
-  });
-}
 
-function chipsFromFilters(f: QuoteFilters) {
+function chipsFromFilters(
+  f: QuoteFilters,
+  opts: {
+    statuses: { value: string; label: string }[];
+    customers: { value: string; label: string }[];
+    reps: { value: string; label: string }[];
+  },
+) {
   const chips: { id: string; label: string }[] = [];
-  if (f.status)                          chips.push({ id: "status",   label: f.status });
-  if (f.customer)                        chips.push({ id: "customer", label: f.customer });
-  if (f.rep)                             chips.push({ id: "rep",      label: f.rep });
-  if (f.valueMin || f.valueMax)          chips.push({ id: "value",    label: `Value: ${f.valueMin || "0"} – ${f.valueMax || "∞"}` });
-  if (f.createdMin || f.createdMax)      chips.push({ id: "created",  label: `Created: ${f.createdMin} – ${f.createdMax}` });
-  if (f.expiresMin || f.expiresMax)      chips.push({ id: "expires",  label: `Expires: ${f.expiresMin} – ${f.expiresMax}` });
-  if (f.hasPo)                           chips.push({ id: "hasPo",    label: "Has PO" });
+  if (f.status)
+    chips.push({ id: "status", label: optionLabel(opts.statuses, f.status) });
+  if (f.customer)
+    chips.push({
+      id: "customer",
+      label: optionLabel(opts.customers, f.customer),
+    });
+  if (f.rep)
+    chips.push({ id: "rep", label: optionLabel(opts.reps, f.rep) });
+  if (f.valueMin || f.valueMax)
+    chips.push({
+      id: "value",
+      label: `Value: ${f.valueMin || "0"} – ${f.valueMax || "∞"}`,
+    });
+  if (f.createdMin || f.createdMax)
+    chips.push({
+      id: "created",
+      label: `Created: ${f.createdMin} – ${f.createdMax}`,
+    });
+  if (f.expiresMin || f.expiresMax)
+    chips.push({
+      id: "expires",
+      label: `Expires: ${f.expiresMin} – ${f.expiresMax}`,
+    });
+  if (f.hasPo) chips.push({ id: "hasPo", label: "Has PO" });
   return chips;
 }
 
@@ -99,6 +106,7 @@ function chipsFromFilters(f: QuoteFilters) {
 
 function QuotesFiltersDrawer({
   open, onClose, value, onChange, onApply, onClearAll,
+  statusOptions, customerOptions, repOptions,
 }: {
   open: boolean;
   onClose: () => void;
@@ -106,6 +114,9 @@ function QuotesFiltersDrawer({
   onChange: (v: QuoteFilters) => void;
   onApply: () => void;
   onClearAll: () => void;
+  statusOptions: { value: string; label: string }[];
+  customerOptions: { value: string; label: string }[];
+  repOptions: { value: string; label: string }[];
 }) {
   if (!open) return null;
 
@@ -125,7 +136,13 @@ function QuotesFiltersDrawer({
     </div>
   );
 
-  const SelectEl = ({ fieldKey, options }: { fieldKey: keyof QuoteFilters; options: string[] }) => (
+  const SelectEl = ({
+    fieldKey,
+    options,
+  }: {
+    fieldKey: keyof QuoteFilters;
+    options: { value: string; label: string }[];
+  }) => (
     <div className="relative w-full">
       <select
         value={value[fieldKey] as string}
@@ -133,7 +150,11 @@ function QuotesFiltersDrawer({
         className={controlClass}
       >
         <option value="" />
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
       </select>
       <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[#FDFDFF]">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -178,13 +199,13 @@ function QuotesFiltersDrawer({
 
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
           <Row label="Status">
-            <SelectEl fieldKey="status" options={["Draft", "Sent", "Approved", "Expired", "Converted"]} />
+            <SelectEl fieldKey="status" options={statusOptions} />
           </Row>
           <Row label="Customer">
-            <SelectEl fieldKey="customer" options={["Permian Basin", "Lonestar", "Cactus Well", "Rio Grande", "Delaware", "Frontier", "Summit", "Vaquero"]} />
+            <SelectEl fieldKey="customer" options={customerOptions} />
           </Row>
           <Row label="Rep">
-            <SelectEl fieldKey="rep" options={["R. Crawford", "S. Vance", "M. Ellis", "S. Nguyen"]} />
+            <SelectEl fieldKey="rep" options={repOptions} />
           </Row>
           <Row label="Value">
             <RangePair minKey="valueMin" maxKey="valueMax" />
@@ -244,7 +265,7 @@ export function QuotesPage() {
   const [draftFilters, setDraftFilters] = React.useState<QuoteFilters>(DEFAULT_FILTERS);
   const [appliedFilters, setAppliedFilters] = React.useState<QuoteFilters>(DEFAULT_FILTERS);
   const [chips, setChips] = React.useState<{ id: string; label: string }[]>(DEFAULT_CHIPS);
-  const [sortField, setSortField] = React.useState("quoteNumber");
+  const [sortField, setSortField] = React.useState("createdAt");
   const [sortDirection, setSortDirection] = React.useState<DashboardSortDirection>("desc");
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
@@ -252,26 +273,62 @@ export function QuotesPage() {
   const [sendOpen, setSendOpen] = React.useState(false);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
-  const [savedViews, setSavedViews] = React.useState<DashboardSavedView[]>(QUOTES_SAVED_VIEWS);
-  const [activeViewId, setActiveViewId] = React.useState<string | null>("view-1");
+  const {
+    savedViews,
+    activeViewId,
+    setActiveViewId,
+    createView,
+    deleteView,
+  } = useCrmSavedViews("QUOTES");
 
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let rows = QUOTES_ROWS.filter((row) => {
-      if (q && ![row.quoteNumber, row.customer, row.contact, row.owner].join(" ").toLowerCase().includes(q)) return false;
-      if (appliedFilters.status && row.status.label.toLowerCase() !== appliedFilters.status.toLowerCase()) return false;
-      if (appliedFilters.customer && !row.customer.toLowerCase().includes(appliedFilters.customer.toLowerCase())) return false;
-      return true;
-    });
-    return sortRows(rows, sortField, sortDirection);
-  }, [query, appliedFilters, sortField, sortDirection]);
+  const { lookups, customers, reps } = useCrmLookups({ includeLocations: false });
+  const statusOptions = lookupOptions(lookups, "quoteStatuses");
+
+  const extraParams = React.useMemo(() => {
+    const params: Record<string, string | undefined> = {};
+    if (appliedFilters.status) params.status = appliedFilters.status;
+    if (appliedFilters.customer) params.customerId = appliedFilters.customer;
+    if (appliedFilters.rep) params.ownerId = appliedFilters.rep;
+    return Object.keys(params).length ? params : undefined;
+  }, [appliedFilters.status, appliedFilters.customer, appliedFilters.rep]);
+
+  const { rows, total, kpiData, loading } = useCrmList({
+    list: (p) => crmApi.listQuotes(p),
+    mapRow: mapQuoteRow,
+    kpi: () => crmApi.quotesKpi(),
+    q: query,
+    page,
+    pageSize,
+    sort: sortField,
+    direction: sortDirection,
+    extraParams,
+  });
+
+  const kpiCells = React.useMemo(
+    () => kpiCellsFromApi(QUOTES_KPI_SHELL, kpiData),
+    [kpiData],
+  );
 
   const bulkOpen = selectedIds.length > 0;
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, pageCount);
-  const pageRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   React.useEffect(() => { setPage(1); }, [query, appliedFilters, sortField, sortDirection, pageSize]);
+
+  async function handleExport() {
+    try {
+      const res = await crmApi.exportQuotes({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDirection,
+        ...extraParams,
+      });
+      downloadCsv(res.data.csv, res.data.filename);
+      toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
 
   const columns: DashboardDataTableColumn<QuoteRow>[] = React.useMemo(
     () => [
@@ -410,7 +467,7 @@ export function QuotesPage() {
 
       <DashboardStatGrid>
         <DashboardStatRow columns={5}>
-          {QUOTES_KPI.map((cell) => (
+          {kpiCells.map((cell) => (
             <DashboardStatCell key={cell.title} {...cell} />
           ))}
         </DashboardStatRow>
@@ -427,7 +484,7 @@ export function QuotesPage() {
               <DashboardExportMenu
                 triggerLabel="Export selected"
                 items={[
-                  { id: "selected-csv", label: "Export selected view • CSV" },
+                  { id: "selected-csv", label: "Export selected view • CSV", onSelect: () => void handleExport() },
                   { id: "all-csv",      label: "Export all • CSV" },
                   { id: "pdf",          label: "Export as PDF" },
                 ]}
@@ -459,8 +516,8 @@ export function QuotesPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV" },
-                  { id: "all-csv",  label: "Export all • CSV" },
+                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
+                  { id: "all-csv",  label: "Export all • CSV", onSelect: () => void handleExport() },
                   { id: "pdf",      label: "Export as PDF" },
                 ]}
               />
@@ -500,9 +557,9 @@ export function QuotesPage() {
 
       <DashboardDataTable
         columns={columns}
-        rows={pageRows}
+        rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage="No quotes found"
+        emptyMessage={loading ? "Loading quotes…" : "No quotes found"}
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -512,7 +569,7 @@ export function QuotesPage() {
       <DashboardPagination
         page={safePage}
         pageSize={pageSize}
-        total={filtered.length}
+        total={total}
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
@@ -524,13 +581,22 @@ export function QuotesPage() {
         onChange={setDraftFilters}
         onApply={() => {
           setAppliedFilters(draftFilters);
-          setChips(chipsFromFilters(draftFilters));
+          setChips(
+            chipsFromFilters(draftFilters, {
+              statuses: statusOptions,
+              customers,
+              reps,
+            }),
+          );
         }}
         onClearAll={() => {
           setDraftFilters(DEFAULT_FILTERS);
           setAppliedFilters(DEFAULT_FILTERS);
           setChips([]);
         }}
+        statusOptions={statusOptions}
+        customerOptions={customers}
+        repOptions={reps}
       />
 
       <DashboardSaveViewsModal
@@ -541,15 +607,10 @@ export function QuotesPage() {
         onSelectView={setActiveViewId}
         onSaveNewView={() => setSaveNewViewOpen(true)}
         onViewAction={(viewId, action) => {
-          if (action === "delete") {
-            setSavedViews((prev) => prev.filter((v) => v.id !== viewId));
-            if (activeViewId === viewId) setActiveViewId(null);
-          }
+          if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((v) => v.id === viewId);
-            if (!source) return;
-            const id = `view-${Date.now()}`;
-            setSavedViews((prev) => [...prev, { id, label: `${source.label} copy` }]);
+            if (source) void createView(`${source.label} copy`);
           }
         }}
       />
@@ -558,9 +619,7 @@ export function QuotesPage() {
         open={saveNewViewOpen}
         onClose={() => setSaveNewViewOpen(false)}
         onConfirm={({ name }) => {
-          const id = `view-${Date.now()}`;
-          setSavedViews((prev) => [...prev, { id, label: name }]);
-          setActiveViewId(id);
+          void createView(name);
         }}
       />
       <SendQuoteModal open={sendOpen} onClose={() => setSendOpen(false)} />

@@ -2,33 +2,90 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   DashboardBadge,
   DashboardFormGrid,
   DashboardPanel,
   DashboardPanelTitle,
+  DashboardSelectField,
   DashboardTextField,
   DashboardToolbarButton,
+  type DashboardSelectOption,
 } from "@dark-horse-safety/ui";
+import { crmApi } from "@/lib/crm-api";
+import { parseMoney } from "@/lib/crm-ui";
+import { toastApiError, toastSuccess } from "@/lib/toast";
 import { SendQuoteModal } from "./send-quote-modal";
 import { DocumentPlusIcon } from "./crm-list-page-shell";
-import { QUOTE_DETAIL } from "./data/quotes.mock";
-
-function PanelHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]">
-      {children}
-    </h2>
-  );
-}
 
 export function CreateQuotePage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const customerName =
-    searchParams.get("customer")?.trim() || "Permian Basin Energy";
   const [sendOpen, setSendOpen] = React.useState(false);
-  const d = QUOTE_DETAIL;
+  const [submitting, setSubmitting] = React.useState(false);
+  const [customers, setCustomers] = React.useState<DashboardSelectOption[]>([]);
+  const [customerId, setCustomerId] = React.useState(
+    searchParams.get("customerId") ?? "",
+  );
+  const [contactName, setContactName] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [amount, setAmount] = React.useState("");
+  const [terms, setTerms] = React.useState("");
+  const [notes, setNotes] = React.useState("");
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.lookupCustomers(
+          searchParams.get("customer") || undefined,
+        );
+        if (cancelled) return;
+        const opts = res.data.map((c) => ({ value: c.id, label: c.name }));
+        const qId = searchParams.get("customerId");
+        const qName = searchParams.get("customer");
+        if (qId && qName && !opts.some((o) => o.value === qId)) {
+          opts.unshift({ value: qId, label: qName });
+        }
+        setCustomers(opts);
+        if (!customerId && opts[0]) setCustomerId(opts[0].value);
+      } catch (err) {
+        toastApiError(err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, customerId]);
+
+  async function handleCreate(send = false) {
+    if (!customerId) {
+      toastApiError(new Error("Customer is required"));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await crmApi.createQuote({
+        customerId,
+        amount: parseMoney(amount) ?? 0,
+        terms: terms || undefined,
+        notes: notes || undefined,
+        status: send ? "SENT" : "DRAFT",
+      });
+      if (send) {
+        await crmApi.sendQuote(res.data.id);
+        toastSuccess("Quote sent");
+      } else {
+        toastSuccess("Quote saved");
+      }
+      router.push(`/crm/quotes/${res.data.id}`);
+    } catch (err) {
+      toastApiError(err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
@@ -45,10 +102,16 @@ export function CreateQuotePage() {
           <Link href="/crm/quotes">
             <DashboardToolbarButton>Discard</DashboardToolbarButton>
           </Link>
-          <DashboardToolbarButton>Save Draft</DashboardToolbarButton>
+          <DashboardToolbarButton
+            disabled={submitting}
+            onClick={() => void handleCreate(false)}
+          >
+            Save Draft
+          </DashboardToolbarButton>
           <DashboardToolbarButton
             variant="primary"
             leftIcon={<DocumentPlusIcon className="shrink-0" />}
+            disabled={submitting}
             onClick={() => setSendOpen(true)}
           >
             Send Quote
@@ -61,27 +124,25 @@ export function CreateQuotePage() {
           <div className="px-4 pt-4 pb-3">
             <DashboardPanelTitle icon="lightning" title="Customer & Contact" />
           </div>
-          <div className="divider-line-full w-full" aria-hidden />
           <div className="p-4">
             <DashboardFormGrid className="gap-x-4 gap-y-5">
-              <DashboardTextField
+              <DashboardSelectField
                 label="Customer"
-                defaultValue={customerName}
+                value={customerId}
+                onChange={(e) => setCustomerId(e.target.value)}
+                options={customers}
                 containerClassName="md:col-span-2"
               />
               <DashboardTextField
                 label="Contact"
-                defaultValue="J. Whitfield · Operations Manager"
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
                 containerClassName="md:col-span-2"
               />
               <DashboardTextField
                 label="Email"
-                defaultValue="jwhitfield@permianbasin.com"
-                containerClassName="md:col-span-2"
-              />
-              <DashboardTextField
-                label="Billing Address"
-                defaultValue="1200 Energy Plaza, Midland, TX"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 containerClassName="md:col-span-2"
               />
             </DashboardFormGrid>
@@ -92,19 +153,24 @@ export function CreateQuotePage() {
           <div className="px-4 pt-4 pb-3">
             <DashboardPanelTitle icon="lightning" title="Quote Details" />
           </div>
-          <div className="divider-line-full w-full" aria-hidden />
           <div className="p-4">
             <DashboardFormGrid className="gap-x-4 gap-y-5">
               <DashboardTextField
-                label="Quote #"
-                defaultValue="Q-1042 (Draft)"
-                containerClassName="md:col-span-2"
+                label="Amount"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="$0.00"
               />
-              <DashboardTextField label="Created" defaultValue="Jun 12, 2026" />
-              <DashboardTextField label="Valid Until" defaultValue="Jul 12, 2026" />
               <DashboardTextField
-                label="Owner"
-                defaultValue="R. Crawford"
+                label="Terms"
+                value={terms}
+                onChange={(e) => setTerms(e.target.value)}
+                placeholder="Net 30"
+              />
+              <DashboardTextField
+                label="Notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
                 containerClassName="md:col-span-2"
               />
             </DashboardFormGrid>
@@ -112,75 +178,14 @@ export function CreateQuotePage() {
         </DashboardPanel>
       </div>
 
-      <DashboardPanel>
-        <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3">
-          <PanelHeading>Line Items</PanelHeading>
-          <DashboardToolbarButton>+ Add Line Item</DashboardToolbarButton>
-        </div>
-        <div className="divider-line-full w-full" aria-hidden />
-        <div className="overflow-x-auto p-4">
-          <table className="w-full min-w-[640px] border-collapse">
-            <thead>
-              <tr className="border-b border-divider text-left">
-                {["Item", "Qty", "Rate", "Amount"].map((h) => (
-                  <th
-                    key={h}
-                    className="pb-3 font-sans text-[11px] font-normal uppercase tracking-[-0.02em] text-[#959597]"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {d.lineItems.map((line) => (
-                <tr key={line.id} className="border-b border-divider/60">
-                  <td className="py-3 font-sans text-[12px] uppercase text-[#FDFDFF]">{line.item}</td>
-                  <td className="py-3 font-sans text-[12px] uppercase text-[#C8C8C8]">{line.qty}</td>
-                  <td className="py-3 font-sans text-[12px] uppercase text-[#C8C8C8]">{line.rate}</td>
-                  <td className="py-3 font-sans text-[12px] uppercase text-[#FDFDFF]">{line.amount}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="mt-4 ml-auto w-full max-w-xs space-y-2">
-            {d.totals.map((item) => (
-              <div key={item.label} className="flex items-center justify-between gap-3">
-                <span className="font-sans text-[11px] uppercase text-[#959597]">{item.label}</span>
-                <span className="font-sans text-[12px] uppercase text-[#FDFDFF]">{item.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </DashboardPanel>
-
-      <DashboardPanel>
-        <div className="px-4 pt-4 pb-3">
-          <DashboardPanelTitle icon="lightning" title="Quote Terms" />
-        </div>
-        <div className="divider-line-full w-full" aria-hidden />
-        <div className="p-4">
-          <DashboardFormGrid className="gap-x-4 gap-y-5">
-            <DashboardTextField label="Payment Terms" defaultValue="Net 30" />
-            <DashboardTextField label="Discount" defaultValue="0%" />
-            <DashboardTextField
-              label="Notes to Customer"
-              defaultValue="Quote valid for 30 days from creation."
-              containerClassName="md:col-span-2"
-            />
-          </DashboardFormGrid>
-        </div>
-      </DashboardPanel>
-
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Link href="/crm/quotes">
-          <DashboardToolbarButton>Cancel</DashboardToolbarButton>
-        </Link>
-        <DashboardToolbarButton>Save & Add Another</DashboardToolbarButton>
-        <DashboardToolbarButton variant="primary">Save</DashboardToolbarButton>
-      </div>
-
-      <SendQuoteModal open={sendOpen} onClose={() => setSendOpen(false)} />
+      <SendQuoteModal
+        open={sendOpen}
+        onClose={() => setSendOpen(false)}
+        onConfirm={() => {
+          setSendOpen(false);
+          void handleCreate(true);
+        }}
+      />
     </div>
   );
 }

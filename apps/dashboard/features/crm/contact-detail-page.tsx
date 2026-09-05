@@ -8,155 +8,102 @@ import {
   DashboardRowActionMenu,
   DashboardToolbarButton,
 } from "@dark-horse-safety/ui";
-import {
-  CONTACT_DETAIL,
-  CONTACT_RELATED,
-  CONTACT_ACTIVITY,
-  CONTACT_NOTES,
-  CONTACT_CUSTOMERS,
-  CONTACT_DETAIL_TABS,
-  type ContactDetailTab,
-} from "./data/contacts.mock";
+import { crmApi, type CrmContact } from "@/lib/crm-api";
+import { toastApiError } from "@/lib/toast";
+import { CONTACT_DETAIL_TABS } from "./crm-constants";
+
+type ContactDetailTab = (typeof CONTACT_DETAIL_TABS)[number]["id"];
 
 function ClipboardIcon({ className }: { className?: string }) {
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-      className={className}
-    >
-      <path
-        d="M9 5h6l1 2h3v13a1 1 0 01-1 1H6a1 1 0 01-1-1V7h3l1-2z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
-      <rect
-        x="9"
-        y="3"
-        width="6"
-        height="3.5"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.75"
-      />
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden className={className}>
+      <path d="M9 5h6l1 2h3v13a1 1 0 01-1 1H6a1 1 0 01-1-1V7h3l1-2z" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
+      <rect x="9" y="3" width="6" height="3.5" rx="1" stroke="currentColor" strokeWidth="1.75" />
     </svg>
   );
 }
 
-function GlassBtn({
-  children,
-  onClick,
-  href,
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  href?: string;
-}) {
+function GlassBtn({ children, onClick, href }: { children: React.ReactNode; onClick?: () => void; href?: string }) {
   const className =
     "inline-flex h-8 items-center rounded-full border border-[#2D2D30] bg-[#1A1A1A] px-3.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-white/5";
-  if (href) {
-    return (
-      <Link href={href} className={className}>
-        {children}
-      </Link>
-    );
-  }
-  return (
-    <button type="button" onClick={onClick} className={className}>
-      {children}
-    </button>
-  );
+  if (href) return <Link href={href} className={className}>{children}</Link>;
+  return <button type="button" onClick={onClick} className={className}>{children}</button>;
 }
 
-function Panel({
-  title,
-  children,
-  className,
-  footer,
-}: {
-  title: string;
-  children: React.ReactNode;
-  className?: string;
-  footer?: React.ReactNode;
-}) {
+function Panel({ title, children, className, footer }: { title: string; children: React.ReactNode; className?: string; footer?: React.ReactNode }) {
   return (
-    <div
-      className={`flex flex-col overflow-hidden rounded-xl bg-panel ${className ?? ""}`}
-    >
+    <div className={`flex flex-col overflow-hidden rounded-xl bg-panel ${className ?? ""}`}>
       <div className="px-4 pb-2 pt-4 sm:px-5">
-        <p className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-          {title}
-        </p>
+        <p className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">{title}</p>
       </div>
       <div className="flex-1 px-4 pb-4 sm:px-5">{children}</div>
-      {footer ? (
-        <div className="flex justify-end px-4 pb-4 sm:px-5">{footer}</div>
-      ) : null}
-    </div>
-  );
-}
-
-function DetailField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <p className="mb-0.5 font-sans text-[10px] uppercase leading-none tracking-[-0.01em] text-[#959597]">
-        {label}
-      </p>
-      <p
-        className="truncate font-sans text-[11px] uppercase leading-[1.35] tracking-[-0.02em] text-[#FDFDFF]"
-        title={value}
-      >
-        {value}
-      </p>
+      {footer ? <div className="flex justify-end px-4 pb-4 sm:px-5">{footer}</div> : null}
     </div>
   );
 }
 
 export function ContactDetailPage({ contactId }: { contactId: string }) {
-  void contactId;
   const router = useRouter();
-  const contact = CONTACT_DETAIL;
   const [tab, setTab] = React.useState<ContactDetailTab>("overview");
+  const [contact, setContact] = React.useState<CrmContact | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await crmApi.getContact(contactId);
+        if (!cancelled) setContact(res.data);
+      } catch (err) {
+        toastApiError(err);
+        if (!cancelled) setContact(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [contactId]);
+
+  if (loading) {
+    return <div className="bg-shell p-6 font-sans text-sm text-[#959597]">Loading contact…</div>;
+  }
+  if (!contact) {
+    return <div className="bg-shell p-6 font-sans text-sm text-[#959597]">Contact not found</div>;
+  }
+
+  const related = [
+    { label: "Customer", value: contact.primaryCustomer?.name ?? "—" },
+    { label: "Role", value: contact.roleTitle ?? "—" },
+    { label: "Status", value: contact.status },
+    { label: "Code", value: contact.code },
+  ];
 
   return (
-    <div className="space-y-[18px] overflow-x-hidden bg-shell p-3 sm:p-4">
-      {/* top actions */}
+    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
+        <GlassBtn href="/crm/contacts">Back</GlassBtn>
         <div className="flex flex-wrap items-center gap-2">
-          <GlassBtn>Previous Contact</GlassBtn>
-          <GlassBtn>Next Contact</GlassBtn>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <GlassBtn>Send Email</GlassBtn>
-          <GlassBtn href={`/crm/contacts/new`}>Edit Contact</GlassBtn>
-          <GlassBtn href={`/crm/quotes/new?customer=${encodeURIComponent(contact.customer)}`}>
+          <GlassBtn href={`/crm/sales/new?contactId=${encodeURIComponent(contact.id)}`}>Log Activity</GlassBtn>
+          <DashboardToolbarButton variant="primary" leftIcon={<ClipboardIcon className="shrink-0" />} onClick={() => router.push(`/crm/quotes/new?customerId=${encodeURIComponent(contact.primaryCustomerId ?? "")}`)}>
             Create Quote
-          </GlassBtn>
-          <Link href="/crm/sales/new" className="inline-flex shrink-0">
-            <DashboardToolbarButton
-              variant="primary"
-              leftIcon={<ClipboardIcon className="shrink-0" />}
-              className="!rounded-full"
-            >
-              Log Activity
-            </DashboardToolbarButton>
-          </Link>
+          </DashboardToolbarButton>
         </div>
       </div>
 
-      {/* title */}
-      <div>
-        <h1 className="inline-block border-b border-[#FDFDFF] pb-1 font-sans text-[20px] font-[590] uppercase leading-none tracking-[-0.03em] text-[#FDFDFF] sm:text-[24px]">
-          Contact · {contact.name}
-        </h1>
+      <div className="overflow-hidden rounded-xl bg-panel px-4 py-4 sm:px-5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h2 className="font-sans text-[15px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF] sm:text-[17px]">
+            {contact.fullName}
+          </h2>
+          {contact.isPrimary ? <DashboardBadge variant="success" pill>Primary Contact</DashboardBadge> : null}
+        </div>
+        <p className="mt-2 font-sans text-[11px] uppercase tracking-[-0.01em] text-[#959597]">
+          {contact.code} · {contact.primaryCustomer?.name ?? "—"} · {contact.email ?? "—"} · {contact.mobile ?? contact.officePhone ?? "—"}
+        </p>
       </div>
 
-      {/* tabs */}
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="flex flex-wrap gap-2">
         {CONTACT_DETAIL_TABS.map((t) => {
           const active = tab === t.id;
           return (
@@ -164,11 +111,7 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className={`rounded-md px-3 py-2 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] transition-colors ${
-                active
-                  ? "bg-[#FDFDFF] text-[#0D0D0D]"
-                  : "text-[#959597] hover:text-[#FDFDFF]"
-              }`}
+              className={`rounded-md px-3 py-2 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] ${active ? "bg-[#353535] text-[#FDFDFF]" : "text-[#959597] hover:text-[#FDFDFF]"}`}
             >
               {t.label}
             </button>
@@ -176,156 +119,32 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
         })}
       </div>
 
-      {/* status row */}
-      <div className="flex flex-wrap items-center gap-3">
-        <DashboardBadge variant="success" pill>
-          {contact.badge}
-        </DashboardBadge>
-        <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
-          {contact.customer} · {contact.customerStatus}
-        </span>
-      </div>
-
       {tab === "overview" ? (
-        <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-3">
-          {/* Contact Details — spans 2 cols on large */}
-          <Panel title="Contact Details" className="lg:col-span-2">
-            <div className="mb-5 flex items-center gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={contact.avatar}
-                alt=""
-                className="h-11 w-11 shrink-0 rounded-full object-cover"
-              />
-              <div className="min-w-0">
-                <p className="font-sans text-[14px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF]">
-                  {contact.fullName}
-                </p>
-                <p className="mt-1.5 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                  {contact.role}
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-3">
-              <DetailField label="Customer" value={contact.customer} />
-              <DetailField label="Email" value={contact.email} />
-              <DetailField label="Phone" value={contact.phone} />
-              <DetailField label="Mobile" value={contact.mobile} />
-              <DetailField label="Location" value={contact.location} />
-              <DetailField label="Preferred" value={contact.preferred} />
-            </div>
-          </Panel>
-
-          {/* Related */}
-          <Panel title="Related">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Panel title="Contact Details">
             <div className="space-y-3">
-              {CONTACT_RELATED.map((r) => (
-                <div
-                  key={r.label}
-                  className="flex items-center justify-between gap-3"
-                >
-                  <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
-                    {r.label}
-                  </span>
-                  <span
-                    className={`shrink-0 font-sans text-[11px] uppercase tracking-[-0.02em] ${
-                      r.highlight
-                        ? "font-[510] text-[#ACEBCE]"
-                        : "text-[#FDFDFF]"
-                    }`}
-                  >
-                    {r.value}
-                  </span>
-                </div>
-              ))}
+              <p className="font-sans text-[12px] uppercase text-[#FDFDFF]">{contact.fullName}</p>
+              <p className="font-sans text-[11px] uppercase text-[#959597]">{contact.roleTitle ?? "—"}</p>
+              <p className="font-sans text-[11px] uppercase text-[#959597]">{contact.email ?? "—"}</p>
+              <p className="font-sans text-[11px] uppercase text-[#959597]">{contact.mobile ?? contact.officePhone ?? "—"}</p>
+              <p className="font-sans text-[11px] uppercase text-[#959597]">{contact.locationLabel ?? "—"}</p>
+              <p className="font-sans text-[11px] uppercase text-[#959597]">{contact.notes ?? "No notes"}</p>
             </div>
           </Panel>
-
-          {/* Recent Activity */}
-          <Panel title="Recent Activity">
-            <div className="space-y-2.5">
-              {CONTACT_ACTIVITY.map((a) => (
-                <p
-                  key={a.id}
-                  className="font-sans text-[11px] uppercase leading-[1.45] tracking-[-0.02em] text-[#959597]"
-                >
-                  {a.code}
-                  {" · "}
-                  {a.type}
-                  {" · "}
-                  {a.date}
-                  {" · "}
-                  {a.subject}
-                  {a.status ? ` · ${a.status}` : ""}
-                </p>
+          <Panel title="Related">
+            <ul className="space-y-3">
+              {related.map((item) => (
+                <li key={item.label} className="flex items-center justify-between gap-3">
+                  <span className="font-sans text-[11px] uppercase text-[#959597]">{item.label}</span>
+                  <span className="font-sans text-[11px] uppercase text-[#FDFDFF]">{item.value}</span>
+                </li>
               ))}
-              <button
-                type="button"
-                className="pt-1 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] hover:opacity-70"
-              >
-                + 4 More
-              </button>
-            </div>
-          </Panel>
-
-          {/* Notes */}
-          <Panel title="Notes">
-            <p className="font-sans text-[11px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
-              {CONTACT_NOTES}
-            </p>
-          </Panel>
-
-          {/* Customers */}
-          <Panel
-            title="Customers"
-            footer={
-              <GlassBtn href="/crm/accounts/new">Add New Customer</GlassBtn>
-            }
-          >
-            <div className="space-y-1">
-              {CONTACT_CUSTOMERS.map((c) => (
-                <div
-                  key={c.id}
-                  className="flex items-center gap-2 py-1.5"
-                >
-                  <button
-                    type="button"
-                    onClick={() => router.push(`/crm/accounts/${c.id}`)}
-                    className="min-w-0 flex-1 truncate text-left font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] hover:opacity-70"
-                  >
-                    {c.name}
-                  </button>
-                  {c.primary ? (
-                    <DashboardBadge variant="success" pill>
-                      Primary
-                    </DashboardBadge>
-                  ) : null}
-                  <DashboardRowActionMenu
-                    items={[
-                      {
-                        id: "open",
-                        label: "Open Customer",
-                        onSelect: () => router.push(`/crm/accounts/${c.id}`),
-                      },
-                      { id: "primary", label: "Set as Primary" },
-                      {
-                        id: "remove",
-                        label: "Remove",
-                        destructive: true,
-                      },
-                    ]}
-                    className="shrink-0"
-                  />
-                </div>
-              ))}
-            </div>
+            </ul>
           </Panel>
         </div>
       ) : (
-        <div className="rounded-xl bg-panel px-5 py-10 text-center">
-          <p className="font-sans text-[12px] uppercase tracking-[-0.02em] text-[#959597]">
-            {CONTACT_DETAIL_TABS.find((t) => t.id === tab)?.label} — coming soon
-          </p>
+        <div className="rounded-xl bg-panel p-6 font-sans text-[12px] uppercase text-[#959597]">
+          {CONTACT_DETAIL_TABS.find((t) => t.id === tab)?.label} — coming soon
         </div>
       )}
     </div>

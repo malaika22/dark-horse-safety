@@ -23,16 +23,20 @@ import {
   DashboardToolbarButton,
   DashboardToolbarIcons,
   type DashboardDataTableColumn,
-  type DashboardSavedView,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
+import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { mapContactRow } from "@/lib/crm-mappers";
+import { kpiCellsFromApi } from "@/lib/crm-ui";
+import { useCrmList } from "@/lib/use-crm-list";
+import { useCrmLookups, lookupOptions, optionLabel } from "@/lib/use-crm-lookups";
+import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
+import { toastApiError, toastSuccess } from "@/lib/toast";
 import {
-  CONTACTS_KPI,
-  CONTACTS_ROWS,
-  CONTACTS_SAVED_VIEWS,
+  CONTACTS_KPI_SHELL,
   CONTACTS_SORT_OPTIONS,
-  type ContactRow,
-} from "./data/contacts.mock";
+} from "./crm-constants";
+import type { ContactRow } from "./crm-types";
 
 /* ── filter state ── */
 type ContactFilters = {
@@ -57,32 +61,35 @@ const DEFAULT_FILTERS: ContactFilters = {
   lastActivityTo: "",
 };
 
-/* ── sort ── */
-function sortRows(rows: ContactRow[], field: string, dir: DashboardSortDirection) {
-  return [...rows].sort((a, b) => {
-    const d = dir === "asc" ? 1 : -1;
-    switch (field) {
-      case "customer":     return a.customer.localeCompare(b.customer) * d;
-      case "role":         return a.role.localeCompare(b.role) * d;
-      case "location":     return a.location.localeCompare(b.location) * d;
-      case "lastActivity": return a.lastActivity.localeCompare(b.lastActivity) * d;
-      case "status":       return a.status.label.localeCompare(b.status.label) * d;
-      default:             return a.name.localeCompare(b.name) * d;
-    }
-  });
-}
-
 /* ── filter chips ── */
-function chipsFromFilters(f: ContactFilters) {
+function chipsFromFilters(
+  f: ContactFilters,
+  opts: {
+    customers: { value: string; label: string }[];
+    roles: { value: string; label: string }[];
+    reps: { value: string; label: string }[];
+  },
+) {
   const chips: { id: string; label: string }[] = [];
-  if (f.customer.trim())       chips.push({ id: "customer",   label: f.customer.trim() });
-  if (f.role.trim())           chips.push({ id: "role",       label: f.role.trim() });
-  if (f.isPrimary)             chips.push({ id: "primary",    label: "Primary contact" });
-  if (f.hasEmail)              chips.push({ id: "email",      label: "Has email" });
-  if (f.hasPhone)              chips.push({ id: "phone",      label: "Has phone" });
-  if (f.assignedRep.trim())    chips.push({ id: "rep",        label: f.assignedRep.trim() });
-  if (f.lastActivityFrom.trim()) chips.push({ id: "from",    label: `From ${f.lastActivityFrom.trim()}` });
-  if (f.lastActivityTo.trim()) chips.push({ id: "to",         label: `To ${f.lastActivityTo.trim()}` });
+  if (f.customer.trim())
+    chips.push({
+      id: "customer",
+      label: optionLabel(opts.customers, f.customer.trim()),
+    });
+  if (f.role.trim())
+    chips.push({ id: "role", label: optionLabel(opts.roles, f.role.trim()) });
+  if (f.isPrimary) chips.push({ id: "primary", label: "Primary contact" });
+  if (f.hasEmail) chips.push({ id: "email", label: "Has email" });
+  if (f.hasPhone) chips.push({ id: "phone", label: "Has phone" });
+  if (f.assignedRep.trim())
+    chips.push({
+      id: "rep",
+      label: optionLabel(opts.reps, f.assignedRep.trim()),
+    });
+  if (f.lastActivityFrom.trim())
+    chips.push({ id: "from", label: `From ${f.lastActivityFrom.trim()}` });
+  if (f.lastActivityTo.trim())
+    chips.push({ id: "to", label: `To ${f.lastActivityTo.trim()}` });
   return chips;
 }
 
@@ -94,6 +101,9 @@ function ContactsFiltersDrawer({
   onChange,
   onApply,
   onClearAll,
+  customerOptions,
+  roleOptions,
+  repOptions,
 }: {
   open: boolean;
   onClose: () => void;
@@ -101,6 +111,9 @@ function ContactsFiltersDrawer({
   onChange: (f: ContactFilters) => void;
   onApply: () => void;
   onClearAll: () => void;
+  customerOptions: { value: string; label: string }[];
+  roleOptions: { value: string; label: string }[];
+  repOptions: { value: string; label: string }[];
 }) {
   function patch(p: Partial<ContactFilters>) { onChange({ ...value, ...p }); }
 
@@ -131,31 +144,13 @@ function ContactsFiltersDrawer({
         <FilterSelectRow
           label="Customer"
           value={value.customer}
-          options={[
-            "Permian Basin Energy",
-            "Lonestar Oilfield",
-            "Cactus Well Services",
-            "Rio Grande Resources",
-            "Delaware Basin Co.",
-            "Frontier Energy LLC",
-            "Summit Production",
-            "Vaquero Oil & Gas",
-          ]}
+          options={customerOptions}
           onChange={(v) => patch({ customer: v })}
         />
         <FilterSelectRow
           label="Role"
           value={value.role}
-          options={[
-            "Operations MGR",
-            "Safety Lead",
-            "Field Super",
-            "AP Contact",
-            "Company MAN",
-            "Procurement",
-            "HSE Manager",
-            "Dispatcher",
-          ]}
+          options={roleOptions}
           onChange={(v) => patch({ role: v })}
         />
         <FilterToggleRow
@@ -176,7 +171,7 @@ function ContactsFiltersDrawer({
         <FilterSelectRow
           label="Assigned Rep"
           value={value.assignedRep}
-          options={["R. Crawford", "M. Torres", "L. Nguyen"]}
+          options={repOptions}
           onChange={(v) => patch({ assignedRep: v })}
         />
         <div className="flex items-center justify-between gap-3">
@@ -228,7 +223,7 @@ function FilterSelectRow({
 }: {
   label: string;
   value: string;
-  options: string[];
+  options: { value: string; label: string }[];
   onChange: (v: string) => void;
 }) {
   return (
@@ -244,8 +239,8 @@ function FilterSelectRow({
         >
           <option value="" />
           {options.map((o) => (
-            <option key={o} value={o}>
-              {o}
+            <option key={o.value} value={o.value}>
+              {o.label}
             </option>
           ))}
         </select>
@@ -297,40 +292,81 @@ export function ContactsPage() {
   const [draftFilters,   setDraftFilters]   = React.useState<ContactFilters>(DEFAULT_FILTERS);
   const [appliedFilters, setAppliedFilters] = React.useState<ContactFilters>(DEFAULT_FILTERS);
   const [chips,          setChips]          = React.useState<{ id: string; label: string }[]>([]);
-  const [sortField,      setSortField]      = React.useState("name");
+  const [sortField,      setSortField]      = React.useState("fullName");
   const [sortDir,        setSortDir]        = React.useState<DashboardSortDirection>("asc");
   const [page,           setPage]           = React.useState(1);
   const [pageSize,       setPageSize]       = React.useState(25);
   const [selectedIds,    setSelectedIds]    = React.useState<string[]>([]);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewOpen,    setSaveNewOpen]    = React.useState(false);
-  const [savedViews,     setSavedViews]     = React.useState<DashboardSavedView[]>(CONTACTS_SAVED_VIEWS);
-  const [activeViewId,   setActiveViewId]   = React.useState<string | null>("view-1");
+  const {
+    savedViews,
+    activeViewId,
+    setActiveViewId,
+    createView,
+    deleteView,
+  } = useCrmSavedViews("CONTACTS");
 
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let rows = CONTACTS_ROWS.filter((row) => {
-      if (q) {
-        const hay = [row.name, row.code, row.customer, row.email, row.role].join(" ").toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      if (appliedFilters.customer.trim() && row.customer !== appliedFilters.customer.trim()) return false;
-      if (appliedFilters.role.trim()     && row.role !== appliedFilters.role.trim())         return false;
-      if (appliedFilters.isPrimary       && row.primary !== "Primary")                        return false;
-      if (appliedFilters.hasEmail        && !row.hasEmail)                                    return false;
-      if (appliedFilters.hasPhone        && !row.hasPhone)                                    return false;
-      if (appliedFilters.assignedRep.trim() && row.assignedRep !== appliedFilters.assignedRep.trim()) return false;
-      return true;
-    });
-    rows = sortRows(rows, sortField, sortDir);
-    return rows;
-  }, [query, appliedFilters, sortField, sortDir]);
+  const { lookups, customers, reps } = useCrmLookups({ includeLocations: false });
+  const roleOptions = lookupOptions(lookups, "contactRoles");
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const extraParams = React.useMemo(() => {
+    const params: Record<string, string | undefined> = {};
+    if (appliedFilters.customer) params.customerId = appliedFilters.customer;
+    if (appliedFilters.assignedRep)
+      params.assignedRepId = appliedFilters.assignedRep;
+    return Object.keys(params).length ? params : undefined;
+  }, [appliedFilters.customer, appliedFilters.assignedRep]);
+
+  const { rows, total, kpiData, loading, reload } = useCrmList({
+    list: (p) => crmApi.listContacts(p),
+    mapRow: mapContactRow,
+    kpi: () => crmApi.contactsKpi(),
+    q: query,
+    page,
+    pageSize,
+    sort: sortField,
+    direction: sortDir,
+    extraParams,
+  });
+
+  const kpiCells = React.useMemo(
+    () => kpiCellsFromApi(CONTACTS_KPI_SHELL, kpiData),
+    [kpiData],
+  );
+
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage  = Math.min(page, pageCount);
-  const pageRows  = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   React.useEffect(() => { setPage(1); }, [query, appliedFilters, sortField, sortDir, pageSize]);
+
+  async function handleExport() {
+    try {
+      const res = await crmApi.exportContacts({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDir,
+        ...extraParams,
+      });
+      downloadCsv(res.data.csv, res.data.filename);
+      toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleArchive(id: string) {
+    if (typeof window !== "undefined" && !window.confirm("Archive this contact?")) {
+      return;
+    }
+    try {
+      await crmApi.archiveContact(id);
+      toastSuccess("Contact archived");
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
 
   const columns: DashboardDataTableColumn<ContactRow>[] = React.useMemo(() => [
     {
@@ -401,7 +437,7 @@ export function ContactsPage() {
             { id: "primary", label: "Set as Primary" },
             { id: "email",   label: "Email" },
             { id: "call",    label: "Call" },
-            { id: "remove",  label: "Remove", destructive: true },
+            { id: "remove",  label: "Remove", destructive: true, onSelect: () => void handleArchive(row.id) },
           ]}
         />
       ),
@@ -415,7 +451,7 @@ export function ContactsPage() {
       {/* KPI strip */}
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
-          {CONTACTS_KPI.map((cell) => (
+          {kpiCells.map((cell) => (
             <DashboardStatCell key={cell.title} {...cell} />
           ))}
         </DashboardStatRow>
@@ -434,8 +470,8 @@ export function ContactsPage() {
               <DashboardExportMenu
                 triggerLabel="Export selected"
                 items={[
-                  { id: "csv",  label: "Export selected • CSV" },
-                  { id: "all",  label: "Export all • CSV" },
+                  { id: "csv",  label: "Export selected • CSV", onSelect: () => void handleExport() },
+                  { id: "all",  label: "Export all • CSV", onSelect: () => void handleExport() },
                   { id: "pdf",  label: "Export as PDF" },
                 ]}
               />
@@ -466,8 +502,8 @@ export function ContactsPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV" },
-                  { id: "all-csv",  label: "Export all • CSV" },
+                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
+                  { id: "all-csv",  label: "Export all • CSV", onSelect: () => void handleExport() },
                   { id: "pdf",      label: "Export as PDF" },
                 ]}
               />
@@ -506,22 +542,24 @@ export function ContactsPage() {
       )}
 
       {/* table */}
-      <DashboardDataTable
-        columns={columns}
-        rows={pageRows}
-        getRowId={(row) => row.id}
-        emptyMessage="No contacts found"
-        selectable
-        selectedIds={selectedIds}
-        onSelectedIdsChange={setSelectedIds}
-        onRowClick={(row) => router.push(`/crm/contacts/${row.id}`)}
-      />
+      <div className={loading ? "opacity-60 transition-opacity" : undefined}>
+        <DashboardDataTable
+          columns={columns}
+          rows={rows}
+          getRowId={(row) => row.id}
+          emptyMessage={loading ? "Loading contacts…" : "No contacts found"}
+          selectable
+          selectedIds={selectedIds}
+          onSelectedIdsChange={setSelectedIds}
+          onRowClick={(row) => router.push(`/crm/contacts/${row.id}`)}
+        />
+      </div>
 
       {/* pagination */}
       <DashboardPagination
         page={safePage}
         pageSize={pageSize}
-        total={filtered.length}
+        total={total}
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
@@ -534,13 +572,22 @@ export function ContactsPage() {
         onChange={setDraftFilters}
         onApply={() => {
           setAppliedFilters(draftFilters);
-          setChips(chipsFromFilters(draftFilters));
+          setChips(
+            chipsFromFilters(draftFilters, {
+              customers,
+              roles: roleOptions,
+              reps,
+            }),
+          );
         }}
         onClearAll={() => {
           setDraftFilters(DEFAULT_FILTERS);
           setAppliedFilters(DEFAULT_FILTERS);
           setChips([]);
         }}
+        customerOptions={customers}
+        roleOptions={roleOptions}
+        repOptions={reps}
       />
 
       {/* saved views */}
@@ -552,15 +599,10 @@ export function ContactsPage() {
         onSelectView={setActiveViewId}
         onSaveNewView={() => setSaveNewOpen(true)}
         onViewAction={(viewId, action) => {
-          if (action === "delete") {
-            setSavedViews((prev) => prev.filter((v) => v.id !== viewId));
-            if (activeViewId === viewId) setActiveViewId(null);
-          }
+          if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const src = savedViews.find((v) => v.id === viewId);
-            if (!src) return;
-            const id = `view-${Date.now()}`;
-            setSavedViews((prev) => [...prev, { id, label: `${src.label} copy` }]);
+            if (src) void createView(`${src.label} copy`);
           }
         }}
       />
@@ -568,9 +610,7 @@ export function ContactsPage() {
         open={saveNewOpen}
         onClose={() => setSaveNewOpen(false)}
         onConfirm={({ name }) => {
-          const id = `view-${Date.now()}`;
-          setSavedViews((prev) => [...prev, { id, label: name }]);
-          setActiveViewId(id);
+          void createView(name);
         }}
       />
     </div>

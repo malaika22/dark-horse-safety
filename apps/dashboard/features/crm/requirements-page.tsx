@@ -24,22 +24,28 @@ import {
   DashboardToolbarButton,
   DashboardToolbarIcons,
   type DashboardDataTableColumn,
-  type DashboardSavedView,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
-import {
-  REQUIREMENTS_AFFECTED_TECHS,
-  REQUIREMENTS_AFFECTED_WO,
-  REQUIREMENTS_BLOCKED_BY,
-  REQUIREMENTS_BLOCKED_PROCESSES,
-  REQUIREMENTS_ENFORCEMENT,
-  REQUIREMENTS_KPI,
-  REQUIREMENTS_ROWS,
-  REQUIREMENTS_SAVED_VIEWS,
-  REQUIREMENTS_SORT_OPTIONS,
-  REQUIREMENTS_STATUS_WELLS,
-  type RequirementRow,
-} from "./data/requirements.mock";
+import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { mapRequirementRow } from "@/lib/crm-mappers";
+import { kpiCellsFromApi } from "@/lib/crm-ui";
+import { useCrmList } from "@/lib/use-crm-list";
+import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
+import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
+import { toastApiError, toastSuccess } from "@/lib/toast";
+import { REQUIREMENTS_KPI_SHELL, REQUIREMENTS_SORT_OPTIONS } from "./crm-constants";
+import type { RequirementRow } from "./crm-types";
+
+const REQUIREMENTS_AFFECTED_TECHS: { id: string; name: string; role: string }[] = [];
+const REQUIREMENTS_AFFECTED_WO: { id: string; workOrder: string; priority: string }[] = [];
+const REQUIREMENTS_BLOCKED_BY: { id: string; name: string; initials: string }[] = [];
+const REQUIREMENTS_BLOCKED_PROCESSES: string[] = [];
+const REQUIREMENTS_ENFORCEMENT: { id: string; label: string; rate: string }[] = [];
+const REQUIREMENTS_STATUS_WELLS: {
+  id: string;
+  label: string;
+  status: { label: string; variant: "success" | "warning" | "error" | "offline" | "neutral" };
+}[] = [];
 
 type RequirementFilters = {
   customer: string;
@@ -54,21 +60,6 @@ const DEFAULT_FILTERS: RequirementFilters = {
   enforcement: "",
   status: "",
 };
-
-const CUSTOMER_OPTIONS = [
-  "Permian Basin Energy",
-  "Lonestar Oilfield",
-  "Cactus Well Services",
-  "Rio Grande Resources",
-  "Delaware Basin Co.",
-  "Frontier Energy LLC",
-  "Summit Production",
-  "Vaquero Oil & Gas",
-];
-
-const TYPE_OPTIONS = ["Safety", "Contract", "Insurance", "HR"];
-const ENFORCEMENT_OPTIONS = ["Hard Block", "Soft Warn", "Advisory"];
-const STATUS_OPTIONS = ["Met", "Review", "Expiring", "Missing"];
 
 function FilterCheckMarkIcon({ className }: { className?: string }) {
   return (
@@ -142,7 +133,7 @@ function FilterSelectRow({
 }: {
   label: string;
   value: string;
-  options: string[];
+  options: { value: string; label: string }[];
   onChange: (v: string) => void;
 }) {
   return (
@@ -158,8 +149,8 @@ function FilterSelectRow({
         >
           <option value="" />
           {options.map((o) => (
-            <option key={o} value={o}>
-              {o}
+            <option key={o.value} value={o.value}>
+              {o.label}
             </option>
           ))}
         </select>
@@ -178,6 +169,10 @@ function RequirementsFiltersDrawer({
   onChange,
   onApply,
   onClearAll,
+  customerOptions,
+  typeOptions,
+  enforcementOptions,
+  statusOptions,
 }: {
   open: boolean;
   onClose: () => void;
@@ -185,6 +180,10 @@ function RequirementsFiltersDrawer({
   onChange: (f: RequirementFilters) => void;
   onApply: () => void;
   onClearAll: () => void;
+  customerOptions: { value: string; label: string }[];
+  typeOptions: { value: string; label: string }[];
+  enforcementOptions: { value: string; label: string }[];
+  statusOptions: { value: string; label: string }[];
 }) {
   function patch(p: Partial<RequirementFilters>) {
     onChange({ ...value, ...p });
@@ -245,25 +244,25 @@ function RequirementsFiltersDrawer({
           <FilterSelectRow
             label="Customer"
             value={value.customer}
-            options={CUSTOMER_OPTIONS}
+            options={customerOptions}
             onChange={(v) => patch({ customer: v })}
           />
           <FilterSelectRow
             label="Requirement Type"
             value={value.requirementType}
-            options={TYPE_OPTIONS}
+            options={typeOptions}
             onChange={(v) => patch({ requirementType: v })}
           />
           <FilterSelectRow
             label="Enforcement"
             value={value.enforcement}
-            options={ENFORCEMENT_OPTIONS}
+            options={enforcementOptions}
             onChange={(v) => patch({ enforcement: v })}
           />
           <FilterSelectRow
             label="Status"
             value={value.status}
-            options={STATUS_OPTIONS}
+            options={statusOptions}
             onChange={(v) => patch({ status: v })}
           />
         </div>
@@ -291,31 +290,6 @@ function RequirementsFiltersDrawer({
   );
 }
 
-function sortRows(
-  rows: RequirementRow[],
-  field: string,
-  dir: DashboardSortDirection,
-) {
-  return [...rows].sort((a, b) => {
-    const d = dir === "asc" ? 1 : -1;
-    switch (field) {
-      case "requirement":
-        return a.requirement.localeCompare(b.requirement) * d;
-      case "status":
-        return a.status.label.localeCompare(b.status.label) * d;
-      case "type":
-        return a.type.localeCompare(b.type) * d;
-      case "owner":
-        return a.owner.localeCompare(b.owner) * d;
-      case "due":
-        return a.due.localeCompare(b.due) * d;
-      case "review":
-        return a.review.label.localeCompare(b.review.label) * d;
-      default:
-        return a.customer.localeCompare(b.customer) * d;
-    }
-  });
-}
 
 function countTrailing(label: string) {
   return (
@@ -361,64 +335,68 @@ export function RequirementsPage() {
   const [filtersApplied, setFiltersApplied] = React.useState(false);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewOpen, setSaveNewOpen] = React.useState(false);
-  const [savedViews, setSavedViews] = React.useState<DashboardSavedView[]>(
-    REQUIREMENTS_SAVED_VIEWS,
-  );
-  const [activeViewId, setActiveViewId] = React.useState<string | null>(
-    "view-1",
+  const {
+    savedViews,
+    activeViewId,
+    setActiveViewId,
+    createView,
+    deleteView,
+  } = useCrmSavedViews("REQUIREMENTS");
+
+  const { lookups, customers } = useCrmLookups({ includeLocations: false });
+  const typeOptions = lookupOptions(lookups, "requirementTypes");
+  const enforcementOptions = lookupOptions(lookups, "enforcementLevels");
+  const statusOptions = lookupOptions(lookups, "requirementStatuses");
+
+  const extraParams = React.useMemo(() => {
+    if (!filtersApplied) return undefined;
+    const params: Record<string, string | undefined> = {};
+    if (appliedFilters.customer) params.customerId = appliedFilters.customer;
+    if (appliedFilters.requirementType)
+      params.requirementType = appliedFilters.requirementType;
+    if (appliedFilters.enforcement)
+      params.enforcementLevel = appliedFilters.enforcement;
+    if (appliedFilters.status) params.status = appliedFilters.status;
+    return Object.keys(params).length ? params : undefined;
+  }, [appliedFilters, filtersApplied]);
+
+  const { rows, total, kpiData, loading } = useCrmList({
+    list: (p) => crmApi.listRequirements(p),
+    mapRow: mapRequirementRow,
+    kpi: () => crmApi.requirementsKpi(),
+    q: query,
+    page,
+    pageSize,
+    sort: sortField,
+    direction: sortDir,
+    extraParams,
+  });
+
+  const kpiCells = React.useMemo(
+    () => kpiCellsFromApi(REQUIREMENTS_KPI_SHELL, kpiData),
+    [kpiData],
   );
 
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let rows = REQUIREMENTS_ROWS.filter((row) => {
-      if (q) {
-        const hay = [
-          row.customer,
-          row.code,
-          row.requirement,
-          row.owner,
-          row.type,
-        ]
-          .join(" ")
-          .toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      if (filtersApplied) {
-        if (
-          appliedFilters.customer &&
-          row.customer !== appliedFilters.customer
-        ) {
-          return false;
-        }
-        if (
-          appliedFilters.requirementType &&
-          row.type !== appliedFilters.requirementType
-        ) {
-          return false;
-        }
-        if (
-          appliedFilters.status &&
-          row.status.label.toLowerCase() !==
-            appliedFilters.status.toLowerCase()
-        ) {
-          return false;
-        }
-      }
-      return true;
-    });
-    return sortRows(rows, sortField, sortDir);
-  }, [query, sortField, sortDir, appliedFilters, filtersApplied]);
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const bulkOpen = selectedIds.length > 0;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, pageCount);
-  const pageRows = filtered.slice(
-    (safePage - 1) * pageSize,
-    safePage * pageSize,
-  );
 
-  React.useEffect(() => {
-    setPage(1);
-  }, [query, sortField, sortDir, pageSize, filtersApplied]);
+  React.useEffect(() => { setPage(1); }, [query, appliedFilters, sortField, sortDir, pageSize, filtersApplied]);
+
+  async function handleExport() {
+    try {
+      const res = await crmApi.exportRequirements({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDir,
+        ...extraParams,
+      });
+      downloadCsv(res.data.csv, res.data.filename);
+      toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
 
   const columns: DashboardDataTableColumn<RequirementRow>[] = React.useMemo(
     () => [
@@ -525,13 +503,11 @@ export function RequirementsPage() {
     [router],
   );
 
-  const bulkOpen = selectedIds.length > 0;
-
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
-          {REQUIREMENTS_KPI.map((cell) => (
+          {kpiCells.map((cell) => (
             <DashboardStatCell key={cell.title} {...cell} />
           ))}
         </DashboardStatRow>
@@ -598,8 +574,8 @@ export function RequirementsPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV" },
-                  { id: "all-csv", label: "Export all • CSV" },
+                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
+                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
                   { id: "pdf", label: "Export as PDF" },
                 ]}
               />
@@ -610,9 +586,9 @@ export function RequirementsPage() {
 
       <DashboardDataTable
         columns={columns}
-        rows={pageRows}
+        rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage="No requirements found"
+        emptyMessage={loading ? "Loading…" : "No requirements found"}
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -622,7 +598,7 @@ export function RequirementsPage() {
       <DashboardPagination
         page={safePage}
         pageSize={pageSize}
-        total={filtered.length}
+        total={total}
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
@@ -763,6 +739,10 @@ export function RequirementsPage() {
           setAppliedFilters(DEFAULT_FILTERS);
           setFiltersApplied(false);
         }}
+        customerOptions={customers}
+        typeOptions={typeOptions}
+        enforcementOptions={enforcementOptions}
+        statusOptions={statusOptions}
       />
 
       <DashboardSaveViewsModal
@@ -773,15 +753,10 @@ export function RequirementsPage() {
         onSelectView={setActiveViewId}
         onSaveNewView={() => setSaveNewOpen(true)}
         onViewAction={(viewId, action) => {
-          if (action === "delete") {
-            setSavedViews((p) => p.filter((v) => v.id !== viewId));
-            if (activeViewId === viewId) setActiveViewId(null);
-          }
+          if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
-            const src = savedViews.find((v) => v.id === viewId);
-            if (!src) return;
-            const id = `view-${Date.now()}`;
-            setSavedViews((p) => [...p, { id, label: `${src.label} copy` }]);
+            const source = savedViews.find((v) => v.id === viewId);
+            if (source) void createView(`${source.label} copy`);
           }
         }}
       />
@@ -789,9 +764,7 @@ export function RequirementsPage() {
         open={saveNewOpen}
         onClose={() => setSaveNewOpen(false)}
         onConfirm={({ name }) => {
-          const id = `view-${Date.now()}`;
-          setSavedViews((p) => [...p, { id, label: name }]);
-          setActiveViewId(id);
+          void createView(name);
         }}
       />
     </div>

@@ -16,7 +16,6 @@ import {
   DashboardStatRow,
   DashboardToolbarButton,
   DashboardToolbarIcons,
-  type DashboardSavedView,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
 import {
@@ -25,13 +24,14 @@ import {
   type CrmLocationCard,
   type CrmMapPin,
 } from "./crm-map-split-view";
-import {
-  ROUTE_RULES_KPI,
-  ROUTE_RULES_LOCATION_CARDS,
-  ROUTE_RULES_MAP_PINS,
-  ROUTE_RULES_SAVED_VIEWS,
-  ROUTE_RULES_SORT_OPTIONS,
-} from "./data/route-rules.mock";
+import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { mapRouteLocationCard } from "@/lib/crm-mappers";
+import { kpiCellsFromApi, latLngToMapPin } from "@/lib/crm-ui";
+import { useCrmList } from "@/lib/use-crm-list";
+import { useCrmLookups } from "@/lib/use-crm-lookups";
+import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
+import { toastApiError, toastSuccess } from "@/lib/toast";
+import { ROUTE_RULES_KPI_SHELL, ROUTE_RULES_SORT_OPTIONS } from "./crm-constants";
 
 type RouteFilters = {
   customer: string;
@@ -50,28 +50,6 @@ const DEFAULT_FILTERS: RouteFilters = {
   geofenceTo: "",
   routeAssigned: false,
 };
-
-const CUSTOMER_OPTIONS = [
-  "Permian Basin Energy",
-  "Lonestar Oilfield",
-  "Delaware Basin Co.",
-  "Frontier Energy LLC",
-  "Rio Grande Resources",
-  "Cactus Well Services",
-  "Summit Production",
-  "Vaquero Oil & Gas",
-];
-
-const SITE_OPTIONS = [
-  "Wolfcamp 12-4H",
-  "Bone Spring 8-2H",
-  "Spraberry 5-1H",
-  "Avalon 3-3H",
-  "Reef Lease 9-1H",
-  "Nolan 7-2H",
-  "Woodford 10-5H",
-  "Cotton Draw 4-1H",
-];
 
 function FilterCheckMarkIcon({ className }: { className?: string }) {
   return (
@@ -145,7 +123,7 @@ function FilterSelectRow({
 }: {
   label: string;
   value: string;
-  options: string[];
+  options: { value: string; label: string }[];
   onChange: (v: string) => void;
 }) {
   return (
@@ -161,8 +139,8 @@ function FilterSelectRow({
         >
           <option value="" />
           {options.map((o) => (
-            <option key={o} value={o}>
-              {o}
+            <option key={o.value} value={o.value}>
+              {o.label}
             </option>
           ))}
         </select>
@@ -255,6 +233,9 @@ function RouteRulesFiltersDrawer({
   onChange,
   onApply,
   onClearAll,
+  customerOptions,
+  siteOptions,
+  onCustomerChange,
 }: {
   open: boolean;
   onClose: () => void;
@@ -262,6 +243,9 @@ function RouteRulesFiltersDrawer({
   onChange: (f: RouteFilters) => void;
   onApply: () => void;
   onClearAll: () => void;
+  customerOptions: { value: string; label: string }[];
+  siteOptions: { value: string; label: string }[];
+  onCustomerChange?: (customerId: string) => void;
 }) {
   function patch(p: Partial<RouteFilters>) {
     onChange({ ...value, ...p });
@@ -322,13 +306,16 @@ function RouteRulesFiltersDrawer({
           <FilterSelectRow
             label="Customer"
             value={value.customer}
-            options={CUSTOMER_OPTIONS}
-            onChange={(v) => patch({ customer: v })}
+            options={customerOptions}
+            onChange={(v) => {
+              patch({ customer: v, site: "" });
+              onCustomerChange?.(v);
+            }}
           />
           <FilterSelectRow
             label="Site"
             value={value.site}
-            options={SITE_OPTIONS}
+            options={siteOptions}
             onChange={(v) => patch({ site: v })}
           />
           <FilterToggleRow
@@ -387,75 +374,102 @@ export function RouteRulesPage() {
   const [filtersApplied, setFiltersApplied] = React.useState(false);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
-  const [savedViews, setSavedViews] = React.useState<DashboardSavedView[]>(
-    ROUTE_RULES_SAVED_VIEWS,
-  );
-  const [activeViewId, setActiveViewId] = React.useState<string | null>(
-    "view-1",
+  const {
+    savedViews,
+    activeViewId,
+    setActiveViewId,
+    createView,
+    deleteView,
+  } = useCrmSavedViews("ROUTE_RULES");
+
+  const { customers, locations, reloadEntities } = useCrmLookups({
+    includeLocations: true,
+  });
+
+  const extraParams = React.useMemo(() => {
+    if (!filtersApplied) return undefined;
+    const params: Record<string, string | boolean | undefined> = {};
+    if (appliedFilters.customer) params.customerId = appliedFilters.customer;
+    if (appliedFilters.site) params.locationId = appliedFilters.site;
+    if (appliedFilters.gpsRequired) params.gpsRequired = true;
+    return Object.keys(params).length ? params : undefined;
+  }, [appliedFilters, filtersApplied]);
+
+  const { rows, total, kpiData, loading } = useCrmList({
+    list: (p) => crmApi.listRouteRules(p),
+    mapRow: mapRouteLocationCard,
+    kpi: () => crmApi.routeRulesKpi(),
+    q: query,
+    page: 1,
+    pageSize: 100,
+    sort: sortField,
+    direction: sortDirection,
+    extraParams,
+  });
+
+  const kpiCells = React.useMemo(
+    () => kpiCellsFromApi(ROUTE_RULES_KPI_SHELL, kpiData),
+    [kpiData],
   );
 
-  const filteredCards = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let cards = ROUTE_RULES_LOCATION_CARDS;
-    if (q) {
-      cards = cards.filter((card) =>
-        [card.name, card.customer, card.city]
-          .join(" ")
-          .toLowerCase()
-          .includes(q),
-      );
-    }
-    if (filtersApplied) {
-      cards = cards.filter((card) => {
-        if (
-          appliedFilters.customer &&
-          card.customer !== appliedFilters.customer
-        ) {
-          return false;
-        }
-        if (appliedFilters.site && card.name !== appliedFilters.site) {
-          return false;
-        }
-        if (
-          appliedFilters.gpsRequired &&
-          card.gpsStatus.toLowerCase() !== "gps set"
-        ) {
-          return false;
-        }
-        return true;
-      });
-    }
-    const dir = sortDirection === "asc" ? 1 : -1;
-    return [...cards].sort((a, b) => {
-      switch (sortField) {
-        case "customer":
-          return a.customer.localeCompare(b.customer) * dir;
-        case "status":
-          return a.status.label.localeCompare(b.status.label) * dir;
-        case "openJobs":
-          return (a.openJobs - b.openJobs) * dir;
-        case "name":
-        default:
-          return a.name.localeCompare(b.name) * dir;
+  const [mapPins, setMapPins] = React.useState<CrmMapPin[]>([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.locationsMapPins();
+        if (cancelled) return;
+        setMapPins(
+          res.data.map((pin) => {
+            const mapped = latLngToMapPin(
+              pin.id,
+              pin.label ?? pin.name ?? pin.id,
+              pin.latitude,
+              pin.longitude,
+              pin.active ?? true,
+            );
+            return {
+              id: mapped.id,
+              label: mapped.label,
+              x: pin.x ?? mapped.x,
+              y: pin.y ?? mapped.y,
+              highlighted: mapped.active,
+            };
+          }),
+        );
+      } catch (err) {
+        toastApiError(err);
+        setMapPins([]);
       }
-    });
-  }, [query, sortField, sortDirection, appliedFilters, filtersApplied]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const mapPins: CrmMapPin[] = ROUTE_RULES_MAP_PINS.map((pin) => ({
-    id: pin.id,
-    label: pin.label,
-    x: pin.x,
-    y: pin.y,
-    highlighted: pin.geofenced,
-  }));
+  async function handleExport() {
+    try {
+      const res = await crmApi.exportRouteRules({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDirection,
+        ...extraParams,
+      });
+      downloadCsv(res.data.csv, res.data.filename);
+      toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
 
-  const listCards: CrmLocationCard[] = filteredCards;
+  void total;
+  const listCards: CrmLocationCard[] = rows;
 
   return (
-    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
+    <div className={`space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5 ${loading ? "opacity-60" : ""}`}>
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
-          {ROUTE_RULES_KPI.map((cell) => (
+          {kpiCells.map((cell) => (
             <DashboardStatCell key={cell.title} {...cell} />
           ))}
         </DashboardStatRow>
@@ -501,8 +515,8 @@ export function RouteRulesPage() {
             </DashboardToolbarButton>
             <DashboardExportMenu
               items={[
-                { id: "view-csv", label: "Export current view • CSV" },
-                { id: "all-csv", label: "Export all • CSV" },
+                { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
+                { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
                 { id: "pdf", label: "Export as PDF" },
               ]}
             />
@@ -557,6 +571,14 @@ export function RouteRulesPage() {
           setDraftFilters(DEFAULT_FILTERS);
           setAppliedFilters(DEFAULT_FILTERS);
           setFiltersApplied(false);
+          void reloadEntities();
+        }}
+        customerOptions={customers}
+        siteOptions={locations}
+        onCustomerChange={(customerId) => {
+          void reloadEntities({
+            customerId: customerId || undefined,
+          });
         }}
       />
 
@@ -568,18 +590,10 @@ export function RouteRulesPage() {
         onSelectView={setActiveViewId}
         onSaveNewView={() => setSaveNewViewOpen(true)}
         onViewAction={(viewId, action) => {
-          if (action === "delete") {
-            setSavedViews((prev) => prev.filter((v) => v.id !== viewId));
-            if (activeViewId === viewId) setActiveViewId(null);
-          }
+          if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((v) => v.id === viewId);
-            if (!source) return;
-            const id = `view-${Date.now()}`;
-            setSavedViews((prev) => [
-              ...prev,
-              { id, label: `${source.label} copy` },
-            ]);
+            if (source) void createView(`${source.label} copy`);
           }
         }}
       />
@@ -588,9 +602,7 @@ export function RouteRulesPage() {
         open={saveNewViewOpen}
         onClose={() => setSaveNewViewOpen(false)}
         onConfirm={({ name }) => {
-          const id = `view-${Date.now()}`;
-          setSavedViews((prev) => [...prev, { id, label: name }]);
-          setActiveViewId(id);
+          void createView(name);
         }}
       />
     </div>

@@ -1,27 +1,28 @@
+"use client";
+
+import * as React from "react";
 import type { ReactNode } from "react";
 import {
-  DashboardBadge,
   DashboardHorizontalBarChart,
   DashboardPanel,
+  DashboardStatCell,
+  DashboardStatGrid,
+  DashboardStatRow,
   DashboardWidgetHeader,
   DashboardWorkloadBar,
   cn,
 } from "@dark-horse-safety/ui";
 import {
-  ACCOUNT_SETUP_HEALTH,
-  EOD_COMPLIANCE,
-  FIELD_EVENTS_TODAY,
-  FIELD_EVENTS_WEEK,
-  MSA_RENEWALS,
-  QUOTE_PIPELINE,
-  QUOTE_PIPELINE_SUMMARY,
-  REP_PERFORMANCE,
-  SALES_ACTIVITY,
-  SETUP_HEALTH_LEGEND,
-  repEodBadgeVariant,
-  type SalesActivityIcon,
-  type SetupHealthTone,
-} from "./data/overview.mock";
+  crmApi,
+  type CrmDashboardOverview,
+} from "@/lib/crm-api";
+import { formatKpiValue, kpiCellsFromApi } from "@/lib/crm-ui";
+import {
+  CUSTOMERS_KPI_SHELL,
+  EOD_KPI_SHELL,
+  QUOTES_KPI_SHELL,
+  SALES_KPI_SHELL,
+} from "./crm-constants";
 
 /** Figma pattern — gray section title above the panel card. */
 export function CrmWidgetSection({
@@ -43,105 +44,63 @@ export function CrmWidgetSection({
   );
 }
 
-function SalesActivityIconGlyph({ type }: { type: SalesActivityIcon }) {
-  switch (type) {
-    case "dollar":
-      return (
-        <span className="font-sans text-[13px] font-[590] leading-none text-[#FDFDFF]">
-          $
-        </span>
-      );
-    case "building":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path
-            d="M5 20V8l7-4 7 4v12"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinejoin="round"
-          />
-          <path d="M9 20v-6h6v6" stroke="currentColor" strokeWidth="1.5" />
-        </svg>
-      );
-    case "quote":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path
-            d="M8 4h9l3 3v13a1 1 0 01-1 1H8a1 1 0 01-1-1V5a1 1 0 011-1z"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinejoin="round"
-          />
-        </svg>
-      );
-    case "visit":
-      return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path
-            d="M12 21s7-4.5 7-10a7 7 0 10-14 0c0 5.5 7 10 7 10z"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          />
-          <circle cx="12" cy="11" r="2" fill="currentColor" />
-        </svg>
-      );
-  }
-}
+const DashboardCtx = React.createContext<CrmDashboardOverview | null>(null);
 
-function FieldEventIcon({ type }: { type: "pin" | "phone" | "users" }) {
-  if (type === "phone") {
-    return (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <path
-          d="M6.5 4h3l1.5 4-2 1.5a11 11 0 005 5l1.5-2 4 1.5v3a1.5 1.5 0 01-1.5 1.5C10.4 21 3 13.6 3 6.5A1.5 1.5 0 014.5 5z"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-  if (type === "users") {
-    return (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <circle cx="9" cy="9" r="3" stroke="currentColor" strokeWidth="1.5" />
-        <path
-          d="M3 20c0-3 2.7-5 6-5s6 2 6 5"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-        <path
-          d="M16 11a3 3 0 100-6M19 20c0-2.2-1.5-4-3.5-4.5"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      </svg>
-    );
-  }
+export function CrmDashboardDataProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [data, setData] = React.useState<CrmDashboardOverview | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.dashboardOverview();
+        if (!cancelled) setData(res.data);
+      } catch {
+        if (!cancelled) setData(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M12 21s7-4.5 7-10a7 7 0 10-14 0c0 5.5 7 10 7 10z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <circle cx="12" cy="11" r="2" fill="currentColor" />
-    </svg>
+    <DashboardCtx.Provider value={data}>{children}</DashboardCtx.Provider>
   );
 }
 
-const setupToneColor: Record<SetupHealthTone, string> = {
-  healthy: "#22C55E",
-  warning: "#FF9500",
-  critical: "#FF4D4D",
-};
+function useDashboard() {
+  return React.useContext(DashboardCtx);
+}
 
-const numCell =
-  "py-3 pr-3 text-right font-sans text-[12px] font-normal uppercase tabular-nums leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]";
+function dash(n: number | null | undefined) {
+  return formatKpiValue(n);
+}
 
 export function CrmEodComplianceCard() {
+  const data = useDashboard();
+  const eod = data?.eod;
+  const cells = React.useMemo(
+    () =>
+      kpiCellsFromApi(EOD_KPI_SHELL, {
+        today: eod?.today ?? 0,
+        submitted: eod?.submitted ?? 0,
+        pending: eod?.pending ?? 0,
+        activities: eod?.activities ?? 0,
+        pipeline: eod?.pipeline ?? 0,
+      }),
+    [eod],
+  );
+  const submitted = eod?.submitted ?? 0;
+  const today = eod?.today ?? 0;
+  const pending = eod?.pending ?? 0;
+  const hasData = submitted > 0 || today > 0 || pending > 0;
+  const total = Math.max(today, submitted + pending, 1);
+
   return (
     <div>
       <div className="flex items-start justify-between gap-3">
@@ -150,63 +109,108 @@ export function CrmEodComplianceCard() {
             Compliance status
           </p>
           <p className="mt-3 font-sans text-[28px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[32px]">
-            {EOD_COMPLIANCE.complete}/{EOD_COMPLIANCE.total}
+            {hasData ? `${submitted}/${Math.max(today, submitted + pending)}` : "—"}
           </p>
         </div>
         <p className="shrink-0 pt-0.5 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]">
-          {EOD_COMPLIANCE.dateLabel}
+          Live
         </p>
       </div>
       <div className="mt-5">
-        <DashboardWorkloadBar
-          segments={EOD_COMPLIANCE.segments}
-          total={EOD_COMPLIANCE.barTotal}
-          showTotal={false}
-        />
+        {hasData ? (
+          <DashboardWorkloadBar
+            segments={[
+              {
+                count: Math.max(submitted, 0),
+                tone: "success",
+                label: "Submitted",
+              },
+              {
+                count: Math.max(pending, Math.max(0, total - submitted)),
+                tone: "error",
+                label: "Pending",
+              },
+            ]}
+            total={total}
+            showTotal={false}
+          />
+        ) : (
+          <p className="font-sans text-[12px] uppercase text-[#959597]">
+            No EOD data yet
+          </p>
+        )}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {cells.slice(0, 3).map((cell) => (
+          <div key={cell.title} className="min-w-0">
+            <p className="truncate text-[10px] uppercase text-[#959597]">
+              {cell.title}
+            </p>
+            <p className="mt-1 text-[13px] font-[590] text-[#FDFDFF]">
+              {cell.value}
+            </p>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
 export function CrmRepPerformanceTable() {
+  const data = useDashboard();
+  const rows = [
+    {
+      label: "Customers",
+      a: dash(data?.customers.active),
+      b: dash(data?.customers.needsReview),
+      c: dash(data?.customers.archived),
+    },
+    {
+      label: "Sales",
+      a: dash(data?.sales.thisWeek),
+      b: dash(data?.sales.calls),
+      c: dash(data?.sales.visits),
+    },
+    {
+      label: "Quotes",
+      a: dash(data?.quotes.draft),
+      b: dash(data?.quotes.sent),
+      c: dash(data?.quotes.approved),
+    },
+  ];
   return (
     <div className="overflow-x-auto [-ms-overflow-style:auto] [scrollbar-width:thin]">
-      <table className="w-full min-w-0 border-collapse text-left md:min-w-[520px]">
+      <table className="w-full min-w-0 border-collapse text-left md:min-w-[420px]">
         <thead>
           <tr className="divider-row">
-            {["Rep", "Calls", "Visits", "Quotes", "Pipeline", "Eod"].map(
-              (header) => (
-                <th
-                  key={header}
-                  scope="col"
-                  className={cn(
-                    "pb-3 pr-2 font-sans text-[10px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] last:pr-0 sm:pr-3 sm:text-[11px] md:text-[12px]",
-                    header !== "Rep" && header !== "Eod" && "text-right",
-                    header === "Eod" && "text-right",
-                    (header === "Visits" || header === "Pipeline") &&
-                      "hidden md:table-cell",
-                  )}
-                >
-                  {header}
-                </th>
-              ),
-            )}
+            {["Metric", "A", "B", "C"].map((header) => (
+              <th
+                key={header}
+                scope="col"
+                className={cn(
+                  "pb-3 pr-2 font-sans text-[10px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] last:pr-0 sm:pr-3 sm:text-[11px] md:text-[12px]",
+                  header !== "Metric" && "text-right",
+                )}
+              >
+                {header}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {REP_PERFORMANCE.map((row) => (
-            <tr key={row.rep} className="divider-row">
-              <td className="max-w-[7rem] truncate py-3 pr-2 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] sm:max-w-none sm:pr-3 sm:text-[12px] md:text-[13px]">
-                {row.rep}
+          {rows.map((row) => (
+            <tr key={row.label} className="divider-row">
+              <td className="py-3 pr-2 font-sans text-[12px] uppercase text-[#FDFDFF]">
+                {row.label}
               </td>
-              <td className={numCell}>{row.calls}</td>
-              <td className={cn(numCell, "hidden md:table-cell")}>{row.visits}</td>
-              <td className={numCell}>{row.quotes}</td>
-              <td className={cn(numCell, "hidden md:table-cell")}>{row.pipeline}</td>
-              <td className="py-3 text-right">
-                <DashboardBadge variant={repEodBadgeVariant(row.eodTone)} pill>
-                  {row.eod}
-                </DashboardBadge>
+              <td className="py-3 pr-3 text-right font-sans text-[12px] tabular-nums text-[#FDFDFF]">
+                {row.a}
+              </td>
+              <td className="py-3 pr-3 text-right font-sans text-[12px] tabular-nums text-[#FDFDFF]">
+                {row.b}
+              </td>
+              <td className="py-3 text-right font-sans text-[12px] tabular-nums text-[#FDFDFF]">
+                {row.c}
               </td>
             </tr>
           ))}
@@ -217,26 +221,34 @@ export function CrmRepPerformanceTable() {
 }
 
 export function CrmSalesActivityList() {
+  const data = useDashboard();
+  const recent = data?.recentSales ?? [];
+
+  if (recent.length === 0) {
+    return (
+      <p className="py-3 font-sans text-[12px] uppercase text-[#959597]">
+        No recent sales activity —
+      </p>
+    );
+  }
+
   return (
     <ul className="list-none space-y-0">
-      {SALES_ACTIVITY.map((item) => (
+      {recent.map((item) => (
         <li
-          key={item.title}
-          className="flex items-center gap-3 divider-row py-3.5"
+          key={item.id}
+          className="flex items-center justify-between gap-3 divider-row py-3.5"
         >
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#2D2D30] bg-[#1A1A1A] text-[#FDFDFF]">
-            <SalesActivityIconGlyph type={item.icon} />
-          </span>
           <div className="min-w-0 flex-1">
             <p className="truncate font-sans text-[12px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]">
-              {item.title}
+              {item.subject || item.type}
             </p>
             <p className="mt-1.5 truncate font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]">
-              {item.subtitle}
+              {[item.customer, item.rep].filter(Boolean).join(" · ") || "—"}
             </p>
           </div>
-          <span className="shrink-0 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]">
-            {item.time}
+          <span className="shrink-0 font-sans text-[12px] font-[590] uppercase tabular-nums text-[#FDFDFF]">
+            {item.code || "—"}
           </span>
         </li>
       ))}
@@ -245,18 +257,29 @@ export function CrmSalesActivityList() {
 }
 
 export function CrmMsaRenewalList() {
+  const data = useDashboard();
+  const cells = React.useMemo(
+    () =>
+      kpiCellsFromApi(CUSTOMERS_KPI_SHELL, {
+        total: data?.customers.total ?? 0,
+        active: data?.customers.active ?? 0,
+        needsReview: data?.customers.needsReview ?? 0,
+        archived: data?.customers.archived ?? 0,
+      }),
+    [data],
+  );
   return (
     <ul className="list-none space-y-0">
-      {MSA_RENEWALS.map((item) => (
+      {cells.map((cell) => (
         <li
-          key={item.client}
+          key={cell.title}
           className="flex items-center justify-between gap-3 divider-row py-3.5"
         >
           <span className="min-w-0 truncate font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]">
-            {item.client}
+            {cell.title}
           </span>
           <span className="shrink-0 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]">
-            {item.due}
+            {cell.value}
           </span>
         </li>
       ))}
@@ -265,103 +288,128 @@ export function CrmMsaRenewalList() {
 }
 
 export function CrmFieldEventsWeek() {
+  const data = useDashboard();
+  const items = [
+    { label: "Calls", count: data?.sales.calls },
+    { label: "Visits", count: data?.sales.visits },
+    { label: "Meetings", count: data?.sales.meetings },
+    { label: "Follow-ups", count: data?.sales.followUps },
+  ];
   return (
-    <div>
-      <div className="flex items-start justify-between gap-1 overflow-x-auto pb-0.5 scrollbar-hidden sm:gap-2">
-        {FIELD_EVENTS_WEEK.map((day, index) => (
-          <div
-            key={`${day.day}-${index}`}
-            className="flex min-w-[2rem] flex-1 flex-col items-center gap-1.5 sm:min-w-0 sm:gap-2"
-          >
-            <span
-              className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-full font-sans text-[10px] font-[590] uppercase leading-none tracking-[-0.02em] sm:h-8 sm:w-8 sm:text-[11px] md:h-9 md:w-9 md:text-[12px]",
-                day.isToday
-                  ? "bg-[#FDFDFF] text-[#0D0D0D]"
-                  : "text-[#959597]",
-              )}
-            >
-              {day.day}
-            </span>
-            <span className="font-sans text-[11px] font-[590] uppercase tabular-nums leading-none tracking-[-0.02em] text-[#FDFDFF] sm:text-[12px] md:text-[14px]">
-              {day.count}
-            </span>
-          </div>
-        ))}
-      </div>
-      <ul className="divider-section-top mt-4 list-none space-y-0 pt-1">
-        {FIELD_EVENTS_TODAY.map((item) => (
-          <li
-            key={item.label}
-            className="flex items-center justify-between gap-3 divider-row py-3"
-          >
-            <span className="inline-flex items-center gap-2.5 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[13px]">
-              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-[#FDFDFF]">
-                <FieldEventIcon type={item.icon} />
-              </span>
-              {item.label}
-            </span>
-            <span className="font-sans text-[12px] font-[590] uppercase tabular-nums leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]">
-              {item.count}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <ul className="list-none space-y-0">
+      {items.map((item) => (
+        <li
+          key={item.label}
+          className="flex items-center justify-between gap-3 divider-row py-3"
+        >
+          <span className="font-sans text-[12px] font-normal uppercase text-[#959597]">
+            {item.label}
+          </span>
+          <span className="font-sans text-[12px] font-[590] uppercase tabular-nums text-[#FDFDFF]">
+            {dash(item.count)}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
 export function CrmQuotePipelinePanel() {
+  const data = useDashboard();
+  const q = data?.quotes;
+  const rawItems = [
+    { label: "Draft", value: q?.draft ?? 0, tone: "default" as const },
+    { label: "Sent", value: q?.sent ?? 0, tone: "default" as const },
+    { label: "Approved", value: q?.approved ?? 0, tone: "success" as const },
+    { label: "Converted", value: q?.converted ?? 0, tone: "critical" as const },
+  ];
+  const hasBars = rawItems.some((i) => i.value > 0);
+  const cells = React.useMemo(
+    () =>
+      kpiCellsFromApi(QUOTES_KPI_SHELL, {
+        draft: q?.draft ?? 0,
+        sent: q?.sent ?? 0,
+        approved: q?.approved ?? 0,
+        expired: q?.expired ?? 0,
+        converted: q?.converted ?? 0,
+      }),
+    [q],
+  );
+
   return (
     <div>
-      <DashboardHorizontalBarChart items={QUOTE_PIPELINE} />
+      {hasBars ? (
+        <DashboardHorizontalBarChart items={rawItems} />
+      ) : (
+        <p className="py-2 font-sans text-[12px] uppercase text-[#959597]">
+          No quote pipeline data —
+        </p>
+      )}
       <div className="divider-section-top mt-4 grid grid-cols-2 gap-4 pt-4 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[12px]">
-        <div>
-          <p className="text-[#959597]">$ open</p>
-          <p className="mt-1.5 font-[590] text-[#FDFDFF]">
-            {QUOTE_PIPELINE_SUMMARY.open}
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-[#959597]">% conversion</p>
-          <p className="mt-1.5 font-[590] text-[#FDFDFF]">
-            {QUOTE_PIPELINE_SUMMARY.conversion}
-          </p>
-        </div>
+        {cells.slice(0, 2).map((cell) => (
+          <div key={cell.title}>
+            <p className="text-[#959597]">{cell.title}</p>
+            <p className="mt-1.5 font-[590] text-[#FDFDFF]">{cell.value}</p>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-export function CrmAccountSetupHealth({
-  items = ACCOUNT_SETUP_HEALTH,
-}: {
-  items?: {
-    label: string;
-    value: number;
-    total: number;
-    tone: SetupHealthTone;
-  }[];
-}) {
+export function CrmAccountSetupHealth() {
+  const data = useDashboard();
+  const total = data?.customers.total ?? 0;
+  const items = [
+    {
+      label: "Active",
+      value: data?.customers.active ?? 0,
+      tone: "healthy" as const,
+    },
+    {
+      label: "Needs review",
+      value: data?.customers.needsReview ?? 0,
+      tone: "warning" as const,
+    },
+    {
+      label: "Archived",
+      value: data?.customers.archived ?? 0,
+      tone: "critical" as const,
+    },
+  ];
+  const toneColor = {
+    healthy: "#22C55E",
+    warning: "#FF9500",
+    critical: "#FF4D4D",
+  } as const;
+
+  if (total === 0) {
+    return (
+      <p className="py-2 font-sans text-[12px] uppercase text-[#959597]">
+        No account setup data —
+      </p>
+    );
+  }
+
   return (
     <div>
       <ul className="space-y-4">
         {items.map((row) => {
-          const pct = Math.round((row.value / row.total) * 100);
+          const pct = Math.round((row.value / Math.max(total, 1)) * 100);
           return (
             <li key={row.label}>
               <div className="mb-2 flex items-center justify-between gap-3 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[12px]">
                 <span className="text-[#959597]">{row.label}</span>
                 <span className="font-[590] tabular-nums text-[#FDFDFF]">
-                  {row.value}/{row.total}
+                  {dash(row.value)}/{dash(total)}
                 </span>
               </div>
               <div className="h-3 overflow-hidden rounded-full bg-[#2A2A2A]">
                 <div
                   className="h-full rounded-full transition-all"
                   style={{
-                    width: `${pct}%`,
-                    backgroundColor: setupToneColor[row.tone],
+                    width: `${row.value === 0 ? 0 : Math.max(pct, 2)}%`,
+                    backgroundColor: toneColor[row.tone],
                   }}
                 />
               </div>
@@ -369,20 +417,65 @@ export function CrmAccountSetupHealth({
           );
         })}
       </ul>
-      <div className="divider-section-top mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 pt-4">
-        {SETUP_HEALTH_LEGEND.map((item) => (
-          <span
-            key={item.label}
-            className="inline-flex h-4 items-center gap-1.5 font-sans text-[10px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[11px]"
-          >
-            <i
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ backgroundColor: item.color }}
-            />
-            {item.label}
-          </span>
-        ))}
-      </div>
     </div>
+  );
+}
+
+/** Compact KPI strip used by overview layout when needed. */
+export function CrmLiveKpiStrip() {
+  const data = useDashboard();
+  const cells = React.useMemo(
+    () =>
+      kpiCellsFromApi(CUSTOMERS_KPI_SHELL, {
+        total: data?.customers.total ?? 0,
+        active: data?.customers.active ?? 0,
+        needsReview: data?.customers.needsReview ?? 0,
+        archived: data?.customers.archived ?? 0,
+      }),
+    [data],
+  );
+  return (
+    <DashboardStatGrid>
+      <DashboardStatRow columns={4}>
+        {cells.map((cell) => (
+          <DashboardStatCell key={cell.title} {...cell} />
+        ))}
+      </DashboardStatRow>
+    </DashboardStatGrid>
+  );
+}
+
+/** @deprecated kept for imports — prefer sales recent list */
+export function CrmSalesKpiFallbackList() {
+  const data = useDashboard();
+  const cells = React.useMemo(
+    () =>
+      kpiCellsFromApi(SALES_KPI_SHELL, {
+        thisWeek: data?.sales.thisWeek ?? 0,
+        calls: data?.sales.calls ?? 0,
+        visits: data?.sales.visits ?? 0,
+        meetings: data?.sales.meetings ?? 0,
+        followUps: data?.sales.followUps ?? 0,
+      }),
+    [data],
+  );
+  return (
+    <ul className="list-none space-y-0">
+      {cells.map((cell) => (
+        <li
+          key={cell.title}
+          className="flex items-center justify-between gap-3 divider-row py-3.5"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-sans text-[12px] font-[590] uppercase text-[#FDFDFF]">
+              {cell.title}
+            </p>
+          </div>
+          <span className="shrink-0 font-sans text-[13px] font-[590] tabular-nums text-[#FDFDFF]">
+            {cell.value}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }

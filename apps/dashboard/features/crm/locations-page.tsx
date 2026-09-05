@@ -13,7 +13,6 @@ import {
   DashboardStatRow,
   DashboardToolbarButton,
   DashboardToolbarIcons,
-  type DashboardSavedView,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
 import {
@@ -23,13 +22,14 @@ import {
   type CrmLocationCard,
   type CrmMapPin,
 } from "./crm-map-split-view";
-import {
-  LOCATIONS_CARDS,
-  LOCATIONS_KPI,
-  LOCATIONS_MAP_PINS,
-  LOCATIONS_SAVED_VIEWS,
-  LOCATIONS_SORT_OPTIONS,
-} from "./data/locations.mock";
+import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { mapLocationCard } from "@/lib/crm-mappers";
+import { kpiCellsFromApi, latLngToMapPin } from "@/lib/crm-ui";
+import { useCrmList } from "@/lib/use-crm-list";
+import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
+import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
+import { toastApiError, toastSuccess } from "@/lib/toast";
+import { LOCATIONS_KPI_SHELL, LOCATIONS_SORT_OPTIONS } from "./crm-constants";
 
 type LocationFilters = {
   customer: string;
@@ -54,28 +54,6 @@ const DEFAULT_LOCATION_FILTERS: LocationFilters = {
   lastVisitedFrom: "",
   lastVisitedTo: "",
 };
-
-const CUSTOMER_OPTIONS = [
-  "Permian Basin Energy",
-  "Lonestar Oilfield",
-  "Delaware Basin Co.",
-  "Frontier Energy LLC",
-  "Rio Grande Resources",
-  "Cactus Well Services",
-  "Summit Production",
-  "Vaquero Oil & Gas",
-];
-
-const COUNTY_OPTIONS = [
-  "Midland",
-  "Reeves",
-  "Winkler",
-  "Andrews",
-  "Ector",
-  "Loving",
-];
-
-const STATUS_OPTIONS = ["Active", "Inactive"];
 
 function FilterCheckMarkIcon({ className }: { className?: string }) {
   return (
@@ -149,7 +127,7 @@ function FilterSelectRow({
 }: {
   label: string;
   value: string;
-  options: string[];
+  options: { value: string; label: string }[];
   onChange: (v: string) => void;
 }) {
   return (
@@ -165,8 +143,8 @@ function FilterSelectRow({
         >
           <option value="" />
           {options.map((o) => (
-            <option key={o} value={o}>
-              {o}
+            <option key={o.value} value={o.value}>
+              {o.label}
             </option>
           ))}
         </select>
@@ -259,6 +237,9 @@ function LocationsFiltersDrawer({
   onChange,
   onApply,
   onClearAll,
+  customerOptions,
+  countyOptions,
+  statusOptions,
 }: {
   open: boolean;
   onClose: () => void;
@@ -266,6 +247,9 @@ function LocationsFiltersDrawer({
   onChange: (f: LocationFilters) => void;
   onApply: () => void;
   onClearAll: () => void;
+  customerOptions: { value: string; label: string }[];
+  countyOptions: { value: string; label: string }[];
+  statusOptions: { value: string; label: string }[];
 }) {
   function patch(p: Partial<LocationFilters>) {
     onChange({ ...value, ...p });
@@ -312,19 +296,19 @@ function LocationsFiltersDrawer({
           <FilterSelectRow
             label="Customer"
             value={value.customer}
-            options={CUSTOMER_OPTIONS}
+            options={customerOptions}
             onChange={(v) => patch({ customer: v })}
           />
           <FilterSelectRow
             label="County"
             value={value.county}
-            options={COUNTY_OPTIONS}
+            options={countyOptions}
             onChange={(v) => patch({ county: v })}
           />
           <FilterSelectRow
             label="Status"
             value={value.status}
-            options={STATUS_OPTIONS}
+            options={statusOptions}
             onChange={(v) => patch({ status: v })}
           />
           <FilterToggleRow
@@ -400,87 +384,105 @@ export function LocationsPage() {
   const [filtersApplied, setFiltersApplied] = React.useState(false);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
-  const [savedViews, setSavedViews] =
-    React.useState<DashboardSavedView[]>(LOCATIONS_SAVED_VIEWS);
-  const [activeViewId, setActiveViewId] = React.useState<string | null>(
-    "view-1",
+  const {
+    savedViews,
+    activeViewId,
+    setActiveViewId,
+    createView,
+    deleteView,
+  } = useCrmSavedViews("LOCATIONS");
+
+  const { lookups, customers } = useCrmLookups({ includeLocations: false });
+  const countyOptions = lookupOptions(lookups, "counties");
+  const statusOptions = lookupOptions(lookups, "locationStatuses");
+
+  const extraParams = React.useMemo(() => {
+    if (!filtersApplied) return undefined;
+    const params: Record<string, string | boolean | undefined> = {};
+    if (appliedFilters.customer) params.customerId = appliedFilters.customer;
+    if (appliedFilters.county) params.county = appliedFilters.county;
+    if (appliedFilters.status) params.status = appliedFilters.status;
+    if (appliedFilters.gpsRuleSet) params.gpsRequired = true;
+    return Object.keys(params).length ? params : undefined;
+  }, [appliedFilters, filtersApplied]);
+
+  const { rows, total, kpiData, loading } = useCrmList({
+    list: (p) => crmApi.listLocations(p),
+    mapRow: mapLocationCard,
+    kpi: () => crmApi.locationsKpi(),
+    q: query,
+    page: 1,
+    pageSize: 100,
+    sort: sortField,
+    direction: sortDirection,
+    extraParams,
+  });
+
+  const kpiCells = React.useMemo(
+    () => kpiCellsFromApi(LOCATIONS_KPI_SHELL, kpiData),
+    [kpiData],
   );
 
-  const filteredCards = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let cards = LOCATIONS_CARDS;
-    if (q) {
-      cards = cards.filter((card) =>
-        [card.name, card.customer, card.city]
-          .join(" ")
-          .toLowerCase()
-          .includes(q),
-      );
-    }
-    if (filtersApplied) {
-      cards = cards.filter((card) => {
-        if (
-          appliedFilters.customer &&
-          card.customer !== appliedFilters.customer
-        ) {
-          return false;
-        }
-        if (
-          appliedFilters.county &&
-          !card.city.toLowerCase().includes(appliedFilters.county.toLowerCase())
-        ) {
-          return false;
-        }
-        if (
-          appliedFilters.status &&
-          card.status.label.toLowerCase() !==
-            appliedFilters.status.toLowerCase()
-        ) {
-          return false;
-        }
-        if (appliedFilters.hasOpenJobs && card.openJobs <= 0) return false;
-        if (
-          appliedFilters.gpsRuleSet &&
-          card.gpsStatus.toLowerCase() !== "gps set"
-        ) {
-          return false;
-        }
-        return true;
-      });
-    }
-    const dir = sortDirection === "asc" ? 1 : -1;
-    return [...cards].sort((a, b) => {
-      switch (sortField) {
-        case "customer":
-          return a.customer.localeCompare(b.customer) * dir;
-        case "status":
-          return a.status.label.localeCompare(b.status.label) * dir;
-        case "openJobs":
-          return (a.openJobs - b.openJobs) * dir;
-        case "name":
-        default:
-          return a.name.localeCompare(b.name) * dir;
+  const [mapPins, setMapPins] = React.useState<CrmMapPin[]>([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.locationsMapPins();
+        if (cancelled) return;
+        setMapPins(
+          res.data.map((pin) => {
+            const mapped = latLngToMapPin(
+              pin.id,
+              pin.label ?? pin.name ?? pin.id,
+              pin.latitude,
+              pin.longitude,
+              pin.active ?? pin.status !== "INACTIVE",
+            );
+            return {
+              id: mapped.id,
+              label: mapped.label,
+              x: pin.x ?? mapped.x,
+              y: pin.y ?? mapped.y,
+              highlighted: mapped.active,
+            };
+          }),
+        );
+      } catch (err) {
+        toastApiError(err);
+        setMapPins([]);
       }
-    });
-  }, [query, sortField, sortDirection, appliedFilters, filtersApplied]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const mapPins: CrmMapPin[] = LOCATIONS_MAP_PINS.map((pin) => ({
-    id: pin.id,
-    label: pin.label,
-    x: pin.x,
-    y: pin.y,
-    highlighted: pin.active,
-  }));
+  async function handleExport() {
+    try {
+      const res = await crmApi.exportLocations({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDirection,
+        ...extraParams,
+      });
+      downloadCsv(res.data.csv, res.data.filename);
+      toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
 
-  const listCards: CrmLocationCard[] = filteredCards;
+  void total;
+  const listCards: CrmLocationCard[] = rows;
   const showMap = viewMode === "map" || viewMode === "split";
   const showList = viewMode === "list" || viewMode === "split";
 
   return (
-    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
+    <div className={`space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5 ${loading ? "opacity-60" : ""}`}>
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
-          {LOCATIONS_KPI.map((cell) => (
+          {kpiCells.map((cell) => (
             <DashboardStatCell key={cell.title} {...cell} />
           ))}
         </DashboardStatRow>
@@ -529,8 +531,8 @@ export function LocationsPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV" },
-                  { id: "all-csv", label: "Export all • CSV" },
+                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
+                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
                   { id: "pdf", label: "Export as PDF" },
                 ]}
               />
@@ -580,6 +582,9 @@ export function LocationsPage() {
           setAppliedFilters(DEFAULT_LOCATION_FILTERS);
           setFiltersApplied(false);
         }}
+        customerOptions={customers}
+        countyOptions={countyOptions}
+        statusOptions={statusOptions}
       />
 
       <DashboardSaveViewsModal
@@ -590,18 +595,10 @@ export function LocationsPage() {
         onSelectView={setActiveViewId}
         onSaveNewView={() => setSaveNewViewOpen(true)}
         onViewAction={(viewId, action) => {
-          if (action === "delete") {
-            setSavedViews((prev) => prev.filter((v) => v.id !== viewId));
-            if (activeViewId === viewId) setActiveViewId(null);
-          }
+          if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((v) => v.id === viewId);
-            if (!source) return;
-            const id = `view-${Date.now()}`;
-            setSavedViews((prev) => [
-              ...prev,
-              { id, label: `${source.label} copy` },
-            ]);
+            if (source) void createView(`${source.label} copy`);
           }
         }}
       />
@@ -610,9 +607,7 @@ export function LocationsPage() {
         open={saveNewViewOpen}
         onClose={() => setSaveNewViewOpen(false)}
         onConfirm={({ name }) => {
-          const id = `view-${Date.now()}`;
-          setSavedViews((prev) => [...prev, { id, label: name }]);
-          setActiveViewId(id);
+          void createView(name);
         }}
       />
     </div>

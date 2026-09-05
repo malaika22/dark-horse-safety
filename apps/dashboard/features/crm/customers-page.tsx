@@ -27,50 +27,27 @@ import {
   DEFAULT_LIST_FILTERS,
   type DashboardDataTableColumn,
   type DashboardListFiltersState,
-  type DashboardSavedView,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
+import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { mapCustomerRow } from "@/lib/crm-mappers";
+import { kpiCellsFromApi } from "@/lib/crm-ui";
+import { useCrmList } from "@/lib/use-crm-list";
+import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
+import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
+import { toastApiError, toastSuccess } from "@/lib/toast";
 import {
-  CUSTOMERS_KPI,
-  CUSTOMERS_ROWS,
-  CUSTOMERS_SAVED_VIEWS,
+  CUSTOMERS_KPI_SHELL,
   CUSTOMERS_SORT_OPTIONS,
-  type CustomerRow,
-} from "./data/customers.mock";
+} from "./crm-constants";
+import type { CustomerRow } from "./crm-types";
 
-function sortRows(
-  rows: CustomerRow[],
-  field: string,
-  direction: DashboardSortDirection,
-) {
-  const sorted = [...rows].sort((a, b) => {
-    const dir = direction === "asc" ? 1 : -1;
-    switch (field) {
-      case "accountOwner":
-        return a.accountOwner.localeCompare(b.accountOwner) * dir;
-      case "primaryContact":
-        return a.primaryContact.localeCompare(b.primaryContact) * dir;
-      case "locationWell":
-        return a.locationWell.localeCompare(b.locationWell) * dir;
-      case "status":
-        return a.status.label.localeCompare(b.status.label) * dir;
-      case "openJobs":
-        return (a.openJobs - b.openJobs) * dir;
-      case "locations":
-        return (a.locations - b.locations) * dir;
-      case "msaExpiry":
-        return a.msaExpiry.localeCompare(b.msaExpiry) * dir;
-      case "lastActivity":
-        return a.lastActivity.localeCompare(b.lastActivity) * dir;
-      case "createdAt":
-        return a.createdAt.localeCompare(b.createdAt) * dir;
-      case "name":
-      default:
-        return a.name.localeCompare(b.name) * dir;
-    }
-  });
-  return sorted;
-}
+const CUSTOMERS_DEFAULT_FILTERS: DashboardListFiltersState = {
+  ...DEFAULT_LIST_FILTERS,
+  status: "",
+  msaStatus: "",
+  assignedReps: "",
+};
 
 function chipsFromFilters(filters: DashboardListFiltersState) {
   const chips: { id: string; label: string }[] = [];
@@ -106,9 +83,9 @@ export function CustomersPage() {
   const [query, setQuery] = React.useState("");
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [draftFilters, setDraftFilters] =
-    React.useState<DashboardListFiltersState>(DEFAULT_LIST_FILTERS);
+    React.useState<DashboardListFiltersState>(CUSTOMERS_DEFAULT_FILTERS);
   const [appliedFilters, setAppliedFilters] =
-    React.useState<DashboardListFiltersState>(DEFAULT_LIST_FILTERS);
+    React.useState<DashboardListFiltersState>(CUSTOMERS_DEFAULT_FILTERS);
   const [chips, setChips] = React.useState<{ id: string; label: string }[]>([]);
   const [filtersApplied, setFiltersApplied] = React.useState(false);
   const [sortField, setSortField] = React.useState("name");
@@ -119,57 +96,101 @@ export function CustomersPage() {
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
-  const [savedViews, setSavedViews] =
-    React.useState<DashboardSavedView[]>(CUSTOMERS_SAVED_VIEWS);
-  const [activeViewId, setActiveViewId] = React.useState<string | null>(
-    "view-1",
-  );
-  const [archivedIds, setArchivedIds] = React.useState<string[]>([]);
+  const {
+    savedViews,
+    activeViewId,
+    setActiveViewId,
+    createView,
+    deleteView,
+  } = useCrmSavedViews("CUSTOMERS");
 
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let rows = CUSTOMERS_ROWS.filter((row) => {
-      if (archivedIds.includes(row.id)) return false;
-      if (q) {
-        const haystack = [
-          row.name,
-          row.code,
-          row.accountOwner,
-          row.primaryContact,
-          row.locationWell,
-        ]
-          .join(" ")
-          .toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-      if (appliedFilters.hasOpenJobs && row.openJobs <= 0) return false;
-      if (filtersApplied && appliedFilters.status) {
-        const statusMap: Record<string, string> = {
-          active: "Active",
-          "needs-review": "Needs review",
-          offline: "Offline",
-        };
-        const expected = statusMap[appliedFilters.status];
-        if (expected && row.status.label !== expected) return false;
-      }
-      return true;
-    });
-    rows = sortRows(rows, sortField, sortDirection);
-    return rows;
-  }, [appliedFilters, archivedIds, filtersApplied, query, sortDirection, sortField]);
+  const { lookups, reps } = useCrmLookups({ includeLocations: false });
+  const statusOptions = lookupOptions(lookups, "customerStatuses");
+  const msaOptions = lookupOptions(lookups, "msaStatuses");
+
+  const extraParams = React.useMemo(() => {
+    if (!filtersApplied) return undefined;
+    const params: Record<string, string | boolean | undefined> = {};
+    if (appliedFilters.status) params.status = appliedFilters.status;
+    if (appliedFilters.assignedReps)
+      params.assignedRepId = appliedFilters.assignedReps;
+    return Object.keys(params).length ? params : undefined;
+  }, [appliedFilters.status, appliedFilters.assignedReps, filtersApplied]);
+
+  const { rows, total, kpiData, loading, reload } = useCrmList({
+    list: (p) => crmApi.listCustomers(p),
+    mapRow: mapCustomerRow,
+    kpi: () => crmApi.customersKpi(),
+    q: query,
+    page,
+    pageSize,
+    sort: sortField,
+    direction: sortDirection,
+    extraParams,
+  });
+
+  const kpiCells = React.useMemo(
+    () => kpiCellsFromApi(CUSTOMERS_KPI_SHELL, kpiData),
+    [kpiData],
+  );
 
   const bulkOpen = selectedIds.length > 0;
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, pageCount);
-  const pageRows = filtered.slice(
-    (safePage - 1) * pageSize,
-    safePage * pageSize,
-  );
 
   React.useEffect(() => {
     setPage(1);
   }, [query, appliedFilters, sortField, sortDirection, pageSize]);
+
+  async function handleExport() {
+    try {
+      const res = await crmApi.exportCustomers({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDirection,
+        ...extraParams,
+      });
+      downloadCsv(res.data.csv, res.data.filename);
+      toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleArchive(id: string, name: string) {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`Archive ${name}?`)
+    ) {
+      return;
+    }
+    try {
+      await crmApi.archiveCustomer(id);
+      toastSuccess("Customer archived");
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleBulkArchive() {
+    if (selectedIds.length === 0) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`Archive ${selectedIds.length} customer(s)?`)
+    ) {
+      return;
+    }
+    try {
+      await crmApi.bulkArchiveCustomers(selectedIds);
+      toastSuccess("Customers archived");
+      setSelectedIds([]);
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
 
   const columns: DashboardDataTableColumn<CustomerRow>[] = React.useMemo(
     () => [
@@ -313,30 +334,21 @@ export function CustomersPage() {
                 id: "archive",
                 label: "Archive customer",
                 destructive: true,
-                onSelect: () => {
-                  if (
-                    typeof window !== "undefined" &&
-                    window.confirm(`Archive ${row.name}?`)
-                  ) {
-                    setArchivedIds((prev) =>
-                      prev.includes(row.id) ? prev : [...prev, row.id],
-                    );
-                  }
-                },
+                onSelect: () => void handleArchive(row.id, row.name),
               },
             ]}
           />
         ),
       },
     ],
-    [router],
+    [router, reload],
   );
 
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
-          {CUSTOMERS_KPI.map((cell) => (
+          {kpiCells.map((cell) => (
             <DashboardStatCell key={cell.title} {...cell} />
           ))}
         </DashboardStatRow>
@@ -349,6 +361,7 @@ export function CustomersPage() {
             <>
               <DashboardToolbarButton
                 className="!border-[#4B212B] !bg-[#3D1F1F] !text-[#FFBBCA]"
+                onClick={() => void handleBulkArchive()}
               >
                 Archive
               </DashboardToolbarButton>
@@ -356,8 +369,16 @@ export function CustomersPage() {
               <DashboardExportMenu
                 triggerLabel="Export selected"
                 items={[
-                  { id: "selected-csv", label: "Export selected view • CSV" },
-                  { id: "all-csv", label: "Export all • CSV" },
+                  {
+                    id: "selected-csv",
+                    label: "Export selected view • CSV",
+                    onSelect: () => void handleExport(),
+                  },
+                  {
+                    id: "all-csv",
+                    label: "Export all • CSV",
+                    onSelect: () => void handleExport(),
+                  },
                   { id: "pdf", label: "Export as PDF" },
                 ]}
               />
@@ -392,8 +413,16 @@ export function CustomersPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV" },
-                  { id: "all-csv", label: "Export all • CSV" },
+                  {
+                    id: "view-csv",
+                    label: "Export current view • CSV",
+                    onSelect: () => void handleExport(),
+                  },
+                  {
+                    id: "all-csv",
+                    label: "Export all • CSV",
+                    onSelect: () => void handleExport(),
+                  },
                   { id: "pdf", label: "Export as PDF" },
                 ]}
               />
@@ -433,21 +462,23 @@ export function CustomersPage() {
         />
       )}
 
-      <DashboardDataTable
-        columns={columns}
-        rows={pageRows}
-        getRowId={(row) => row.id}
-        emptyMessage="No customers found"
-        selectable
-        selectedIds={selectedIds}
-        onSelectedIdsChange={setSelectedIds}
-        onRowClick={(row) => router.push(`/crm/accounts/${row.id}`)}
-      />
+      <div className={loading ? "opacity-60 transition-opacity" : undefined}>
+        <DashboardDataTable
+          columns={columns}
+          rows={rows}
+          getRowId={(row) => row.id}
+          emptyMessage={loading ? "Loading customers…" : "No customers found"}
+          selectable
+          selectedIds={selectedIds}
+          onSelectedIdsChange={setSelectedIds}
+          onRowClick={(row) => router.push(`/crm/accounts/${row.id}`)}
+        />
+      </div>
 
       <DashboardPagination
         page={safePage}
         pageSize={pageSize}
-        total={filtered.length}
+        total={total}
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
@@ -463,11 +494,14 @@ export function CustomersPage() {
           setFiltersApplied(true);
         }}
         onClearAll={() => {
-          setDraftFilters(DEFAULT_LIST_FILTERS);
-          setAppliedFilters(DEFAULT_LIST_FILTERS);
+          setDraftFilters(CUSTOMERS_DEFAULT_FILTERS);
+          setAppliedFilters(CUSTOMERS_DEFAULT_FILTERS);
           setChips([]);
           setFiltersApplied(false);
         }}
+        statusOptions={statusOptions}
+        msaOptions={msaOptions}
+        repOptions={reps}
       />
 
       <DashboardSaveViewsModal
@@ -478,18 +512,10 @@ export function CustomersPage() {
         onSelectView={setActiveViewId}
         onSaveNewView={() => setSaveNewViewOpen(true)}
         onViewAction={(viewId, action) => {
-          if (action === "delete") {
-            setSavedViews((prev) => prev.filter((view) => view.id !== viewId));
-            if (activeViewId === viewId) setActiveViewId(null);
-          }
+          if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((view) => view.id === viewId);
-            if (!source) return;
-            const id = `view-${Date.now()}`;
-            setSavedViews((prev) => [
-              ...prev,
-              { id, label: `${source.label} copy` },
-            ]);
+            if (source) void createView(`${source.label} copy`);
           }
         }}
       />
@@ -498,9 +524,7 @@ export function CustomersPage() {
         open={saveNewViewOpen}
         onClose={() => setSaveNewViewOpen(false)}
         onConfirm={({ name }) => {
-          const id = `view-${Date.now()}`;
-          setSavedViews((prev) => [...prev, { id, label: name }]);
-          setActiveViewId(id);
+          void createView(name);
         }}
       />
     </div>

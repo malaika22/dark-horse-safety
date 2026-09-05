@@ -6,7 +6,7 @@ import {
   DashboardToolbarButton,
   SyncIcon,
 } from "@dark-horse-safety/ui";
-import { CRM_SYNC_LABEL } from "../crm/data/overview.mock";
+import { CRM_SYNC_LABEL } from "../crm/crm-constants";
 import { AddUserIcon } from "../crm/crm-list-page-shell";
 
 function BellIcon({ className }: { className?: string }) {

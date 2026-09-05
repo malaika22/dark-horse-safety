@@ -8,10 +8,9 @@ import {
   DashboardTextField,
 } from "@dark-horse-safety/ui";
 import { CrmFormPageShell } from "@/features/crm/crm-form-page-shell";
-import {
-  CRM_CUSTOMERS,
-  CRM_OWNERS,
-} from "@/features/crm/data/crm-forms.mock";
+import type { DashboardSelectOption } from "@dark-horse-safety/ui";
+import { crmApi } from "@/lib/crm-api";
+
 
 const WO_CATEGORIES = [
   { value: "site-safety", label: "Site Safety" },
@@ -27,17 +26,49 @@ const WO_STATUSES = [
   { value: "complete", label: "Complete" },
 ];
 
-function customerValueFromQuery(name: string | null) {
-  if (!name) return "pbe";
-  const match = CRM_CUSTOMERS.find(
-    (c) => c.label.toLowerCase() === name.trim().toLowerCase(),
-  );
-  return match?.value ?? "pbe";
-}
-
 export function WorkOrderFormPage() {
   const searchParams = useSearchParams();
-  const customerDefault = customerValueFromQuery(searchParams.get("customer"));
+  const customerId = searchParams.get("customerId") ?? "";
+  const customerName = searchParams.get("customer") ?? "";
+  const [customerOptions, setCustomerOptions] = React.useState<DashboardSelectOption[]>([]);
+  const [repOptions, setRepOptions] = React.useState<DashboardSelectOption[]>([]);
+  const [customer, setCustomer] = React.useState(customerId);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [customers, reps] = await Promise.all([
+          crmApi.lookupCustomers(customerName || undefined),
+          crmApi.lookupReps(),
+        ]);
+        if (cancelled) return;
+        const opts = customers.data.map((c) => ({
+          value: c.id,
+          label: c.name,
+        }));
+        if (customerId && customerName && !opts.some((o) => o.value === customerId)) {
+          opts.unshift({ value: customerId, label: customerName });
+        }
+        setCustomerOptions(opts);
+        setRepOptions(
+          reps.data.map((r) => ({
+            value: r.id,
+            label:
+              [r.firstName, r.lastName].filter(Boolean).join(" ").trim() ||
+              r.email ||
+              r.id,
+          })),
+        );
+        if (!customer && opts[0]) setCustomer(opts[0].value);
+      } catch {
+        /* keep empty options */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId, customerName, customer]);
 
   return (
     <CrmFormPageShell
@@ -50,12 +81,13 @@ export function WorkOrderFormPage() {
             <DashboardFormGrid className="gap-x-4 gap-y-5">
               <DashboardSelectField
                 label="Customer *"
-                defaultValue={customerDefault}
-                options={CRM_CUSTOMERS}
+                value={customer}
+                onChange={(e) => setCustomer(e.target.value)}
+                options={customerOptions}
               />
               <DashboardTextField
                 label="Location / Well"
-                defaultValue="Wolfcamp 12-4H"
+                defaultValue=""
                 placeholder="Location"
               />
               <DashboardSelectField
@@ -65,12 +97,12 @@ export function WorkOrderFormPage() {
               />
               <DashboardSelectField
                 label="Assigned Rep *"
-                defaultValue="r-crawford"
-                options={CRM_OWNERS}
+                defaultValue=""
+                options={repOptions}
               />
               <DashboardTextField
                 label="Service Date *"
-                defaultValue="06/12/2026"
+                defaultValue=""
                 placeholder="MM/DD/YYYY"
               />
               <DashboardSelectField
@@ -80,17 +112,17 @@ export function WorkOrderFormPage() {
               />
               <DashboardTextField
                 label="Scheduled Start"
-                defaultValue="07:00A"
+                defaultValue=""
                 placeholder="Time"
               />
               <DashboardTextField
                 label="Scheduled End"
-                defaultValue="05:00P"
+                defaultValue=""
                 placeholder="Time"
               />
               <DashboardTextField
                 label="Notes"
-                defaultValue="Customer requested H2S package on site."
+                defaultValue=""
                 placeholder="Notes"
                 containerClassName="md:col-span-2"
               />

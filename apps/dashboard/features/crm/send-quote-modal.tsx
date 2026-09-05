@@ -15,9 +15,11 @@ const textareaClass =
 export function SendQuoteModal({
   open,
   onClose,
+  onConfirm,
 }: {
   open: boolean;
   onClose: () => void;
+  onConfirm?: () => void;
 }) {
   return (
     <DashboardModal
@@ -34,7 +36,13 @@ export function SendQuoteModal({
           >
             Cancel
           </button>
-          <DashboardToolbarButton variant="primary" onClick={onClose}>
+          <DashboardToolbarButton
+            variant="primary"
+            onClick={() => {
+              onConfirm?.();
+              onClose();
+            }}
+          >
             Confirm
           </DashboardToolbarButton>
         </>

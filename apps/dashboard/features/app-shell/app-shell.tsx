@@ -9,9 +9,6 @@ import {
   CRM_LIST_HEADER_ACTIONS,
 } from "./crm-header-actions";
 import { SessionProvider, useSession } from "./session-context";
-import { CUSTOMERS_ROWS } from "../crm/data/customers.mock";
-import { CUSTOMER_DETAIL } from "../crm/data/customer-detail.mock";
-import { CONTACT_DETAIL } from "../crm/data/contacts.mock";
 
 /** Figma app-header titles — longest prefix wins for nested `/new` routes. */
 const HEADER_TITLES: { path: string; title: string }[] = [
@@ -89,10 +86,7 @@ function titleForPath(pathname: string) {
     return "CRM / Route Rules / Edit Route Rule";
   }
   if (/^\/crm\/accounts\/[^/]+$/.test(pathname)) {
-    const id = pathname.split("/")[3] ?? "";
-    const row = CUSTOMERS_ROWS.find((c) => c.id === id);
-    const name = row?.name ?? CUSTOMER_DETAIL.name;
-    return `CRM / Customers / ${name}`;
+    return "CRM / Customers / Detail";
   }
   if (/^\/crm\/eod-reports\/[^/]+$/.test(pathname)) {
     return "CRM / Customer / EOD Report";
@@ -107,7 +101,7 @@ function titleForPath(pathname: string) {
     return "CRM / Customer";
   }
   if (/^\/crm\/contacts\/[^/]+$/.test(pathname) && pathname !== "/crm/contacts/new") {
-    return `CRM / Contacts / ${CONTACT_DETAIL.name}`;
+    return "CRM / Contacts / Detail";
   }
 
   const exact = HEADER_TITLES.find((entry) => entry.path === pathname);

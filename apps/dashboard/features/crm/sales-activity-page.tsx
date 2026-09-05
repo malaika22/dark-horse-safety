@@ -23,16 +23,16 @@ import {
   DashboardToolbarButton,
   DashboardToolbarIcons,
   type DashboardDataTableColumn,
-  type DashboardSavedView,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
-import {
-  SALES_ACTIVITY_KPI,
-  SALES_ACTIVITY_ROWS,
-  SALES_ACTIVITY_SAVED_VIEWS,
-  SALES_ACTIVITY_SORT_OPTIONS,
-  type SalesActivityRow,
-} from "./data/sales-activity.mock";
+import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { mapSalesActivityRow } from "@/lib/crm-mappers";
+import { kpiCellsFromApi } from "@/lib/crm-ui";
+import { useCrmList } from "@/lib/use-crm-list";
+import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
+import { toastApiError, toastSuccess } from "@/lib/toast";
+import { SALES_KPI_SHELL, SALES_SORT_OPTIONS } from "./crm-constants";
+import type { SalesActivityRow } from "./crm-types";
 
 const DEFAULT_CHIPS = [
   { id: "active",  label: "Active" },
@@ -40,54 +40,62 @@ const DEFAULT_CHIPS = [
   { id: "future",  label: "Future" },
 ];
 
-function sortRows(rows: SalesActivityRow[], field: string, direction: DashboardSortDirection) {
-  const dir = direction === "asc" ? 1 : -1;
-  return [...rows].sort((a, b) => {
-    switch (field) {
-      case "date":     return a.date.localeCompare(b.date) * dir;
-      case "type":     return a.type.localeCompare(b.type) * dir;
-      case "customer": return a.customer.localeCompare(b.customer) * dir;
-      case "outcome":  return a.outcome.label.localeCompare(b.outcome.label) * dir;
-      case "status":   return a.status.label.localeCompare(b.status.label) * dir;
-      case "activityId":
-      default:         return a.activityId.localeCompare(b.activityId) * dir;
-    }
-  });
-}
 
 export function SalesActivityPage() {
   const router = useRouter();
   const [query, setQuery] = React.useState("");
   const [tab, setTab] = React.useState<"activity" | "summary">("activity");
   const [chips, setChips] = React.useState(DEFAULT_CHIPS);
-  const [sortField, setSortField] = React.useState("date");
+  const [sortField, setSortField] = React.useState("activityAt");
   const [sortDirection, setSortDirection] = React.useState<DashboardSortDirection>("desc");
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
-  const [savedViews, setSavedViews] = React.useState<DashboardSavedView[]>(SALES_ACTIVITY_SAVED_VIEWS);
-  const [activeViewId, setActiveViewId] = React.useState<string | null>("view-1");
+  const {
+    savedViews,
+    activeViewId,
+    setActiveViewId,
+    createView,
+    deleteView,
+  } = useCrmSavedViews("SALES_ACTIVITIES");
 
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let rows = SALES_ACTIVITY_ROWS.filter((row) => {
-      if (!q) return true;
-      return [row.activityId, row.customer, row.contact, row.rep, row.subject]
-        .join(" ")
-        .toLowerCase()
-        .includes(q);
-    });
-    return sortRows(rows, sortField, sortDirection);
-  }, [query, sortField, sortDirection]);
+  const { rows, total, kpiData, loading } = useCrmList({
+    list: (p) => crmApi.listSalesActivities(p),
+    mapRow: mapSalesActivityRow,
+    kpi: () => crmApi.salesActivitiesKpi(),
+    q: query,
+    page,
+    pageSize,
+    sort: sortField,
+    direction: sortDirection,
+  });
+
+  const kpiCells = React.useMemo(
+    () => kpiCellsFromApi(SALES_KPI_SHELL, kpiData),
+    [kpiData],
+  );
 
   const bulkOpen = selectedIds.length > 0;
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, pageCount);
-  const pageRows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   React.useEffect(() => { setPage(1); }, [query, sortField, sortDirection, pageSize]);
+
+  async function handleExport() {
+    try {
+      const res = await crmApi.exportSalesActivities({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDirection,
+      });
+      downloadCsv(res.data.csv, res.data.filename);
+      toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
 
   const columns: DashboardDataTableColumn<SalesActivityRow>[] = React.useMemo(
     () => [
@@ -204,7 +212,7 @@ export function SalesActivityPage() {
 
       <DashboardStatGrid>
         <DashboardStatRow columns={5}>
-          {SALES_ACTIVITY_KPI.map((cell) => (
+          {kpiCells.map((cell) => (
             <DashboardStatCell key={cell.title} {...cell} />
           ))}
         </DashboardStatRow>
@@ -239,8 +247,8 @@ export function SalesActivityPage() {
               <DashboardExportMenu
                 triggerLabel="Export selected"
                 items={[
-                  { id: "selected-csv", label: "Export selected view • CSV" },
-                  { id: "all-csv",      label: "Export all • CSV" },
+                  { id: "selected-csv", label: "Export selected view • CSV", onSelect: () => void handleExport() },
+                  { id: "all-csv",      label: "Export all • CSV", onSelect: () => void handleExport() },
                 ]}
               />
             </>
@@ -269,12 +277,12 @@ export function SalesActivityPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV" },
+                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
                   { id: "all-csv",  label: "Export all • CSV" },
                 ]}
               />
               <DashboardSortMenu
-                options={SALES_ACTIVITY_SORT_OPTIONS}
+                options={SALES_SORT_OPTIONS}
                 field={sortField}
                 direction={sortDirection}
                 onFieldChange={setSortField}
@@ -298,9 +306,9 @@ export function SalesActivityPage() {
         <>
           <DashboardDataTable
             columns={columns}
-            rows={pageRows}
+            rows={rows}
             getRowId={(row) => row.id}
-            emptyMessage="No sales activity found"
+            emptyMessage={loading ? "Loading…" : "No sales activity found"}
             selectable
             selectedIds={selectedIds}
             onSelectedIdsChange={setSelectedIds}
@@ -309,7 +317,7 @@ export function SalesActivityPage() {
           <DashboardPagination
             page={safePage}
             pageSize={pageSize}
-            total={filtered.length}
+            total={total}
             onPageChange={setPage}
             onPageSizeChange={setPageSize}
           />
@@ -330,15 +338,10 @@ export function SalesActivityPage() {
         onSelectView={setActiveViewId}
         onSaveNewView={() => setSaveNewViewOpen(true)}
         onViewAction={(viewId, action) => {
-          if (action === "delete") {
-            setSavedViews((prev) => prev.filter((v) => v.id !== viewId));
-            if (activeViewId === viewId) setActiveViewId(null);
-          }
+          if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((v) => v.id === viewId);
-            if (!source) return;
-            const id = `view-${Date.now()}`;
-            setSavedViews((prev) => [...prev, { id, label: `${source.label} copy` }]);
+            if (source) void createView(`${source.label} copy`);
           }
         }}
       />
@@ -347,9 +350,7 @@ export function SalesActivityPage() {
         open={saveNewViewOpen}
         onClose={() => setSaveNewViewOpen(false)}
         onConfirm={({ name }) => {
-          const id = `view-${Date.now()}`;
-          setSavedViews((prev) => [...prev, { id, label: name }]);
-          setActiveViewId(id);
+          void createView(name);
         }}
       />
     </div>

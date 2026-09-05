@@ -24,19 +24,17 @@ import {
   DashboardToolbarButton,
   DashboardToolbarIcons,
   type DashboardDataTableColumn,
-  type DashboardSavedView,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
-import {
-  PRICING_PERMISSION_GATES,
-  PRICING_RATE_CHANGES,
-  PRICING_RULES_KPI,
-  PRICING_RULES_ROWS,
-  PRICING_SAVED_VIEWS,
-  PRICING_SCHEDULE_CHANGES,
-  PRICING_SORT_OPTIONS,
-  type PricingRuleRow,
-} from "./data/pricing-rules.mock";
+import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { mapPricingRuleRow } from "@/lib/crm-mappers";
+import { kpiCellsFromApi } from "@/lib/crm-ui";
+import { useCrmList } from "@/lib/use-crm-list";
+import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
+import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
+import { toastApiError, toastSuccess } from "@/lib/toast";
+import { PRICING_KPI_SHELL, PRICING_SORT_OPTIONS } from "./crm-constants";
+import type { PricingRuleRow } from "./crm-types";
 
 type PricingFilters = {
   customer: string;
@@ -55,28 +53,6 @@ const DEFAULT_PRICING_FILTERS: PricingFilters = {
   effectiveFrom: "",
   effectiveTo: "",
 };
-
-const PRICING_CUSTOMER_OPTIONS = [
-  "Permian Basin Energy",
-  "Lonestar Oilfield",
-  "Cactus Well Services",
-  "Rio Grande Resources",
-  "Delaware Basin Co.",
-  "Frontier Energy LLC",
-  "Summit Production",
-  "Vaquero Oil & Gas",
-];
-
-const PRICING_SERVICE_OPTIONS = [
-  "Wireline Logging",
-  "Pump Down",
-  "Perforating",
-  "Slickline",
-];
-
-const PRICING_RATE_TYPE_OPTIONS = ["Per Job", "Per HR", "Per Run"];
-
-const PRICING_STATUS_OPTIONS = ["Active", "Expired", "Pending"];
 
 function FilterCheckMarkIcon({ className }: { className?: string }) {
   return (
@@ -128,31 +104,6 @@ function ClipboardIcon({ className }: { className?: string }) {
   );
 }
 
-function sortRows(
-  rows: PricingRuleRow[],
-  field: string,
-  dir: DashboardSortDirection,
-) {
-  return [...rows].sort((a, b) => {
-    const d = dir === "asc" ? 1 : -1;
-    switch (field) {
-      case "service":
-        return a.service.localeCompare(b.service) * d;
-      case "status":
-        return a.status.label.localeCompare(b.status.label) * d;
-      case "rate":
-        return a.rate.localeCompare(b.rate) * d;
-      case "effective":
-        return a.effective.localeCompare(b.effective) * d;
-      case "expires":
-        return a.expires.localeCompare(b.expires) * d;
-      case "owner":
-        return a.owner.localeCompare(b.owner) * d;
-      default:
-        return a.customer.localeCompare(b.customer) * d;
-    }
-  });
-}
 
 function countTrailing(label: string) {
   return (
@@ -184,7 +135,7 @@ function FilterSelectRow({
 }: {
   label: string;
   value: string;
-  options: string[];
+  options: { value: string; label: string }[];
   onChange: (v: string) => void;
 }) {
   return (
@@ -200,8 +151,8 @@ function FilterSelectRow({
         >
           <option value="" />
           {options.map((o) => (
-            <option key={o} value={o}>
-              {o}
+            <option key={o.value} value={o.value}>
+              {o.label}
             </option>
           ))}
         </select>
@@ -259,6 +210,10 @@ function PricingFiltersDrawer({
   onChange,
   onApply,
   onClearAll,
+  customerOptions,
+  serviceOptions,
+  rateTypeOptions,
+  statusOptions,
 }: {
   open: boolean;
   onClose: () => void;
@@ -266,6 +221,10 @@ function PricingFiltersDrawer({
   onChange: (f: PricingFilters) => void;
   onApply: () => void;
   onClearAll: () => void;
+  customerOptions: { value: string; label: string }[];
+  serviceOptions: { value: string; label: string }[];
+  rateTypeOptions: { value: string; label: string }[];
+  statusOptions: { value: string; label: string }[];
 }) {
   function patch(p: Partial<PricingFilters>) {
     onChange({ ...value, ...p });
@@ -326,25 +285,25 @@ function PricingFiltersDrawer({
           <FilterSelectRow
             label="Customer"
             value={value.customer}
-            options={PRICING_CUSTOMER_OPTIONS}
+            options={customerOptions}
             onChange={(v) => patch({ customer: v })}
           />
           <FilterSelectRow
             label="Service Type"
             value={value.serviceType}
-            options={PRICING_SERVICE_OPTIONS}
+            options={serviceOptions}
             onChange={(v) => patch({ serviceType: v })}
           />
           <FilterSelectRow
             label="Rate Type"
             value={value.rateType}
-            options={PRICING_RATE_TYPE_OPTIONS}
+            options={rateTypeOptions}
             onChange={(v) => patch({ rateType: v })}
           />
           <FilterSelectRow
             label="Status"
             value={value.status}
-            options={PRICING_STATUS_OPTIONS}
+            options={statusOptions}
             onChange={(v) => patch({ status: v })}
           />
           <FilterRangeRow
@@ -385,7 +344,7 @@ export function PricingRulesPage() {
   const router = useRouter();
 
   const [query, setQuery] = React.useState("");
-  const [sortField, setSortField] = React.useState("customer");
+  const [sortField, setSortField] = React.useState("serviceItem");
   const [sortDir, setSortDir] = React.useState<DashboardSortDirection>("asc");
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
@@ -400,72 +359,90 @@ export function PricingRulesPage() {
   const [filtersApplied, setFiltersApplied] = React.useState(false);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewOpen, setSaveNewOpen] = React.useState(false);
-  const [savedViews, setSavedViews] =
-    React.useState<DashboardSavedView[]>(PRICING_SAVED_VIEWS);
-  const [activeViewId, setActiveViewId] = React.useState<string | null>(
-    "view-1",
+  const {
+    savedViews,
+    activeViewId,
+    setActiveViewId,
+    createView,
+    deleteView,
+  } = useCrmSavedViews("PRICING_RULES");
+
+  const { lookups, customers } = useCrmLookups({ includeLocations: false });
+  const serviceOptions = lookupOptions(lookups, "serviceItems");
+  const rateTypeOptions = lookupOptions(lookups, "rateTypes");
+  const statusOptions = lookupOptions(lookups, "pricingStatuses");
+
+  const extraParams = React.useMemo(() => {
+    if (!filtersApplied) return undefined;
+    const params: Record<string, string | undefined> = {};
+    if (appliedFilters.customer) params.customerId = appliedFilters.customer;
+    if (appliedFilters.status) params.status = appliedFilters.status;
+    if (appliedFilters.serviceType) params.serviceItem = appliedFilters.serviceType;
+    if (appliedFilters.rateType) params.rateType = appliedFilters.rateType;
+    return Object.keys(params).length ? params : undefined;
+  }, [appliedFilters, filtersApplied]);
+
+  const { rows, total, kpiData, loading, reload } = useCrmList({
+    list: (p) => crmApi.listPricingRules(p),
+    mapRow: mapPricingRuleRow,
+    kpi: () => crmApi.pricingRulesKpi(),
+    q: query,
+    page,
+    pageSize,
+    sort: sortField,
+    direction: sortDir,
+    extraParams,
+  });
+
+  const kpiCells = React.useMemo(
+    () => kpiCellsFromApi(PRICING_KPI_SHELL, kpiData),
+    [kpiData],
   );
 
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let rows = PRICING_RULES_ROWS.filter((row) => {
-      if (q) {
-        const hay = [row.customer, row.code, row.service, row.owner]
-          .join(" ")
-          .toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      if (filtersApplied) {
-        if (
-          appliedFilters.customer &&
-          row.customer !== appliedFilters.customer
-        ) {
-          return false;
-        }
-        if (
-          appliedFilters.serviceType &&
-          row.service !== appliedFilters.serviceType
-        ) {
-          return false;
-        }
-        if (appliedFilters.rateType && row.unit !== appliedFilters.rateType) {
-          return false;
-        }
-        if (
-          appliedFilters.status &&
-          row.status.label.toLowerCase() !==
-            appliedFilters.status.toLowerCase()
-        ) {
-          return false;
-        }
-        if (
-          appliedFilters.effectiveFrom &&
-          row.effective < appliedFilters.effectiveFrom
-        ) {
-          return false;
-        }
-        if (
-          appliedFilters.effectiveTo &&
-          row.effective > appliedFilters.effectiveTo
-        ) {
-          return false;
-        }
-      }
-      return true;
-    });
-    return sortRows(rows, sortField, sortDir);
-  }, [query, sortField, sortDir, appliedFilters, filtersApplied]);
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, pageCount);
-  const pageRows = filtered.slice(
-    (safePage - 1) * pageSize,
-    safePage * pageSize,
-  );
 
   React.useEffect(() => {
     setPage(1);
-  }, [query, sortField, sortDir, pageSize]);
+  }, [query, sortField, sortDir, pageSize, filtersApplied]);
+
+  async function handleExport() {
+    try {
+      const res = await crmApi.exportPricingRules({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDir,
+        ...extraParams,
+      });
+      downloadCsv(res.data.csv, res.data.filename);
+      toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (typeof window !== "undefined" && !window.confirm("Delete this pricing rule?")) {
+      return;
+    }
+    try {
+      await crmApi.deletePricingRule(id);
+      toastSuccess("Pricing rule deleted");
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleDuplicate(id: string) {
+    try {
+      await crmApi.duplicatePricingRule(id);
+      toastSuccess("Pricing rule duplicated");
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
 
   const columns: DashboardDataTableColumn<PricingRuleRow>[] = React.useMemo(
     () => [
@@ -560,7 +537,7 @@ export function PricingRulesPage() {
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
-          {PRICING_RULES_KPI.map((cell) => (
+          {kpiCells.map((cell) => (
             <DashboardStatCell key={cell.title} {...cell} />
           ))}
         </DashboardStatRow>
@@ -627,8 +604,8 @@ export function PricingRulesPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV" },
-                  { id: "all-csv", label: "Export all • CSV" },
+                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
+                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
                   { id: "pdf", label: "Export as PDF" },
                 ]}
               />
@@ -639,9 +616,9 @@ export function PricingRulesPage() {
 
       <DashboardDataTable
         columns={columns}
-        rows={pageRows}
+        rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage="No pricing rules found"
+        emptyMessage={loading ? "Loading…" : "No pricing rules found"}
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -651,7 +628,7 @@ export function PricingRulesPage() {
       <DashboardPagination
         page={safePage}
         pageSize={pageSize}
-        total={filtered.length}
+        total={total}
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
@@ -662,11 +639,11 @@ export function PricingRulesPage() {
             <DashboardPanelTitle
               icon="lightning"
               title="Rate Change History"
-              trailing={countTrailing("3 Rate Changes")}
+              trailing={countTrailing("0 Rate Changes")}
             />
           </div>
           <div className="pb-2">
-            {PRICING_RATE_CHANGES.map((item) => (
+            {([] as { id: string; label: string; from: string; to: string }[]).map((item) => (
               <div
                 key={item.id}
                 className="flex items-center gap-3 px-4 py-2.5 sm:px-5"
@@ -689,11 +666,11 @@ export function PricingRulesPage() {
             <DashboardPanelTitle
               icon="lightning"
               title="Schedule Changes"
-              trailing={countTrailing("3 Changes")}
+              trailing={countTrailing("0 Changes")}
             />
           </div>
           <div className="pb-2">
-            {PRICING_SCHEDULE_CHANGES.map((item) => (
+            {([] as { id: string; customer: string; effective: string }[]).map((item) => (
               <div
                 key={item.id}
                 className="flex items-center gap-3 px-4 py-2.5 sm:px-5"
@@ -715,11 +692,11 @@ export function PricingRulesPage() {
           <DashboardPanelTitle
             icon="lightning"
             title="Permission Gate"
-            trailing={countTrailing("3 Permission Gates")}
+            trailing={countTrailing("0 Permission Gates")}
           />
         </div>
         <div className="pb-2">
-          {PRICING_PERMISSION_GATES.map((item) => (
+          {([] as { id: string; customer: string; status: { label: string; variant: "success" | "warning" | "offline" } }[]).map((item) => (
             <div
               key={item.id}
               className="flex items-center gap-3 px-4 py-2.5 sm:px-5"
@@ -753,6 +730,10 @@ export function PricingRulesPage() {
           setAppliedFilters(DEFAULT_PRICING_FILTERS);
           setFiltersApplied(false);
         }}
+        customerOptions={customers}
+        serviceOptions={serviceOptions}
+        rateTypeOptions={rateTypeOptions}
+        statusOptions={statusOptions}
       />
 
       <DashboardSaveViewsModal
@@ -763,15 +744,10 @@ export function PricingRulesPage() {
         onSelectView={setActiveViewId}
         onSaveNewView={() => setSaveNewOpen(true)}
         onViewAction={(viewId, action) => {
-          if (action === "delete") {
-            setSavedViews((p) => p.filter((v) => v.id !== viewId));
-            if (activeViewId === viewId) setActiveViewId(null);
-          }
+          if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
-            const src = savedViews.find((v) => v.id === viewId);
-            if (!src) return;
-            const id = `view-${Date.now()}`;
-            setSavedViews((p) => [...p, { id, label: `${src.label} copy` }]);
+            const source = savedViews.find((v) => v.id === viewId);
+            if (source) void createView(`${source.label} copy`);
           }
         }}
       />
@@ -779,9 +755,7 @@ export function PricingRulesPage() {
         open={saveNewOpen}
         onClose={() => setSaveNewOpen(false)}
         onConfirm={({ name }) => {
-          const id = `view-${Date.now()}`;
-          setSavedViews((p) => [...p, { id, label: name }]);
-          setActiveViewId(id);
+          void createView(name);
         }}
       />
     </div>

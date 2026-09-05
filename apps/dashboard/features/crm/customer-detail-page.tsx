@@ -13,18 +13,26 @@ import {
   DashboardStatRow,
   DashboardToolbarButton,
 } from "@dark-horse-safety/ui";
-import {
-  CUSTOMER_DETAIL,
-  CUSTOMER_DETAIL_KPI,
-  CUSTOMER_DOCUMENTS,
-  CUSTOMER_CONTACTS,
-  CUSTOMER_LOCATIONS,
-  CUSTOMER_PRICING,
-  CUSTOMER_FORMS,
-  CUSTOMER_ROUTE_GPS,
-  CUSTOMER_SALES_TICKETS,
-  CUSTOMER_WORK_ORDERS,
-} from "./data/customer-detail.mock";
+import { crmApi, type CrmCustomerDetail } from "@/lib/crm-api";
+import { toastApiError } from "@/lib/toast";
+import type { CustomerDetail, KpiCell } from "./crm-types";
+
+const EMPTY_DETAIL: CustomerDetail = {
+  id: "",
+  name: "",
+  code: "",
+  status: { label: "—", variant: "neutral" },
+  accountOwner: "—",
+  email: "—",
+  phone: "—",
+  imageUrl: "",
+  industry: "—",
+  billingAddress: "—",
+  primaryContact: "—",
+  customerSince: "—",
+  maxClockInRadius: false,
+  radiusMiles: "—",
+};
 
 /* ═══════════════════════════════════════════════════════════════════
    ICONS
@@ -322,11 +330,128 @@ function RowMenu({
 
 export function CustomerDetailPage({ customerId }: { customerId: string }) {
   const router = useRouter();
-  const c = CUSTOMER_DETAIL;
+  const [detail, setDetail] = React.useState<CustomerDetail>(EMPTY_DETAIL);
+  const [apiDetail, setApiDetail] = React.useState<CrmCustomerDetail | null>(null);
   const [woPage, setWoPage] = React.useState(1);
   const [woPageSize, setWoPageSize] = React.useState(25);
-  const woTotal = 142;
-  const woRows = CUSTOMER_WORK_ORDERS;
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      try {
+        const res = await crmApi.getCustomer(customerId);
+        if (cancelled) return;
+        const d = res.data;
+        setApiDetail(d);
+        const owner = d.assignedRep
+          ? [d.assignedRep.firstName, d.assignedRep.lastName]
+              .filter(Boolean)
+              .join(" ")
+              .trim() || d.assignedRep.email || "—"
+          : "—";
+        const primary = d.contacts?.find((c) => c.isPrimary) ?? d.contacts?.[0];
+        setDetail({
+          id: d.id,
+          name: d.name,
+          code: d.code,
+          status: {
+            label: d.status
+              .toLowerCase()
+              .split("_")
+              .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+              .join(" "),
+            variant:
+              d.status === "ACTIVE"
+                ? "success"
+                : d.status === "NEEDS_REVIEW"
+                  ? "warning"
+                  : "error",
+          },
+          accountOwner: owner,
+          email: d.email ?? "—",
+          phone: d.phone ?? "—",
+          imageUrl: "",
+          industry: d.industry ?? "—",
+          billingAddress: d.billingAddress ?? "—",
+          primaryContact: primary?.fullName ?? "—",
+          customerSince: d.createdAt ? d.createdAt.slice(0, 10) : "—",
+          maxClockInRadius: Boolean(d.clockInRadius),
+          radiusMiles: d.clockInRadius ?? "—",
+        });
+      } catch (err) {
+        toastApiError(err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    if (customerId) void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId]);
+
+  const c = detail;
+  const contactRows = (apiDetail?.contacts ?? []).map((contact) => ({
+    id: contact.id,
+    name: contact.fullName,
+    role: contact.roleTitle ?? "—",
+    badge: contact.isPrimary ? "Primary" : "Secondary",
+  }));
+  const locationRows = (apiDetail?.locations ?? []).map((loc) => ({
+    id: loc.id,
+    name: loc.name,
+    detail: [loc.county, loc.state].filter(Boolean).join(", ") || "—",
+    status: loc.status,
+  }));
+  const pricingRows: { id: string; title: string; trailing: string }[] = [];
+  const formRows: { id: string; title: string; detail: string }[] = [];
+  const routeRows: { id: string; name: string; detail: string }[] = [];
+  const docRows: { id: string; title: string; subtitle: string }[] = [];
+  const ticketRows: {
+    id: string;
+    title: string;
+    subtitle: string;
+    amount: string;
+    status: { label: string; variant: "success" | "warning" | "error" | "neutral" | "offline" };
+  }[] = [];
+  const woRows: {
+    id: string;
+    serviceDate: string;
+    woNumber: string;
+    customer: string;
+    category: { label: string; variant: "success" | "warning" | "error" | "neutral" | "offline" };
+    clockIn: string;
+    clockOut: string;
+    hours: string;
+    status: { label: string; variant: "success" | "warning" | "error" | "neutral" | "offline" };
+  }[] = [];
+  const woTotal = woRows.length;
+  const kpiCells: KpiCell[] = [
+    {
+      title: "Contacts",
+      value: String(contactRows.length),
+      meta: "Linked",
+      icon: "customers",
+    },
+    {
+      title: "Locations",
+      value: String(locationRows.length),
+      meta: "Wells / pads",
+      icon: "gps",
+    },
+    {
+      title: "Open jobs",
+      value: String(apiDetail?.openJobs ?? 0),
+      meta: "From API",
+      icon: "time",
+    },
+  ];
+
+  if (loading) {
+    return <div className="bg-shell p-6 font-sans text-sm text-[#959597]">Loading customer…</div>;
+  }
 
   return (
     <div className="space-y-[18px] overflow-x-hidden bg-shell p-3 sm:p-4">
@@ -398,7 +523,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
       {/* ── KPI strip ── */}
       <DashboardStatGrid>
         <DashboardStatRow columns={3}>
-          {CUSTOMER_DETAIL_KPI.map((cell) => (
+          {kpiCells.map((cell) => (
             <DashboardStatCell key={cell.title} {...cell} />
           ))}
         </DashboardStatRow>
@@ -464,8 +589,8 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
       <div className="flex flex-col gap-[18px]">
         <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-2">
 
-        <SectionPanel icon={<LightningIcon />} title="Documents" meta="3 Documents">
-          {CUSTOMER_DOCUMENTS.map((doc) => (
+        <SectionPanel icon={<LightningIcon />} title="Documents" meta={`${docRows.length} Documents`}>
+          {docRows.map((doc) => (
             <DetailRow
               key={doc.id}
               title={doc.title}
@@ -484,8 +609,8 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
           ))}
         </SectionPanel>
 
-        <SectionPanel icon={<LightningIcon />} title="Contacts" meta="3 Contacts">
-          {CUSTOMER_CONTACTS.map((contact) => (
+        <SectionPanel icon={<LightningIcon />} title="Contacts" meta={`${contactRows.length} Contacts`}>
+          {contactRows.map((contact) => (
             <DetailRow
               key={contact.id}
               title={
@@ -517,8 +642,8 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
           ))}
         </SectionPanel>
 
-        <SectionPanel icon={<LightningIcon />} title="Locations / Wells" meta="12 Wells · 9 Active">
-          {CUSTOMER_LOCATIONS.map((loc) => (
+        <SectionPanel icon={<LightningIcon />} title="Locations / Wells" meta={`${locationRows.length} Locations`}>
+          {locationRows.map((loc) => (
             <DetailRow
               key={loc.id}
               title={
@@ -542,7 +667,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
         </SectionPanel>
 
         <SectionPanel icon={<LightningIcon />} title="Pricing" meta="3 Active Rules">
-          {CUSTOMER_PRICING.map((rule) => (
+          {pricingRows.map((rule) => (
             <DetailRow
               key={rule.id}
               title={rule.title}
@@ -561,13 +686,13 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
         </SectionPanel>
 
         <SectionPanel icon={<LightningIcon />} title="Required Forms" meta="V3 · 3 Rules">
-          {CUSTOMER_FORMS.map((form) => (
+          {formRows.map((form) => (
             <DetailRow key={form.id} title={form.title} trailing={form.detail} />
           ))}
         </SectionPanel>
 
         <SectionPanel icon={<LightningIcon />} title="Route / GPS" meta="GPS Required · 8 Sites">
-          {CUSTOMER_ROUTE_GPS.map((route) => (
+          {routeRows.map((route) => (
             <DetailRow key={route.id} title={route.name} trailing={route.detail} />
           ))}
         </SectionPanel>
@@ -575,7 +700,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
         </div>
 
         <SectionPanel icon={<LightningIcon />} title="Sales Tickets" meta="3 Recent">
-          {CUSTOMER_SALES_TICKETS.map((t) => (
+          {ticketRows.map((t) => (
             <DetailRow
               key={t.id}
               title={

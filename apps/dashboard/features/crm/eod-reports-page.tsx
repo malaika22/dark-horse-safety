@@ -22,17 +22,16 @@ import {
   DashboardToolbarButton,
   DashboardToolbarIcons,
   type DashboardDataTableColumn,
-  type DashboardSavedView,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
-import {
-  EOD_REPORTS_KPI,
-  EOD_REPORTS_ROWS,
-  EOD_REPORTS_SAVED_VIEWS,
-  EOD_REPORTS_SORT_OPTIONS,
-  type BadgeCell,
-  type EodReportRow,
-} from "./data/eod-reports.mock";
+import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { mapEodReportRow } from "@/lib/crm-mappers";
+import { kpiCellsFromApi } from "@/lib/crm-ui";
+import { useCrmList } from "@/lib/use-crm-list";
+import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
+import { toastApiError, toastSuccess } from "@/lib/toast";
+import { EOD_KPI_SHELL, EOD_SORT_OPTIONS } from "./crm-constants";
+import type { BadgeCell, EodReportRow } from "./crm-types";
 
 function FilterCheckMarkIcon({ className }: { className?: string }) {
   return (
@@ -77,28 +76,6 @@ function ClockIcon({ className }: { className?: string }) {
   );
 }
 
-function sortRows(
-  rows: EodReportRow[],
-  field: string,
-  direction: DashboardSortDirection,
-) {
-  const dir = direction === "asc" ? 1 : -1;
-  return [...rows].sort((a, b) => {
-    switch (field) {
-      case "date":
-        return a.date.localeCompare(b.date) * dir;
-      case "rep":
-        return a.rep.localeCompare(b.rep) * dir;
-      case "activities":
-        return (a.activities - b.activities) * dir;
-      case "status":
-        return a.status.label.localeCompare(b.status.label) * dir;
-      case "reportId":
-      default:
-        return a.reportId.localeCompare(b.reportId) * dir;
-    }
-  });
-}
 
 function BadgeOrDash({ value }: { value: BadgeCell }) {
   if (!value) return <span className="text-[#959597]">—</span>;
@@ -132,7 +109,7 @@ export function EodReportsPage() {
   const router = useRouter();
   const [query, setQuery] = React.useState("");
   const [chips, setChips] = React.useState<{ id: string; label: string }[]>([]);
-  const [sortField, setSortField] = React.useState("date");
+  const [sortField, setSortField] = React.useState("reportDate");
   const [sortDirection, setSortDirection] =
     React.useState<DashboardSortDirection>("desc");
   const [page, setPage] = React.useState(1);
@@ -140,36 +117,51 @@ export function EodReportsPage() {
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
-  const [savedViews, setSavedViews] = React.useState<DashboardSavedView[]>(
-    EOD_REPORTS_SAVED_VIEWS,
-  );
-  const [activeViewId, setActiveViewId] = React.useState<string | null>(
-    "view-1",
-  );
+  const {
+    savedViews,
+    activeViewId,
+    setActiveViewId,
+    createView,
+    deleteView,
+  } = useCrmSavedViews("EOD_REPORTS");
 
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let rows = EOD_REPORTS_ROWS.filter((row) => {
-      if (!q) return true;
-      return [row.reportId, row.rep, row.date, row.status.label]
-        .join(" ")
-        .toLowerCase()
-        .includes(q);
-    });
-    return sortRows(rows, sortField, sortDirection);
-  }, [query, sortField, sortDirection]);
+  const { rows, total, kpiData, loading } = useCrmList({
+    list: (p) => crmApi.listEodReports(p),
+    mapRow: mapEodReportRow,
+    kpi: () => crmApi.eodReportsKpi(),
+    q: query,
+    page,
+    pageSize,
+    sort: sortField,
+    direction: sortDirection,
+  });
+
+  const kpiCells = React.useMemo(
+    () => kpiCellsFromApi(EOD_KPI_SHELL, kpiData),
+    [kpiData],
+  );
 
   const bulkOpen = selectedIds.length > 0;
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, pageCount);
-  const pageRows = filtered.slice(
-    (safePage - 1) * pageSize,
-    safePage * pageSize,
-  );
 
   React.useEffect(() => {
     setPage(1);
   }, [query, sortField, sortDirection, pageSize]);
+
+  async function handleExport() {
+    try {
+      const res = await crmApi.exportEodReports({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDirection,
+      });
+      downloadCsv(res.data.csv, res.data.filename);
+      toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
 
   const columns: DashboardDataTableColumn<EodReportRow>[] = React.useMemo(
     () => [
@@ -292,7 +284,7 @@ export function EodReportsPage() {
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={5}>
-          {EOD_REPORTS_KPI.map((cell) => (
+          {kpiCells.map((cell) => (
             <DashboardStatCell key={cell.title} {...cell} />
           ))}
         </DashboardStatRow>
@@ -307,8 +299,8 @@ export function EodReportsPage() {
               <DashboardExportMenu
                 triggerLabel="Export selected"
                 items={[
-                  { id: "selected-csv", label: "Export selected view • CSV" },
-                  { id: "all-csv", label: "Export all • CSV" },
+                  { id: "selected-csv", label: "Export selected view • CSV", onSelect: () => void handleExport() },
+                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
                   { id: "pdf", label: "Export as PDF" },
                 ]}
               />
@@ -337,7 +329,7 @@ export function EodReportsPage() {
           actions={
             <>
               <DashboardSortMenu
-                options={EOD_REPORTS_SORT_OPTIONS}
+                options={EOD_SORT_OPTIONS}
                 field={sortField}
                 direction={sortDirection}
                 onFieldChange={setSortField}
@@ -353,8 +345,8 @@ export function EodReportsPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV" },
-                  { id: "all-csv", label: "Export all • CSV" },
+                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
+                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
                   { id: "pdf", label: "Export as PDF" },
                 ]}
               />
@@ -376,9 +368,9 @@ export function EodReportsPage() {
 
       <DashboardDataTable
         columns={columns}
-        rows={pageRows}
+        rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage="No EOD reports found"
+        emptyMessage={loading ? "Loading EOD reports…" : "No EOD reports found"}
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -388,7 +380,7 @@ export function EodReportsPage() {
       <DashboardPagination
         page={safePage}
         pageSize={pageSize}
-        total={filtered.length}
+        total={total}
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
@@ -401,18 +393,10 @@ export function EodReportsPage() {
         onSelectView={setActiveViewId}
         onSaveNewView={() => setSaveNewViewOpen(true)}
         onViewAction={(viewId, action) => {
-          if (action === "delete") {
-            setSavedViews((prev) => prev.filter((v) => v.id !== viewId));
-            if (activeViewId === viewId) setActiveViewId(null);
-          }
+          if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((v) => v.id === viewId);
-            if (!source) return;
-            const id = `view-${Date.now()}`;
-            setSavedViews((prev) => [
-              ...prev,
-              { id, label: `${source.label} copy` },
-            ]);
+            if (source) void createView(`${source.label} copy`);
           }
         }}
       />
@@ -421,9 +405,7 @@ export function EodReportsPage() {
         open={saveNewViewOpen}
         onClose={() => setSaveNewViewOpen(false)}
         onConfirm={({ name }) => {
-          const id = `view-${Date.now()}`;
-          setSavedViews((prev) => [...prev, { id, label: name }]);
-          setActiveViewId(id);
+          void createView(name);
         }}
       />
     </div>
