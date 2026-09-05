@@ -14,7 +14,10 @@ import {
   DashboardToolbarButton,
 } from "@dark-horse-safety/ui";
 import { crmApi, type CrmCustomerDetail } from "@/lib/crm-api";
-import { toastApiError } from "@/lib/toast";
+import { logContactChannel } from "@/lib/crm-activity-log";
+import { formatKpiValue } from "@/lib/crm-ui";
+import { toastApiError, toastSuccess } from "@/lib/toast";
+import { BrandLoader } from "@/features/loading/brand-loader";
 import type { CustomerDetail, KpiCell } from "./crm-types";
 
 const EMPTY_DETAIL: CustomerDetail = {
@@ -98,7 +101,19 @@ function ToolbarBtn({ children, onClick, className }: { children: React.ReactNod
 }
 
 /* ── page-level menu ── */
-function PageMenu({ customerId }: { customerId: string }) {
+function PageMenu({
+  customerId,
+  netsuiteId,
+  email,
+  onArchive,
+  onDuplicate,
+}: {
+  customerId: string;
+  netsuiteId?: string | null;
+  email?: string | null;
+  onArchive: () => void;
+  onDuplicate: () => void;
+}) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const anchorRef = React.useRef<HTMLButtonElement>(null);
@@ -162,11 +177,49 @@ function PageMenu({ customerId }: { customerId: string }) {
           {
             id: "dup",
             label: "Duplicate Customer",
-            onSelect: () => router.push("/crm/accounts/new"),
+            onSelect: onDuplicate,
           },
-          { id: "netsuite", label: "View in NetSuite" },
-          { id: "print", label: "Print Summary" },
-          { id: "archive", label: "Archive Customer", destructive: true },
+          {
+            id: "netsuite",
+            label: "View in NetSuite",
+            onSelect: () => {
+              const base =
+                process.env.NEXT_PUBLIC_NETSUITE_CUSTOMER_URL?.trim() ||
+                "https://system.netsuite.com/app/common/entity/custjob.nl?id=";
+              if (netsuiteId) {
+                window.open(
+                  `${base}${encodeURIComponent(netsuiteId)}`,
+                  "_blank",
+                  "noopener,noreferrer",
+                );
+              } else {
+                toastApiError(new Error("No NetSuite ID"));
+              }
+            },
+          },
+          {
+            id: "email",
+            label: "Email",
+            onSelect: () => {
+              void logContactChannel({
+                type: "EMAIL",
+                customerId,
+                email: email && email !== "—" ? email : null,
+                label: "Customer email",
+              });
+            },
+          },
+          {
+            id: "print",
+            label: "Print Summary",
+            onSelect: () => window.print(),
+          },
+          {
+            id: "archive",
+            label: "Archive Customer",
+            destructive: true,
+            onSelect: onArchive,
+          },
         ]}
       />
     </>
@@ -392,12 +445,175 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
     };
   }, [customerId]);
 
+  async function reloadCustomer() {
+    try {
+      const res = await crmApi.getCustomer(customerId);
+      const d = res.data;
+      setApiDetail(d);
+      const owner = d.assignedRep
+        ? [d.assignedRep.firstName, d.assignedRep.lastName]
+            .filter(Boolean)
+            .join(" ")
+            .trim() || d.assignedRep.email || "—"
+        : "—";
+      const primary = d.contacts?.find((c) => c.isPrimary) ?? d.contacts?.[0];
+      setDetail((prev) => ({
+        ...prev,
+        id: d.id,
+        name: d.name,
+        code: d.code,
+        accountOwner: owner,
+        email: d.email ?? "—",
+        phone: d.phone ?? "—",
+        industry: d.industry ?? "—",
+        billingAddress: d.billingAddress ?? "—",
+        primaryContact: primary?.fullName ?? "—",
+        maxClockInRadius: Boolean(d.clockInRadius),
+        radiusMiles: d.clockInRadius ?? "—",
+      }));
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleArchiveCustomer() {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Archive this customer?")
+    ) {
+      return;
+    }
+    try {
+      await crmApi.archiveCustomer(customerId);
+      toastSuccess("Customer archived");
+      router.push("/crm/accounts");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleDuplicateCustomer() {
+    try {
+      const res = await crmApi.duplicateCustomer(customerId);
+      toastSuccess("Customer duplicated");
+      router.push(`/crm/accounts/${res.data.id}`);
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleSetPrimary(contactId: string) {
+    try {
+      await crmApi.setContactPrimary(contactId, customerId);
+      toastSuccess("Contact set as primary");
+      await reloadCustomer();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleRemoveContact(contactId: string, name: string) {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`Remove ${name} from this customer?`)
+    ) {
+      return;
+    }
+    try {
+      await crmApi.archiveContact(contactId);
+      toastSuccess("Contact removed");
+      await reloadCustomer();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleDeactivateLocation(locationId: string) {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Deactivate this location?")
+    ) {
+      return;
+    }
+    try {
+      await crmApi.archiveLocation(locationId);
+      toastSuccess("Location deactivated");
+      await reloadCustomer();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleDeletePricingRule(ruleId: string) {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this pricing rule?")
+    ) {
+      return;
+    }
+    try {
+      await crmApi.deletePricingRule(ruleId);
+      toastSuccess("Pricing rule deleted");
+      await reloadCustomer();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  function titleCaseStatus(status: string) {
+    return status
+      .toLowerCase()
+      .split("_")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
+
+  function statusVariant(
+    status: string,
+  ): "success" | "warning" | "error" | "neutral" | "offline" {
+    const s = status.toUpperCase();
+    if (["ACTIVE", "COMPLETE", "SUBMITTED", "WON", "SENT", "MET"].includes(s)) {
+      return "success";
+    }
+    if (["PENDING", "NEEDS_REVIEW", "DRAFT", "OPEN"].includes(s)) {
+      return "warning";
+    }
+    if (["IN_PROGRESS"].includes(s)) return "offline";
+    if (["INACTIVE", "ARCHIVED", "EXPIRED", "LOST", "ON_HOLD"].includes(s)) {
+      return "error";
+    }
+    return "neutral";
+  }
+
+  function formatMoney(value?: string | number | null) {
+    if (value == null || value === "") return "—";
+    const n = typeof value === "number" ? value : Number(value);
+    if (Number.isNaN(n)) return String(value);
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    }).format(n);
+  }
+
+  function formatDate(value?: string | null) {
+    if (!value) return "—";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+    });
+  }
+
   const c = detail;
   const contactRows = (apiDetail?.contacts ?? []).map((contact) => ({
     id: contact.id,
     name: contact.fullName,
     role: contact.roleTitle ?? "—",
     badge: contact.isPrimary ? "Primary" : "Secondary",
+    email: contact.email ?? null,
   }));
   const locationRows = (apiDetail?.locations ?? []).map((loc) => ({
     id: loc.id,
@@ -405,52 +621,97 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
     detail: [loc.county, loc.state].filter(Boolean).join(", ") || "—",
     status: loc.status,
   }));
-  const pricingRows: { id: string; title: string; trailing: string }[] = [];
-  const formRows: { id: string; title: string; detail: string }[] = [];
-  const routeRows: { id: string; name: string; detail: string }[] = [];
-  const docRows: { id: string; title: string; subtitle: string }[] = [];
-  const ticketRows: {
-    id: string;
-    title: string;
-    subtitle: string;
-    amount: string;
-    status: { label: string; variant: "success" | "warning" | "error" | "neutral" | "offline" };
-  }[] = [];
-  const woRows: {
-    id: string;
-    serviceDate: string;
-    woNumber: string;
-    customer: string;
-    category: { label: string; variant: "success" | "warning" | "error" | "neutral" | "offline" };
-    clockIn: string;
-    clockOut: string;
-    hours: string;
-    status: { label: string; variant: "success" | "warning" | "error" | "neutral" | "offline" };
-  }[] = [];
-  const woTotal = woRows.length;
+  const pricingRows = (apiDetail?.pricingRules ?? []).map((rule) => ({
+    id: rule.id,
+    title: rule.serviceItem,
+    trailing: `${formatMoney(rule.rate)}${rule.unit ? ` / ${rule.unit}` : ""}`,
+  }));
+  const formRows = (apiDetail?.formRules ?? []).map((form) => ({
+    id: form.id,
+    title: form.formTemplate,
+    detail: [form.jobType, form.required ? "Required" : null, form.status]
+      .filter(Boolean)
+      .join(" · "),
+  }));
+  const routeRows = (apiDetail?.routeRules ?? []).map((route) => ({
+    id: route.id,
+    name: route.routeLabel ?? route.code,
+    detail: [
+      route.geofenceRadius ? `${route.geofenceRadius} radius` : null,
+      route.gpsRequired ? "GPS Required" : null,
+      route.location?.name,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "—",
+  }));
+  const docRows = (apiDetail?.documents ?? []).map((doc) => ({
+    id: doc.id,
+    title: doc.name,
+    subtitle: [
+      doc.kind,
+      doc.expiresAt ? `Exp ${formatDate(doc.expiresAt)}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "—",
+    url: doc.url ?? null,
+    expiresAt: doc.expiresAt ?? null,
+  }));
+  const ticketRows = (apiDetail?.quotes ?? []).map((quote) => ({
+    id: quote.id,
+    title: quote.quoteNumber,
+    subtitle: formatDate(quote.createdAt),
+    amount: formatMoney(quote.amount),
+    status: {
+      label: titleCaseStatus(quote.status),
+      variant: statusVariant(quote.status),
+    },
+  }));
+  const activityRows = (apiDetail?.activities ?? []).map((activity) => ({
+    id: activity.id,
+    serviceDate: formatDate(activity.activityAt),
+    woNumber: activity.activityCode,
+    customer: activity.customer?.name ?? c.name,
+    category: {
+      label: titleCaseStatus(activity.type),
+      variant: statusVariant(activity.type),
+    },
+    clockIn: activity.duration ?? "—",
+    clockOut: activity.outcome ?? "—",
+    hours: activity.subject ?? "—",
+    status: {
+      label: titleCaseStatus(activity.status),
+      variant: statusVariant(activity.status),
+    },
+  }));
+  const woTotal = activityRows.length;
+  const activityPageRows = activityRows.slice(
+    (woPage - 1) * woPageSize,
+    woPage * woPageSize,
+  );
   const kpiCells: KpiCell[] = [
     {
       title: "Contacts",
       value: String(contactRows.length),
-      meta: "Linked",
       icon: "customers",
     },
     {
       title: "Locations",
       value: String(locationRows.length),
-      meta: "Wells / pads",
       icon: "gps",
     },
     {
       title: "Open jobs",
-      value: String(apiDetail?.openJobs ?? 0),
-      meta: "From API",
+      value: formatKpiValue(apiDetail?.openJobs),
       icon: "time",
     },
   ];
 
   if (loading) {
-    return <div className="bg-shell p-6 font-sans text-sm text-[#959597]">Loading customer…</div>;
+    return (
+      <div className="flex min-h-[320px] items-center justify-center bg-shell p-6">
+        <BrandLoader label="Loading customer" />
+      </div>
+    );
   }
 
   return (
@@ -513,7 +774,13 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <PageMenu customerId={customerId || c.id} />
+            <PageMenu
+              customerId={customerId || c.id}
+              netsuiteId={apiDetail?.netsuiteId}
+              email={apiDetail?.email}
+              onArchive={() => void handleArchiveCustomer()}
+              onDuplicate={() => void handleDuplicateCustomer()}
+            />
             <ToolbarBtn>Previous</ToolbarBtn>
             <ToolbarBtn>Next</ToolbarBtn>
           </div>
@@ -543,7 +810,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div><FieldLabel>Company Name</FieldLabel><DisplayInput value={c.name} /></div>
             <div><FieldLabel>Account Owner</FieldLabel><DisplayInput value={c.accountOwner} /></div>
-            <div><FieldLabel>Status</FieldLabel><DisplayInput value="Active" /></div>
+            <div><FieldLabel>Status</FieldLabel><DisplayInput value={c.status.label} /></div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div><FieldLabel>Phone</FieldLabel><DisplayInput value={c.phone} /></div>
@@ -567,15 +834,25 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
           <div>
             <FieldLabel>Metrics</FieldLabel>
             <div className="mt-1 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <MetricBox label="Max Clock-In Radius" value={`${c.radiusMiles} MI`} />
-              <MetricBox label="Min Billable Block" value="15 MIN" />
+              <MetricBox
+                label="Max Clock-In Radius"
+                value={
+                  apiDetail?.clockInRadius
+                    ? `${apiDetail.clockInRadius}${/mi|ft|m/i.test(apiDetail.clockInRadius) ? "" : " MI"}`
+                    : "—"
+                }
+              />
+              <MetricBox
+                label="Payment Terms"
+                value={apiDetail?.paymentTerms ?? "—"}
+              />
               <div className="rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3 py-2.5">
                 <p className="mb-1 font-sans text-[10px] uppercase tracking-[-0.01em] text-[#959597]">
-                  Auto-Flag No-Show
+                  Requires PO
                 </p>
                 <div className="flex items-center justify-between gap-2">
                   <p className="truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                    After 30 Mins
+                    {apiDetail?.requiresPo ? "Yes" : "No"}
                   </p>
                   <ChevronDownIcon className="shrink-0 text-[#959597]" />
                 </div>
@@ -598,11 +875,93 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
               trailingTone="muted"
               menu={
                 <RowMenu items={[
-                  { id: "view", label: "View" },
-                  { id: "dl", label: "Download" },
-                  { id: "replace", label: "Replace" },
-                  { id: "expiry", label: "Set Expiry Reminder" },
-                  { id: "delete", label: "Delete", destructive: true },
+                  {
+                    id: "view",
+                    label: "View",
+                    onSelect: () => {
+                      if (doc.url) window.open(doc.url, "_blank", "noopener,noreferrer");
+                      else toastApiError(new Error("No document URL"));
+                    },
+                  },
+                  {
+                    id: "dl",
+                    label: "Download",
+                    onSelect: () => {
+                      if (doc.url) window.open(doc.url, "_blank", "noopener,noreferrer");
+                      else toastApiError(new Error("No document URL"));
+                    },
+                  },
+                  {
+                    id: "replace",
+                    label: "Replace URL",
+                    onSelect: () => {
+                      const next = window.prompt(
+                        "New document URL",
+                        doc.url ?? "",
+                      );
+                      if (next == null) return;
+                      void (async () => {
+                        try {
+                          await crmApi.updateCustomerDocument(customerId, doc.id, {
+                            url: next.trim() || null,
+                          });
+                          toastSuccess("Document updated");
+                          await reloadCustomer();
+                        } catch (err) {
+                          toastApiError(err);
+                        }
+                      })();
+                    },
+                  },
+                  {
+                    id: "expiry",
+                    label: "Set Expiry Reminder",
+                    onSelect: () => {
+                      const next = window.prompt(
+                        "Expiry date (YYYY-MM-DD)",
+                        doc.expiresAt?.slice(0, 10) ?? "",
+                      );
+                      if (next == null) return;
+                      void (async () => {
+                        try {
+                          await crmApi.updateCustomerDocument(customerId, doc.id, {
+                            expiresAt: next.trim()
+                              ? new Date(`${next.trim()}T12:00:00`).toISOString()
+                              : null,
+                          });
+                          toastSuccess("Expiry saved");
+                          await reloadCustomer();
+                        } catch (err) {
+                          toastApiError(err);
+                        }
+                      })();
+                    },
+                  },
+                  {
+                    id: "delete",
+                    label: "Delete",
+                    destructive: true,
+                    onSelect: () => {
+                      if (
+                        typeof window !== "undefined" &&
+                        !window.confirm("Delete this document?")
+                      ) {
+                        return;
+                      }
+                      void (async () => {
+                        try {
+                          await crmApi.deleteCustomerDocument(
+                            customerId,
+                            doc.id,
+                          );
+                          toastSuccess("Document deleted");
+                          await reloadCustomer();
+                        } catch (err) {
+                          toastApiError(err);
+                        }
+                      })();
+                    },
+                  },
                 ]} />
               }
             />
@@ -631,11 +990,32 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
               menu={
                 <RowMenu items={[
                   { id: "open", label: "Open Contact", onSelect: () => router.push(`/crm/contacts/${contact.id}`) },
-                  { id: "edit", label: "Edit Contact", onSelect: () => router.push("/crm/contacts/new") },
-                  { id: "primary", label: "Set as Primary" },
+                  { id: "edit", label: "Edit Contact", onSelect: () => router.push(`/crm/contacts/${contact.id}/edit`) },
+                  {
+                    id: "primary",
+                    label: "Set as Primary",
+                    onSelect: () => void handleSetPrimary(contact.id),
+                  },
                   { id: "log", label: "Log Activity", onSelect: () => router.push("/crm/sales/new") },
-                  { id: "email", label: "Email" },
-                  { id: "remove", label: "Remove from Customer", destructive: true },
+                  {
+                    id: "email",
+                    label: "Email",
+                    onSelect: () => {
+                      void logContactChannel({
+                        type: "EMAIL",
+                        contactId: contact.id,
+                        customerId: customerId || c.id,
+                        email: contact.email,
+                        label: contact.name,
+                      });
+                    },
+                  },
+                  {
+                    id: "remove",
+                    label: "Remove from Customer",
+                    destructive: true,
+                    onSelect: () => void handleRemoveContact(contact.id, contact.name),
+                  },
                 ]} />
               }
             />
@@ -659,14 +1039,23 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                   { id: "edit", label: "Edit Location", onSelect: () => router.push(`/crm/locations/${loc.id}/edit`) },
                   { id: "geofence", label: "Set Geofence Radius", onSelect: () => router.push("/crm/route-rules") },
                   { id: "workorders", label: "View Work Orders Here", onSelect: () => router.push("/operations/work-orders") },
-                  { id: "deactivate", label: "Deactivate Location", destructive: true },
+                  {
+                    id: "deactivate",
+                    label: "Deactivate Location",
+                    destructive: true,
+                    onSelect: () => void handleDeactivateLocation(loc.id),
+                  },
                 ]} />
               }
             />
           ))}
         </SectionPanel>
 
-        <SectionPanel icon={<LightningIcon />} title="Pricing" meta="3 Active Rules">
+        <SectionPanel
+          icon={<LightningIcon />}
+          title="Pricing"
+          meta={`${pricingRows.length} Active Rules`}
+        >
           {pricingRows.map((rule) => (
             <DetailRow
               key={rule.id}
@@ -678,20 +1067,33 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                   { id: "edit", label: "Edit Rate", onSelect: () => router.push(`/crm/pricing-rules/${rule.id}/edit`) },
                   { id: "duplicate", label: "Duplicate Rule", onSelect: () => router.push("/crm/pricing-rules/new") },
                   { id: "history", label: "View History", onSelect: () => router.push("/crm/pricing-rules") },
-                  { id: "delete", label: "Delete Rule", destructive: true },
+                  {
+                    id: "delete",
+                    label: "Delete Rule",
+                    destructive: true,
+                    onSelect: () => void handleDeletePricingRule(rule.id),
+                  },
                 ]} />
               }
             />
           ))}
         </SectionPanel>
 
-        <SectionPanel icon={<LightningIcon />} title="Required Forms" meta="V3 · 3 Rules">
+        <SectionPanel
+          icon={<LightningIcon />}
+          title="Required Forms"
+          meta={`${formRows.length} Rules`}
+        >
           {formRows.map((form) => (
             <DetailRow key={form.id} title={form.title} trailing={form.detail} />
           ))}
         </SectionPanel>
 
-        <SectionPanel icon={<LightningIcon />} title="Route / GPS" meta="GPS Required · 8 Sites">
+        <SectionPanel
+          icon={<LightningIcon />}
+          title="Route / GPS"
+          meta={`${routeRows.length} Rules`}
+        >
           {routeRows.map((route) => (
             <DetailRow key={route.id} title={route.name} trailing={route.detail} />
           ))}
@@ -699,7 +1101,11 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
 
         </div>
 
-        <SectionPanel icon={<LightningIcon />} title="Sales Tickets" meta="3 Recent">
+        <SectionPanel
+          icon={<LightningIcon />}
+          title="Quotes"
+          meta={`${ticketRows.length} Recent`}
+        >
           {ticketRows.map((t) => (
             <DetailRow
               key={t.id}
@@ -724,18 +1130,22 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
         </SectionPanel>
       </div>
 
-      <SectionPanel icon={<LightningIcon />} title="Work Orders">
+      <SectionPanel
+        icon={<LightningIcon />}
+        title="Activities"
+        meta={`${woTotal} Recent`}
+      >
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] border-collapse">
             <thead>
               <tr>
                 {[
-                  { id: "date", label: "Service Date" },
-                  { id: "wo", label: "WO Number" },
+                  { id: "date", label: "Activity Date" },
+                  { id: "wo", label: "Activity Code" },
                   { id: "customer", label: "Customer" },
-                  { id: "category", label: "Category" },
-                  { id: "clock", label: "Clock In/Out" },
-                  { id: "hours", label: "Hours" },
+                  { id: "category", label: "Type" },
+                  { id: "clock", label: "Duration / Outcome" },
+                  { id: "hours", label: "Subject" },
                   { id: "status", label: "Status" },
                   { id: "actions", label: "" },
                 ].map((h) => (
@@ -749,7 +1159,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
               </tr>
             </thead>
             <tbody>
-              {woRows.map((wo) => (
+              {activityPageRows.map((wo) => (
                 <tr key={wo.id}>
                   <td className="max-w-[110px] px-3 py-3">
                     <span className="block truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]" title={wo.serviceDate}>
@@ -757,12 +1167,9 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                     </span>
                   </td>
                   <td className="px-3 py-3 whitespace-nowrap">
-                    <span className="mr-1.5 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
-                      2026
-                    </span>
                     <button
                       type="button"
-                      onClick={() => router.push("/operations/work-orders")}
+                      onClick={() => router.push(`/crm/sales/${wo.id}`)}
                       className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] underline underline-offset-2 hover:opacity-70"
                     >
                       {wo.woNumber}
@@ -780,7 +1187,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                   </td>
                   <td className="px-3 py-3 whitespace-nowrap">
                     <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                      {wo.clockIn} - {wo.clockOut}
+                      {wo.clockIn} · {wo.clockOut}
                     </span>
                   </td>
                   <td className="px-3 py-3">
@@ -795,10 +1202,27 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                   </td>
                   <td className="px-3 py-3">
                     <RowMenu items={[
-                      { id: "view", label: "View Work Order", onSelect: () => router.push("/operations/work-orders") },
-                      { id: "edit", label: "Edit Work Order", onSelect: () => router.push("/operations/work-orders/new") },
-                      { id: "approve", label: "Approve" },
-                      { id: "flag", label: "Flag Issue", destructive: true },
+                      {
+                        id: "view",
+                        label: "View Activity",
+                        onSelect: () => router.push(`/crm/sales/${wo.id}`),
+                      },
+                      {
+                        id: "edit",
+                        label: "Edit Activity",
+                        onSelect: () => router.push(`/crm/sales/${wo.id}/edit`),
+                      },
+                      {
+                        id: "approve",
+                        label: "Approve",
+                        onSelect: () => toastSuccess(`Approve logged for ${wo.woNumber}`),
+                      },
+                      {
+                        id: "flag",
+                        label: "Flag Issue",
+                        destructive: true,
+                        onSelect: () => toastSuccess(`Flag logged for ${wo.woNumber}`),
+                      },
                     ]} />
                   </td>
                 </tr>

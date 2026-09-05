@@ -78,9 +78,10 @@ export function latLngToMapPin(
   lng?: number | null,
   active = true,
 ) {
-  const la = lat ?? 31.9;
-  const ln = lng ?? -102.1;
-  const x = Math.min(90, Math.max(10, ((ln + 104) / 4) * 100));
-  const y = Math.min(90, Math.max(10, ((33.5 - la) / 3) * 100));
+  if (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng)) {
+    return null;
+  }
+  const x = Math.min(90, Math.max(10, ((lng + 104) / 4) * 100));
+  const y = Math.min(90, Math.max(10, ((33.5 - lat) / 3) * 100));
   return { id, label, x, y, active };
 }

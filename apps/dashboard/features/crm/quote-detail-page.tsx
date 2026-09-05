@@ -9,7 +9,8 @@ import {
 } from "@dark-horse-safety/ui";
 import { crmApi, type CrmQuote } from "@/lib/crm-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
-import { SendQuoteModal } from "./send-quote-modal";
+import { BrandLoader } from "@/features/loading/brand-loader";
+import { SendQuoteModal, type SendQuotePayload } from "./send-quote-modal";
 
 function DetailPair({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -29,6 +30,16 @@ function money(value?: string | number | null) {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(n);
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(binary);
 }
 
 export function QuoteDetailPage({ quoteId }: { quoteId: string }) {
@@ -55,19 +66,40 @@ export function QuoteDetailPage({ quoteId }: { quoteId: string }) {
     };
   }, [quoteId]);
 
-  async function handleSend() {
+  async function handleSend(payload: SendQuotePayload) {
     try {
-      const res = await crmApi.sendQuote(quoteId);
+      const attachmentIds: string[] = [];
+      for (const file of payload.files ?? []) {
+        const data = await fileToBase64(file);
+        const uploaded = await crmApi.uploadQuoteAttachment(quoteId, {
+          fileName: file.name,
+          mimeType: file.type || undefined,
+          contentBase64: data,
+        });
+        if (uploaded.data?.id) attachmentIds.push(uploaded.data.id);
+      }
+      const res = await crmApi.sendQuote(quoteId, {
+        to: payload.recipient,
+        subject: payload.subject,
+        message: payload.message,
+        schedule: payload.schedule,
+        attachmentIds: attachmentIds.length ? attachmentIds : undefined,
+      });
       setQuote(res.data);
       toastSuccess("Quote sent");
       setSendOpen(false);
     } catch (err) {
       toastApiError(err);
+      throw err;
     }
   }
 
   if (loading) {
-    return <div className="bg-shell p-6 text-sm text-[#959597]">Loading quote…</div>;
+    return (
+      <div className="flex min-h-[320px] items-center justify-center bg-shell p-6">
+        <BrandLoader label="Loading quote" />
+      </div>
+    );
   }
   if (!quote) {
     return <div className="bg-shell p-6 text-sm text-[#959597]">Quote not found</div>;
@@ -92,6 +124,9 @@ export function QuoteDetailPage({ quoteId }: { quoteId: string }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link href={`/crm/quotes/${quote.id}/edit`}>
+            <DashboardToolbarButton>Edit</DashboardToolbarButton>
+          </Link>
           <Link href={`/crm/quotes/${quote.id}/preview`}>
             <DashboardToolbarButton>Preview</DashboardToolbarButton>
           </Link>
@@ -141,7 +176,8 @@ export function QuoteDetailPage({ quoteId }: { quoteId: string }) {
       <SendQuoteModal
         open={sendOpen}
         onClose={() => setSendOpen(false)}
-        onConfirm={() => void handleSend()}
+        defaultSubject={`Quote ${quote.quoteNumber}`}
+        onConfirm={handleSend}
       />
     </div>
   );

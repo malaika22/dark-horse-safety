@@ -6,8 +6,9 @@ import {
   DashboardPanel,
   DashboardToolbarButton,
 } from "@dark-horse-safety/ui";
-import { crmApi, type CrmEodReport } from "@/lib/crm-api";
-import { toastApiError } from "@/lib/toast";
+import { crmApi, downloadCsv, type CrmEodReport } from "@/lib/crm-api";
+import { toastApiError, toastSuccess } from "@/lib/toast";
+import { BrandLoader } from "@/features/loading/brand-loader";
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
@@ -26,6 +27,7 @@ function userLabel(rep?: { firstName?: string | null; lastName?: string | null; 
 export function EodReportDetailPage({ reportId }: { reportId: string }) {
   const [detail, setDetail] = React.useState<CrmEodReport | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [exporting, setExporting] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -44,7 +46,30 @@ export function EodReportDetailPage({ reportId }: { reportId: string }) {
     return () => { cancelled = true; };
   }, [reportId]);
 
-  if (loading) return <div className="bg-shell p-6 text-sm text-[#959597]">Loading report…</div>;
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const res = await crmApi.exportEodReports({
+        ids: reportId,
+        format: "csv",
+      });
+      if (!res.data.csv) throw new Error("No CSV");
+      downloadCsv(res.data.csv, res.data.filename);
+      toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center bg-shell p-6">
+        <BrandLoader label="Loading report" />
+      </div>
+    );
+  }
   if (!detail) return <div className="bg-shell p-6 text-sm text-[#959597]">Report not found</div>;
 
   const meta = `${userLabel(detail.rep)} · ${detail.reportDate.slice(0, 10)} · ${detail.submittedAt ? new Date(detail.submittedAt).toLocaleTimeString() : "—"}`;
@@ -61,7 +86,9 @@ export function EodReportDetailPage({ reportId }: { reportId: string }) {
             <span className="font-sans text-[11px] font-normal uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">{meta}</span>
           </div>
         </div>
-        <DashboardToolbarButton>Export</DashboardToolbarButton>
+        <DashboardToolbarButton disabled={exporting} onClick={() => void handleExport()}>
+          Export
+        </DashboardToolbarButton>
       </div>
 
       <DashboardPanel className="p-4 sm:p-5">

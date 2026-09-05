@@ -5,6 +5,7 @@ import Link from "next/link";
 import { DashboardBadge, DashboardToolbarButton } from "@dark-horse-safety/ui";
 import { crmApi, type CrmQuote } from "@/lib/crm-api";
 import { toastApiError } from "@/lib/toast";
+import { BrandLoader } from "@/features/loading/brand-loader";
 
 function money(value?: string | number | null) {
   if (value == null || value === "") return "—";
@@ -41,7 +42,11 @@ export function QuotePreviewPage({ quoteId }: { quoteId: string }) {
   }, [quoteId]);
 
   if (loading) {
-    return <div className="bg-shell p-6 text-sm text-[#959597]">Loading preview…</div>;
+    return (
+      <div className="flex min-h-[320px] items-center justify-center bg-shell p-6">
+        <BrandLoader label="Loading preview" />
+      </div>
+    );
   }
   if (!quote) {
     return <div className="bg-shell p-6 text-sm text-[#959597]">Quote not found</div>;

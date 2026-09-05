@@ -49,6 +49,12 @@ export class EodReportsController {
     return this.eodReports.create(dto);
   }
 
+  @Post('bulk/remind')
+  @ApiOperation({ summary: 'Bulk send EOD reminders' })
+  bulkRemind(@Body() body: { ids: string[] }) {
+    return this.eodReports.bulkRemind(body.ids ?? []);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'EOD report detail' })
   get(@Param('id') id: string) {
@@ -62,7 +68,7 @@ export class EodReportsController {
   }
 
   @Post(':id/remind')
-  @ApiOperation({ summary: 'Send EOD reminder (stub)' })
+  @ApiOperation({ summary: 'Send EOD reminder email to assigned rep' })
   remind(@Param('id') id: string) {
     return this.eodReports.remind(id);
   }

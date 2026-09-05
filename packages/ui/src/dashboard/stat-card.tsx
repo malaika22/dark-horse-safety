@@ -4,7 +4,7 @@ import { ArrowRightIcon, StatIcon, type StatIconName } from "./icons";
 
 export interface DashboardStatMetric {
   value: string;
-  meta: string;
+  meta?: string;
   metaTone?: "muted" | "success";
 }
 
@@ -26,7 +26,7 @@ function MetricBlock({
   metaTone = "muted",
 }: {
   value: string;
-  meta: string;
+  meta?: string;
   metaTone?: "muted" | "success";
 }) {
   return (
@@ -34,15 +34,17 @@ function MetricBlock({
       <p className="font-sans text-[24px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[32px]">
         {value}
       </p>
-      <p
-        title={meta}
-        className={cn(
-          "mt-2 truncate font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[16px]",
-          metaTone === "success" ? "text-[#22C55E]" : "text-[#959597]",
-        )}
-      >
-        {meta}
-      </p>
+      {meta ? (
+        <p
+          title={meta}
+          className={cn(
+            "mt-2 truncate font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[16px]",
+            metaTone === "success" ? "text-[#22C55E]" : "text-[#959597]",
+          )}
+        >
+          {meta}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -61,7 +63,9 @@ export function DashboardStatCell({
 }: DashboardStatCellProps) {
   const items =
     metrics ??
-    (value && meta ? [{ value, meta, metaTone }] : []);
+    (value != null && value !== ""
+      ? [{ value, meta, metaTone }]
+      : []);
 
   return (
     <div
@@ -99,7 +103,7 @@ export function DashboardStatCell({
         >
           {items.map((item) => (
             <MetricBlock
-              key={`${item.value}-${item.meta}`}
+              key={`${item.value}-${item.meta ?? ""}`}
               value={item.value}
               meta={item.meta}
               metaTone={item.metaTone}

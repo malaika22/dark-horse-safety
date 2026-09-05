@@ -1,7 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { CrmRecordStatus, Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
+import { promises as fs } from 'fs';
+import * as path from 'path';
+import { MailService } from '../../auth/mail.service';
 import { CodeGeneratorService } from '../../common/services/code-generator.service';
-import { ExportService } from '../../common/services/export.service';
+import {
+  ExportService,
+  isoDate,
+  userLabel,
+} from '../../common/services/export.service';
 import {
   containsCi,
   orderByFrom,
@@ -9,10 +17,13 @@ import {
   parsePage,
 } from '../../common/utils/pagination.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { WorkOrdersService } from '../work-orders/work-orders.service';
 import {
+  AddQuoteAttachmentDto,
   CreateQuoteDto,
   QuoteLineItemInputDto,
   QuoteListQueryDto,
+  SendQuoteDto,
   UpdateQuoteDto,
   UpdateQuoteLineItemDto,
 } from './dto/quote.dto';
@@ -31,7 +42,21 @@ export class QuotesService {
     private readonly prisma: PrismaService,
     private readonly codes: CodeGeneratorService,
     private readonly exportService: ExportService,
+    private readonly mail: MailService,
+    private readonly workOrders: WorkOrdersService,
   ) {}
+
+  private uploadsRoot() {
+    return path.join(process.cwd(), 'uploads');
+  }
+
+  private absoluteUploadPath(storagePath: string) {
+    return path.join(this.uploadsRoot(), storagePath);
+  }
+
+  private sanitizeFileName(fileName: string) {
+    return fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 180) || 'file';
+  }
 
   private where(query: QuoteListQueryDto): Prisma.QuoteWhereInput {
     const and: Prisma.QuoteWhereInput[] = [{ archivedAt: null }];
@@ -118,6 +143,7 @@ export class QuotesService {
       where: { id },
       include: {
         lineItems: { orderBy: { sortOrder: 'asc' } },
+        attachments: { orderBy: { createdAt: 'desc' } },
         customer: { select: { id: true, name: true, code: true } },
         contact: {
           select: { id: true, fullName: true, code: true, email: true },
@@ -193,8 +219,164 @@ export class QuotesService {
     return { data: quote };
   }
 
-  async send(id: string) {
-    await this.ensureExists(id);
+  async listAttachments(quoteId: string) {
+    await this.ensureExists(quoteId);
+    const attachments = await this.prisma.quoteAttachment.findMany({
+      where: { quoteId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return { data: attachments };
+  }
+
+  async addAttachment(quoteId: string, dto: AddQuoteAttachmentDto) {
+    await this.ensureExists(quoteId);
+    const raw = dto.contentBase64.includes(',')
+      ? dto.contentBase64.split(',').pop()!
+      : dto.contentBase64;
+    let buffer: Buffer;
+    try {
+      buffer = Buffer.from(raw, 'base64');
+    } catch {
+      throw new BadRequestException({
+        code: 'INVALID_BASE64',
+        message: 'contentBase64 is not valid base64',
+      });
+    }
+    if (!buffer.length) {
+      throw new BadRequestException({
+        code: 'EMPTY_FILE',
+        message: 'Attachment content is empty',
+      });
+    }
+
+    const safeName = this.sanitizeFileName(dto.fileName);
+    const storagePath = path
+      .join('quotes', quoteId, `${randomUUID()}-${safeName}`)
+      .replace(/\\/g, '/');
+    const absolute = this.absoluteUploadPath(storagePath);
+    await fs.mkdir(path.dirname(absolute), { recursive: true });
+    await fs.writeFile(absolute, buffer);
+
+    const attachment = await this.prisma.quoteAttachment.create({
+      data: {
+        quoteId,
+        fileName: dto.fileName,
+        mimeType: dto.mimeType,
+        sizeBytes: buffer.length,
+        storagePath,
+      },
+    });
+    return { data: attachment };
+  }
+
+  async deleteAttachment(quoteId: string, attachmentId: string) {
+    await this.ensureExists(quoteId);
+    const attachment = await this.prisma.quoteAttachment.findFirst({
+      where: { id: attachmentId, quoteId },
+    });
+    if (!attachment) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Quote attachment not found',
+      });
+    }
+    await this.prisma.quoteAttachment.delete({ where: { id: attachmentId } });
+    try {
+      await fs.unlink(this.absoluteUploadPath(attachment.storagePath));
+    } catch {
+      // file may already be missing
+    }
+    return { data: { deleted: true } };
+  }
+
+  async convertToWorkOrder(quoteId: string) {
+    return this.workOrders.convertFromQuote(quoteId);
+  }
+
+  async send(id: string, dto?: SendQuoteDto) {
+    const existing = await this.prisma.quote.findUnique({
+      where: { id },
+      include: {
+        customer: {
+          select: { id: true, name: true, code: true, email: true },
+        },
+        contact: {
+          select: { id: true, fullName: true, email: true },
+        },
+      },
+    });
+    if (!existing) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Quote not found',
+      });
+    }
+
+    const to =
+      dto?.to?.trim() ||
+      existing.contact?.email?.trim() ||
+      existing.customer?.email?.trim();
+    if (!to) {
+      throw new BadRequestException({
+        code: 'NO_RECIPIENT',
+        message:
+          'No email recipient — provide to, or set contact/customer email',
+      });
+    }
+
+    const mailAttachments: {
+      filename: string;
+      content: Buffer;
+      contentType?: string;
+    }[] = [];
+    if (dto?.attachmentIds?.length) {
+      const rows = await this.prisma.quoteAttachment.findMany({
+        where: { quoteId: id, id: { in: dto.attachmentIds } },
+      });
+      if (rows.length !== dto.attachmentIds.length) {
+        throw new BadRequestException({
+          code: 'INVALID_ATTACHMENTS',
+          message: 'One or more attachmentIds are invalid for this quote',
+        });
+      }
+      for (const row of rows) {
+        const content = await fs.readFile(
+          this.absoluteUploadPath(row.storagePath),
+        );
+        mailAttachments.push({
+          filename: row.fileName,
+          content,
+          contentType: row.mimeType ?? undefined,
+        });
+      }
+    }
+
+    const amount = Number(existing.amount);
+    const amountLabel = Number.isFinite(amount)
+      ? amount.toLocaleString('en-US', {
+          style: 'currency',
+          currency: 'USD',
+        })
+      : String(existing.amount);
+    const subject =
+      dto?.subject?.trim() || `Quote ${existing.quoteNumber}`;
+    const messageHtml = dto?.message?.trim()
+      ? `<p style="margin:0 0 16px;color:#d1d5db">${dto.message.trim()}</p>`
+      : '';
+
+    await this.mail.sendCrmEmail({
+      to,
+      subject,
+      title: `Quote ${existing.quoteNumber}`,
+      bodyHtml: `${messageHtml}
+        <p style="margin:0 0 8px;color:#d1d5db">Customer: <strong style="color:#fff">${existing.customer?.name ?? '—'}</strong></p>
+        <p style="margin:0 0 8px;color:#d1d5db">Quote #: <strong style="color:#fff">${existing.quoteNumber}</strong></p>
+        <p style="margin:0 0 16px;color:#d1d5db">Amount: <strong style="color:#fff">${amountLabel}</strong></p>
+        <p style="margin:0;color:#9ca3af;font-size:13px">Please review this quote and reply with any questions.</p>`,
+      kind: 'crm-quote-send',
+      attachments: mailAttachments.length ? mailAttachments : undefined,
+    });
+
     const quote = await this.prisma.quote.update({
       where: { id },
       data: { sentAt: new Date(), status: CrmRecordStatus.SENT },
@@ -256,6 +438,23 @@ export class QuotesService {
       data: { status: CrmRecordStatus.LOST },
     });
     return { data: quote };
+  }
+
+  async archive(id: string) {
+    await this.ensureExists(id);
+    const quote = await this.prisma.quote.update({
+      where: { id },
+      data: { archivedAt: new Date(), status: CrmRecordStatus.ARCHIVED },
+    });
+    return { data: quote };
+  }
+
+  async bulkArchive(ids: string[]) {
+    const result = await this.prisma.quote.updateMany({
+      where: { id: { in: ids } },
+      data: { archivedAt: new Date(), status: CrmRecordStatus.ARCHIVED },
+    });
+    return { data: { updated: result.count } };
   }
 
   async addLineItem(id: string, dto: QuoteLineItemInputDto) {
@@ -325,7 +524,12 @@ export class QuotesService {
     return this.getById(id);
   }
 
-  async exportCsv(query: QuoteListQueryDto & { ids?: string }) {
+  async exportCsv(
+    query: QuoteListQueryDto & {
+      ids?: string;
+      format?: 'csv' | 'pdf' | 'xlsx';
+    },
+  ) {
     const ids = this.exportService.parseIds(query.ids);
     const where: Prisma.QuoteWhereInput = ids?.length
       ? { id: { in: ids } }
@@ -334,19 +538,72 @@ export class QuotesService {
       where,
       orderBy: { createdAt: 'desc' },
       take: 5000,
-    });
-    const csv = this.exportService.toCsv(rows, [
-      { key: 'quoteNumber', header: 'Quote #', value: (r) => r.quoteNumber },
-      { key: 'amount', header: 'Amount', value: (r) => Number(r.amount) },
-      { key: 'status', header: 'Status', value: (r) => r.status },
-      {
-        key: 'expiresAt',
-        header: 'Expires',
-        value: (r) =>
-          r.expiresAt ? r.expiresAt.toISOString().slice(0, 10) : '',
+      include: {
+        customer: { select: { id: true, name: true, code: true } },
+        contact: { select: { id: true, fullName: true, code: true } },
+        owner: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
       },
-    ]);
-    return { data: { csv, filename: 'quotes.csv' } };
+    });
+    type Row = (typeof rows)[number];
+    const columns = [
+      {
+        key: 'quoteNumber',
+        header: 'Quote #',
+        value: (r: Row) => r.quoteNumber,
+      },
+      {
+        key: 'customer',
+        header: 'Customer',
+        value: (r: Row) => r.customer?.name,
+      },
+      {
+        key: 'contact',
+        header: 'Contact',
+        value: (r: Row) => r.contact?.fullName,
+      },
+      { key: 'amount', header: 'Amount', value: (r: Row) => Number(r.amount) },
+      { key: 'status', header: 'Status', value: (r: Row) => r.status },
+      {
+        key: 'approval',
+        header: 'Approval',
+        value: (r: Row) => r.approvalStatus,
+      },
+      {
+        key: 'owner',
+        header: 'Owner',
+        value: (r: Row) => userLabel(r.owner),
+      },
+      {
+        key: 'created',
+        header: 'Created',
+        value: (r: Row) => isoDate(r.createdAt),
+      },
+      {
+        key: 'expires',
+        header: 'Expires',
+        value: (r: Row) => isoDate(r.expiresAt),
+      },
+      {
+        key: 'sent',
+        header: 'Sent',
+        value: (r: Row) => isoDate(r.sentAt),
+      },
+      { key: 'terms', header: 'Terms', value: (r: Row) => r.terms },
+      {
+        key: 'createdAt',
+        header: 'Created At',
+        value: (r: Row) => isoDate(r.createdAt),
+      },
+    ];
+    return this.exportService.buildExport(
+      'Quotes',
+      'quotes',
+      rows,
+      columns,
+      query.format ?? 'csv',
+    );
   }
 
   private async ensureExists(id: string) {

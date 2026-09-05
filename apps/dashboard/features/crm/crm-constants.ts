@@ -1,79 +1,94 @@
 import type { KpiCell, SortOption } from "./crm-types";
 
-export const CRM_SYNC_LABEL = "Last synced — live";
+/** Fallback until overview/sync API returns `syncedAt`. */
+export const CRM_SYNC_LABEL_FALLBACK = "Last synced —";
+
+/** Format API `syncedAt` like the main dashboard: `Last synced 2:13 PM CT`. */
+export function formatCrmSyncLabel(syncedAt?: string | null) {
+  if (!syncedAt) return CRM_SYNC_LABEL_FALLBACK;
+  const d = new Date(syncedAt);
+  if (Number.isNaN(d.getTime())) return CRM_SYNC_LABEL_FALLBACK;
+  const time = d.toLocaleTimeString("en-US", {
+    timeZone: "America/Chicago",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `Last synced ${time} CT`;
+}
 
 /** KPI chrome only — values filled from API via `kpiCellsFromApi`. */
 export const CUSTOMERS_KPI_SHELL: KpiCell[] = [
-  { title: "Active customers", value: "—", meta: "From API", icon: "folder" },
-  { title: "Open jobs", value: "—", meta: "From API", icon: "time" },
-  { title: "Needs review", value: "—", meta: "From API", icon: "document" },
-  { title: "Archived", value: "—", meta: "From API", icon: "lightning" },
+  { title: "Active customers", value: "—", icon: "folder" },
+  { title: "Open jobs", value: "—", icon: "time" },
+  { title: "Needs review", value: "—", icon: "document" },
+  { title: "Archived", value: "—", icon: "lightning" },
 ];
 
 export const CONTACTS_KPI_SHELL: KpiCell[] = [
-  { title: "Total Contacts", value: "—", meta: "From API", icon: "customers" },
-  { title: "Primary Contacts", value: "—", meta: "From API", icon: "time" },
-  { title: "Missing Email", value: "—", meta: "From API", icon: "edit" },
-  { title: "Missing Phone", value: "—", meta: "From API", icon: "wrench" },
+  { title: "Total Contacts", value: "—", icon: "customers" },
+  { title: "Primary Contacts", value: "—", icon: "time" },
+  { title: "Missing Email", value: "—", icon: "edit" },
+  { title: "Missing Phone", value: "—", icon: "wrench" },
 ];
 
 export const LOCATIONS_KPI_SHELL: KpiCell[] = [
-  { title: "Total Locations", value: "—", meta: "From API", icon: "customers" },
-  { title: "Active Wells", value: "—", meta: "From API", icon: "time" },
-  { title: "Inactive", value: "—", meta: "From API", icon: "edit" },
-  { title: "Missing GPS", value: "—", meta: "From API", icon: "wrench" },
+  { title: "Total Locations", value: "—", icon: "customers" },
+  { title: "Active Wells", value: "—", icon: "time" },
+  { title: "Inactive", value: "—", icon: "edit" },
+  { title: "Missing GPS", value: "—", icon: "wrench" },
 ];
 
 export const PRICING_KPI_SHELL: KpiCell[] = [
-  { title: "Active Rules", value: "—", meta: "From API", icon: "document" },
-  { title: "Customers Priced", value: "—", meta: "From API", icon: "time" },
-  { title: "Missing Pricing", value: "—", meta: "From API", icon: "edit" },
-  { title: "Expiring Soon", value: "—", meta: "From API", icon: "lightning" },
+  { title: "Active Rules", value: "—", icon: "document" },
+  { title: "Customers Priced", value: "—", icon: "time" },
+  { title: "Missing Pricing", value: "—", icon: "edit" },
+  { title: "Expiring Soon", value: "—", icon: "lightning" },
 ];
 
 export const REQUIREMENTS_KPI_SHELL: KpiCell[] = [
-  { title: "Total Requirements", value: "—", meta: "From API", icon: "document" },
-  { title: "Needs Review", value: "—", meta: "From API", icon: "edit" },
-  { title: "Expiring", value: "—", meta: "From API", icon: "time" },
-  { title: "Missing Docs", value: "—", meta: "From API", icon: "lightning" },
+  { title: "Total Requirements", value: "—", icon: "document" },
+  { title: "Needs Review", value: "—", icon: "edit" },
+  { title: "Expiring", value: "—", icon: "time" },
+  { title: "Missing Docs", value: "—", icon: "lightning" },
 ];
 
 export const FORM_RULES_KPI_SHELL: KpiCell[] = [
-  { title: "Active Rules", value: "—", meta: "From API", icon: "document" },
-  { title: "Customers Configured", value: "—", meta: "From API", icon: "customers" },
-  { title: "Hard-Gate Forms", value: "—", meta: "From API", icon: "edit" },
-  { title: "Missing Rules", value: "—", meta: "From API", icon: "lightning" },
+  { title: "Active Rules", value: "—", icon: "document" },
+  { title: "Customers Configured", value: "—", icon: "customers" },
+  { title: "Hard-Gate Forms", value: "—", icon: "edit" },
+  { title: "Missing Rules", value: "—", icon: "lightning" },
 ];
 
 export const ROUTE_RULES_KPI_SHELL: KpiCell[] = [
-  { title: "Active Rules", value: "—", meta: "From API", icon: "document" },
-  { title: "Customers Configured", value: "—", meta: "From API", icon: "time" },
-  { title: "Geofenced Sites", value: "—", meta: "From API", icon: "customers" },
-  { title: "Missing Rules", value: "—", meta: "From API", icon: "lightning" },
+  { title: "Active Rules", value: "—", icon: "document" },
+  { title: "Customers Configured", value: "—", icon: "time" },
+  { title: "Geofenced Sites", value: "—", icon: "customers" },
+  { title: "Missing Rules", value: "—", icon: "lightning" },
 ];
 
 export const EOD_KPI_SHELL: KpiCell[] = [
-  { title: "Today", value: "—", meta: "Reports Due", icon: "lightning" },
-  { title: "Submitted", value: "—", meta: "This Week", icon: "document" },
-  { title: "Pending", value: "—", meta: "Awaiting", icon: "time" },
-  { title: "Team Activities", value: "—", meta: "This Week", icon: "customers" },
-  { title: "Pipeline", value: "—", meta: "Open", icon: "folder" },
+  { title: "Today", value: "—", icon: "lightning" },
+  { title: "Submitted", value: "—", icon: "document" },
+  { title: "Pending", value: "—", icon: "time" },
+  { title: "Team Activities", value: "—", icon: "customers" },
+  { title: "Pipeline", value: "—", icon: "folder" },
 ];
 
 export const SALES_KPI_SHELL: KpiCell[] = [
-  { title: "This Week", value: "—", meta: "Logged", icon: "lightning" },
-  { title: "Calls", value: "—", meta: "From API", icon: "document" },
-  { title: "Visits", value: "—", meta: "From API", icon: "gps" },
-  { title: "Meetings", value: "—", meta: "From API", icon: "time" },
-  { title: "Follow-Ups", value: "—", meta: "Pending", icon: "customers" },
+  { title: "This Week", value: "—", icon: "lightning" },
+  { title: "Calls", value: "—", icon: "document" },
+  { title: "Visits", value: "—", icon: "gps" },
+  { title: "Meetings", value: "—", icon: "time" },
+  { title: "Follow-Ups", value: "—", icon: "customers" },
 ];
 
 export const QUOTES_KPI_SHELL: KpiCell[] = [
-  { title: "Draft", value: "—", meta: "Open Drafts", icon: "lightning" },
-  { title: "Sent", value: "—", meta: "Awaiting", icon: "document" },
-  { title: "Approved", value: "—", meta: "Ready", icon: "folder" },
-  { title: "Expired", value: "—", meta: "Need Renewal", icon: "document" },
-  { title: "Converted", value: "—", meta: "Won", icon: "document" },
+  { title: "Draft", value: "—", icon: "lightning" },
+  { title: "Sent", value: "—", icon: "document" },
+  { title: "Approved", value: "—", icon: "folder" },
+  { title: "Expired", value: "—", icon: "document" },
+  { title: "Converted", value: "—", icon: "document" },
 ];
 
 export const CUSTOMERS_SORT_OPTIONS: SortOption[] = [

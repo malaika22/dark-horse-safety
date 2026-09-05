@@ -29,13 +29,14 @@ import {
   type DashboardListFiltersState,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
-import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapCustomerRow } from "@/lib/crm-mappers";
 import { kpiCellsFromApi } from "@/lib/crm-ui";
 import { useCrmList } from "@/lib/use-crm-list";
 import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
+import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
 import {
   CUSTOMERS_KPI_SHELL,
   CUSTOMERS_SORT_OPTIONS,
@@ -117,7 +118,7 @@ export function CustomersPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters.status, appliedFilters.assignedReps, filtersApplied]);
 
-  const { rows, total, kpiData, loading, reload } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
     list: (p) => crmApi.listCustomers(p),
     mapRow: mapCustomerRow,
     kpi: () => crmApi.customersKpi(),
@@ -143,16 +144,162 @@ export function CustomersPage() {
     setPage(1);
   }, [query, appliedFilters, sortField, sortDirection, pageSize]);
 
-  async function handleExport() {
+  function currentViewPayload() {
+    return {
+      filters: appliedFilters,
+      sortField,
+      sortDirection,
+      query,
+      filtersApplied,
+    };
+  }
+
+  function applySavedViewPayload(payload: unknown) {
+    if (!payload || typeof payload !== "object") return;
+    const p = payload as {
+      filters?: DashboardListFiltersState;
+      sortField?: string;
+      sortDirection?: DashboardSortDirection;
+      query?: string;
+      filtersApplied?: boolean;
+    };
+    if (p.filters) {
+      const nextFilters = { ...CUSTOMERS_DEFAULT_FILTERS, ...p.filters };
+      const nextChips = chipsFromFilters(nextFilters);
+      setAppliedFilters(nextFilters);
+      setDraftFilters(nextFilters);
+      setChips(nextChips);
+      setFiltersApplied(
+        p.filtersApplied ?? nextChips.length > 0,
+      );
+    }
+    if (typeof p.sortField === "string") setSortField(p.sortField);
+    if (p.sortDirection === "asc" || p.sortDirection === "desc") {
+      setSortDirection(p.sortDirection);
+    }
+    if (typeof p.query === "string") setQuery(p.query);
+  }
+
+  async function exportCustomers(opts: {
+    ids?: string;
+    format?: "csv" | "pdf" | "xlsx";
+  }) {
+    const res = await crmApi.exportCustomers({
+      q: query || undefined,
+      sort: sortField,
+      direction: sortDirection,
+      ids: opts.ids,
+      format: opts.format,
+      ...extraParams,
+    });
+    if (opts.format === "pdf") {
+      if (!res.data.pdf) throw new Error("No PDF");
+      downloadPdf(res.data.pdf, res.data.filename);
+      toastSuccess("PDF downloaded");
+      return;
+    }
+    if (opts.format === "xlsx") {
+      if (!res.data.xlsx) throw new Error("No Excel file");
+      downloadXlsx(res.data.xlsx, res.data.filename);
+      toastSuccess("Excel downloaded");
+      return;
+    }
+    if (!res.data.csv) throw new Error("No CSV");
+    downloadCsv(res.data.csv, res.data.filename);
+    toastSuccess("Export downloaded");
+  }
+
+  async function handleExportSelected(format?: "csv" | "pdf" | "xlsx") {
+    if (selectedIds.length === 0) {
+      toastApiError(new Error("Select at least one customer to export"));
+      return;
+    }
     try {
-      const res = await crmApi.exportCustomers({
-        q: query || undefined,
-        sort: sortField,
-        direction: sortDirection,
-        ...extraParams,
+      await exportCustomers({
+        ids: selectedIds.join(","),
+        format,
       });
-      downloadCsv(res.data.csv, res.data.filename);
-      toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleExportAll(format?: "csv" | "pdf" | "xlsx") {
+    try {
+      await exportCustomers({ format });
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleBulkSetStatus() {
+    if (selectedIds.length === 0) return;
+    const choice =
+      typeof window !== "undefined"
+        ? window.prompt(
+            "Set status to ACTIVE, INACTIVE, or NEEDS_REVIEW:",
+            "ACTIVE",
+          )
+        : null;
+    if (!choice) return;
+    const status = choice.trim().toUpperCase().replace(/\s+/g, "_");
+    if (!["ACTIVE", "INACTIVE", "NEEDS_REVIEW"].includes(status)) {
+      toastApiError(
+        new Error("Status must be ACTIVE, INACTIVE, or NEEDS_REVIEW"),
+      );
+      return;
+    }
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Set ${selectedIds.length} customer(s) to ${status}?`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await crmApi.bulkUpdateCustomers({ ids: selectedIds, status });
+      toastSuccess("Status updated");
+      setSelectedIds([]);
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleBulkAssignRep() {
+    if (selectedIds.length === 0) return;
+    if (reps.length === 0) {
+      toastApiError(new Error("No reps available"));
+      return;
+    }
+    const hint = reps
+      .slice(0, 8)
+      .map((r) => `${r.label} (${r.value})`)
+      .join("\n");
+    const choice =
+      typeof window !== "undefined"
+        ? window.prompt(
+            `Enter assigned rep id:\n${hint}`,
+            reps[0]?.value ?? "",
+          )
+        : null;
+    if (!choice) return;
+    const assignedRepId = choice.trim();
+    if (!assignedRepId) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Assign ${selectedIds.length} customer(s) to this rep?`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await crmApi.bulkUpdateCustomers({ ids: selectedIds, assignedRepId });
+      toastSuccess("Rep assigned");
+      setSelectedIds([]);
+      reload();
     } catch (err) {
       toastApiError(err);
     }
@@ -345,6 +492,7 @@ export function CustomersPage() {
   );
 
   return (
+    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
@@ -365,24 +513,37 @@ export function CustomersPage() {
               >
                 Archive
               </DashboardToolbarButton>
-              <DashboardToolbarButton>Set status</DashboardToolbarButton>
+              <DashboardToolbarButton onClick={() => void handleBulkSetStatus()}>
+                Set status
+              </DashboardToolbarButton>
               <DashboardExportMenu
                 triggerLabel="Export selected"
                 items={[
                   {
                     id: "selected-csv",
                     label: "Export selected view • CSV",
-                    onSelect: () => void handleExport(),
+                    onSelect: () => void handleExportSelected(),
                   },
                   {
                     id: "all-csv",
                     label: "Export all • CSV",
-                    onSelect: () => void handleExport(),
+                    onSelect: () => void handleExportAll(),
                   },
-                  { id: "pdf", label: "Export as PDF" },
+                  {
+                    id: "xlsx",
+                    label: "Export as Excel",
+                    onSelect: () => void handleExportSelected("xlsx"),
+                  },
+                  {
+                    id: "pdf",
+                    label: "Export as PDF",
+                    onSelect: () => void handleExportSelected("pdf"),
+                  },
                 ]}
               />
-              <DashboardToolbarButton>Assign rep</DashboardToolbarButton>
+              <DashboardToolbarButton onClick={() => void handleBulkAssignRep()}>
+                Assign rep
+              </DashboardToolbarButton>
             </>
           }
         />
@@ -416,14 +577,23 @@ export function CustomersPage() {
                   {
                     id: "view-csv",
                     label: "Export current view • CSV",
-                    onSelect: () => void handleExport(),
+                    onSelect: () => void handleExportAll(),
                   },
                   {
                     id: "all-csv",
                     label: "Export all • CSV",
-                    onSelect: () => void handleExport(),
+                    onSelect: () => void handleExportAll(),
                   },
-                  { id: "pdf", label: "Export as PDF" },
+                  {
+                    id: "xlsx",
+                    label: "Export as Excel",
+                    onSelect: () => void handleExportAll("xlsx"),
+                  },
+                  {
+                    id: "pdf",
+                    label: "Export as PDF",
+                    onSelect: () => void handleExportAll("pdf"),
+                  },
                 ]}
               />
               <DashboardSortMenu
@@ -462,18 +632,16 @@ export function CustomersPage() {
         />
       )}
 
-      <div className={loading ? "opacity-60 transition-opacity" : undefined}>
-        <DashboardDataTable
-          columns={columns}
-          rows={rows}
-          getRowId={(row) => row.id}
-          emptyMessage={loading ? "Loading customers…" : "No customers found"}
-          selectable
-          selectedIds={selectedIds}
-          onSelectedIdsChange={setSelectedIds}
-          onRowClick={(row) => router.push(`/crm/accounts/${row.id}`)}
-        />
-      </div>
+      <DashboardDataTable
+        columns={columns}
+        rows={rows}
+        getRowId={(row) => row.id}
+        emptyMessage="No customers found"
+        selectable
+        selectedIds={selectedIds}
+        onSelectedIdsChange={setSelectedIds}
+        onRowClick={(row) => router.push(`/crm/accounts/${row.id}`)}
+      />
 
       <DashboardPagination
         page={safePage}
@@ -509,13 +677,23 @@ export function CustomersPage() {
         onClose={() => setSavedViewsOpen(false)}
         views={savedViews}
         activeViewId={activeViewId}
-        onSelectView={setActiveViewId}
+        onSelectView={(viewId) => {
+          setActiveViewId(viewId);
+          const view = savedViews.find((v) => v.id === viewId);
+          if (view?.payload != null) applySavedViewPayload(view.payload);
+        }}
         onSaveNewView={() => setSaveNewViewOpen(true)}
         onViewAction={(viewId, action) => {
           if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((view) => view.id === viewId);
-            if (source) void createView(`${source.label} copy`);
+            if (source) {
+              void createView(
+                `${source.label} copy`,
+                (source.payload as Record<string, unknown> | undefined) ??
+                  currentViewPayload(),
+              );
+            }
           }
         }}
       />
@@ -524,9 +702,10 @@ export function CustomersPage() {
         open={saveNewViewOpen}
         onClose={() => setSaveNewViewOpen(false)}
         onConfirm={({ name }) => {
-          void createView(name);
+          void createView(name, currentViewPayload());
         }}
       />
     </div>
+    </CrmListLoadGate>
   );
 }

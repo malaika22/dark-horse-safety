@@ -10,6 +10,7 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 import { ListQueryDto } from '../../../common/dto/list-query.dto';
 
@@ -171,4 +172,45 @@ export class BulkCustomerIdsDto {
   @IsArray()
   @IsUUID('4', { each: true })
   ids!: string[];
+}
+
+export class BulkUpdateCustomersDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @IsUUID('4', { each: true })
+  ids!: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  assignedRepId?: string;
+}
+
+export class UpdateCustomerDocumentDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  url?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  kind?: string;
+
+  @ApiPropertyOptional({ description: 'ISO date or null to clear' })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsDateString()
+  expiresAt?: string | null;
 }

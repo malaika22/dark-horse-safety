@@ -1,7 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CrmRecordStatus, Prisma, SalesActivityType } from '@prisma/client';
 import { CodeGeneratorService } from '../../common/services/code-generator.service';
-import { ExportService } from '../../common/services/export.service';
+import {
+  ExportService,
+  isoDate,
+  userLabel,
+} from '../../common/services/export.service';
 import {
   containsCi,
   orderByFrom,
@@ -191,7 +195,12 @@ export class SalesActivitiesService {
     return { data: activity };
   }
 
-  async exportCsv(query: SalesActivityListQueryDto & { ids?: string }) {
+  async exportCsv(
+    query: SalesActivityListQueryDto & {
+      ids?: string;
+      format?: 'csv' | 'pdf' | 'xlsx';
+    },
+  ) {
     const ids = this.exportService.parseIds(query.ids);
     const where: Prisma.SalesActivityWhereInput = ids?.length
       ? { id: { in: ids } }
@@ -200,15 +209,60 @@ export class SalesActivitiesService {
       where,
       orderBy: { activityAt: 'desc' },
       take: 5000,
+      include: {
+        customer: { select: { id: true, name: true, code: true } },
+        contact: { select: { id: true, fullName: true, code: true } },
+        rep: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
     });
-    const csv = this.exportService.toCsv(rows, [
-      { key: 'activityCode', header: 'Code', value: (r) => r.activityCode },
-      { key: 'type', header: 'Type', value: (r) => r.type },
-      { key: 'subject', header: 'Subject', value: (r) => r.subject },
-      { key: 'outcome', header: 'Outcome', value: (r) => r.outcome },
-      { key: 'status', header: 'Status', value: (r) => r.status },
-    ]);
-    return { data: { csv, filename: 'sales-activities.csv' } };
+    type Row = (typeof rows)[number];
+    const columns = [
+      {
+        key: 'activityCode',
+        header: 'Activity Code',
+        value: (r: Row) => r.activityCode,
+      },
+      {
+        key: 'date',
+        header: 'Date',
+        value: (r: Row) => isoDate(r.activityAt),
+      },
+      { key: 'type', header: 'Type', value: (r: Row) => r.type },
+      {
+        key: 'customer',
+        header: 'Customer',
+        value: (r: Row) => r.customer?.name,
+      },
+      {
+        key: 'contact',
+        header: 'Contact',
+        value: (r: Row) => r.contact?.fullName,
+      },
+      { key: 'rep', header: 'Rep', value: (r: Row) => userLabel(r.rep) },
+      { key: 'subject', header: 'Subject', value: (r: Row) => r.subject },
+      { key: 'outcome', header: 'Outcome', value: (r: Row) => r.outcome },
+      { key: 'duration', header: 'Duration', value: (r: Row) => r.duration },
+      {
+        key: 'followUp',
+        header: 'Follow-up',
+        value: (r: Row) => isoDate(r.followUpAt),
+      },
+      { key: 'status', header: 'Status', value: (r: Row) => r.status },
+      {
+        key: 'createdAt',
+        header: 'Created At',
+        value: (r: Row) => isoDate(r.createdAt),
+      },
+    ];
+    return this.exportService.buildExport(
+      'Sales Activities',
+      'sales-activities',
+      rows,
+      columns,
+      query.format ?? 'csv',
+    );
   }
 
   private async ensureExists(id: string) {

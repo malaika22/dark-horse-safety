@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -108,4 +109,16 @@ export class CopyRouteRuleDto {
   @ApiProperty()
   @IsUUID()
   locationId!: string;
+}
+
+export class TestRouteCoordinateDto {
+  @ApiProperty({ description: 'Latitude of sample coordinate' })
+  @Type(() => Number)
+  @IsNumber()
+  lat!: number;
+
+  @ApiProperty({ description: 'Longitude of sample coordinate' })
+  @Type(() => Number)
+  @IsNumber()
+  lng!: number;
 }

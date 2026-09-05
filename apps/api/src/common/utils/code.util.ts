@@ -14,4 +14,5 @@ export const CRM_CODE_PREFIX = {
   eodReport: 'EOD',
   salesActivity: 'SA',
   quote: 'Q',
+  workOrder: 'WO',
 } as const;

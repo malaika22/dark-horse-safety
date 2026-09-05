@@ -26,13 +26,15 @@ import {
   type DashboardDataTableColumn,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
-import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapPricingRuleRow } from "@/lib/crm-mappers";
 import { kpiCellsFromApi } from "@/lib/crm-ui";
 import { useCrmList } from "@/lib/use-crm-list";
 import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
+import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
+import { CrmHistoryModal } from "./crm-action-modals";
 import { PRICING_KPI_SHELL, PRICING_SORT_OPTIONS } from "./crm-constants";
 import type { PricingRuleRow } from "./crm-types";
 
@@ -359,6 +361,11 @@ export function PricingRulesPage() {
   const [filtersApplied, setFiltersApplied] = React.useState(false);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewOpen, setSaveNewOpen] = React.useState(false);
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [historyTitle, setHistoryTitle] = React.useState("Rule History");
+  const [historyEvents, setHistoryEvents] = React.useState<
+    { id: string; at: string; label: string; detail?: string }[]
+  >([]);
   const {
     savedViews,
     activeViewId,
@@ -382,7 +389,7 @@ export function PricingRulesPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters, filtersApplied]);
 
-  const { rows, total, kpiData, loading, reload } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
     list: (p) => crmApi.listPricingRules(p),
     mapRow: mapPricingRuleRow,
     kpi: () => crmApi.pricingRulesKpi(),
@@ -406,16 +413,87 @@ export function PricingRulesPage() {
     setPage(1);
   }, [query, sortField, sortDir, pageSize, filtersApplied]);
 
-  async function handleExport() {
+  function currentViewPayload() {
+    return {
+      filters: appliedFilters,
+      sortField,
+      sortDirection: sortDir,
+      query,
+      filtersApplied,
+    };
+  }
+
+  function applySavedViewPayload(payload: unknown) {
+    if (!payload || typeof payload !== "object") return;
+    const p = payload as {
+      filters?: PricingFilters;
+      sortField?: string;
+      sortDirection?: DashboardSortDirection;
+      query?: string;
+      filtersApplied?: boolean;
+    };
+    if (p.filters) {
+      const nextFilters = { ...DEFAULT_PRICING_FILTERS, ...p.filters };
+      setAppliedFilters(nextFilters);
+      setDraftFilters(nextFilters);
+      setFiltersApplied(
+        p.filtersApplied ??
+          Object.values(nextFilters).some((v) => Boolean(v)),
+      );
+    } else if (typeof p.filtersApplied === "boolean") {
+      setFiltersApplied(p.filtersApplied);
+    }
+    if (typeof p.sortField === "string") setSortField(p.sortField);
+    if (p.sortDirection === "asc" || p.sortDirection === "desc") {
+      setSortDir(p.sortDirection);
+    }
+    if (typeof p.query === "string") setQuery(p.query);
+  }
+
+  async function runExport(opts?: {
+    format?: "csv" | "pdf" | "xlsx";
+    selectedOnly?: boolean;
+  }) {
     try {
+      if (opts?.selectedOnly && selectedIds.length === 0) {
+        toastApiError(new Error("Select at least one pricing rule to export"));
+        return;
+      }
+      const format = opts?.format ?? "csv";
       const res = await crmApi.exportPricingRules({
         q: query || undefined,
         sort: sortField,
         direction: sortDir,
+        format: format === "csv" ? undefined : format,
+        ids: opts?.selectedOnly ? selectedIds.join(",") : undefined,
         ...extraParams,
       });
+      if (format === "pdf") {
+        if (!res.data.pdf) throw new Error("No PDF");
+        downloadPdf(res.data.pdf, res.data.filename);
+        toastSuccess("PDF downloaded");
+        return;
+      }
+      if (format === "xlsx") {
+        if (!res.data.xlsx) throw new Error("No Excel file");
+        downloadXlsx(res.data.xlsx, res.data.filename);
+        toastSuccess("Excel downloaded");
+        return;
+      }
+      if (!res.data.csv) throw new Error("No CSV");
       downloadCsv(res.data.csv, res.data.filename);
       toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleViewHistory(id: string, label?: string) {
+    try {
+      const res = await crmApi.pricingRuleHistory(id);
+      setHistoryTitle(label ? `History · ${label}` : "Rule History");
+      setHistoryEvents(res.data.events ?? []);
+      setHistoryOpen(true);
     } catch (err) {
       toastApiError(err);
     }
@@ -438,6 +516,23 @@ export function PricingRulesPage() {
     try {
       await crmApi.duplicatePricingRule(id);
       toastSuccess("Pricing rule duplicated");
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`Delete ${selectedIds.length} pricing rule(s)?`)
+    ) {
+      return;
+    }
+    try {
+      await crmApi.bulkDeletePricingRules(selectedIds);
+      toastSuccess("Pricing rules deleted");
+      setSelectedIds([]);
       reload();
     } catch (err) {
       toastApiError(err);
@@ -520,9 +615,18 @@ export function PricingRulesPage() {
                 label: "Edit Rate",
                 onSelect: () => router.push(`/crm/pricing-rules/${row.id}/edit`),
               },
-              { id: "dup", label: "Duplicate Rule" },
-              { id: "history", label: "View History" },
-              { id: "delete", label: "Delete Rule", destructive: true },
+              {
+                id: "dup",
+                label: "Duplicate Rule",
+                onSelect: () => void handleDuplicate(row.id),
+              },
+              { id: "history", label: "View History", onSelect: () => void handleViewHistory(row.id, row.customer) },
+              {
+                id: "delete",
+                label: "Delete Rule",
+                destructive: true,
+                onSelect: () => void handleDelete(row.id),
+              },
             ]}
           />
         ),
@@ -534,6 +638,7 @@ export function PricingRulesPage() {
   const bulkOpen = selectedIds.length > 0;
 
   return (
+    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
@@ -548,16 +653,55 @@ export function PricingRulesPage() {
           selectedCount={selectedIds.length}
           actions={
             <>
-              <DashboardToolbarButton className="!border-[#4B212B] !bg-[#3D1F1F] !text-[#FFBBCA]">
+              <DashboardToolbarButton
+                className="!border-[#4B212B] !bg-[#3D1F1F] !text-[#FFBBCA]"
+                onClick={() => void handleBulkDelete()}
+              >
                 Delete
               </DashboardToolbarButton>
-              <DashboardToolbarButton>Set Status</DashboardToolbarButton>
+              <DashboardToolbarButton
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      await Promise.all(
+                        selectedIds.map((id) =>
+                          crmApi.updatePricingRule(id, { status: "ACTIVE" }),
+                        ),
+                      );
+                      toastSuccess("Status set to Active");
+                      setSelectedIds([]);
+                      reload();
+                    } catch (err) {
+                      toastApiError(err);
+                    }
+                  })();
+                }}
+              >
+                Set Status
+              </DashboardToolbarButton>
               <DashboardExportMenu
                 triggerLabel="Export selected"
                 items={[
-                  { id: "csv", label: "Export selected • CSV" },
-                  { id: "all", label: "Export all • CSV" },
-                  { id: "pdf", label: "Export as PDF" },
+                  {
+                    id: "csv",
+                    label: "Export selected • CSV",
+                    onSelect: () => void runExport({ selectedOnly: true }),
+                  },
+                  {
+                    id: "all",
+                    label: "Export all • CSV",
+                    onSelect: () => void runExport(),
+                  },
+                  {
+                    id: "xlsx",
+                    label: "Export as Excel",
+                    onSelect: () => void runExport({ format: "xlsx", selectedOnly: true }),
+                  },
+                  {
+                    id: "pdf",
+                    label: "Export as PDF",
+                    onSelect: () => void runExport({ format: "pdf", selectedOnly: true }),
+                  },
                 ]}
               />
             </>
@@ -604,9 +748,18 @@ export function PricingRulesPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
-                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
-                  { id: "pdf", label: "Export as PDF" },
+                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void runExport() },
+                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void runExport() },
+                  {
+                    id: "xlsx",
+                    label: "Export as Excel",
+                    onSelect: () => void runExport({ format: "xlsx" }),
+                  },
+                  {
+                    id: "pdf",
+                    label: "Export as PDF",
+                    onSelect: () => void runExport({ format: "pdf" }),
+                  },
                 ]}
               />
             </>
@@ -618,7 +771,7 @@ export function PricingRulesPage() {
         columns={columns}
         rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage={loading ? "Loading…" : "No pricing rules found"}
+        emptyMessage="No pricing rules found"
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -741,13 +894,23 @@ export function PricingRulesPage() {
         onClose={() => setSavedViewsOpen(false)}
         views={savedViews}
         activeViewId={activeViewId}
-        onSelectView={setActiveViewId}
+        onSelectView={(viewId) => {
+          setActiveViewId(viewId);
+          const view = savedViews.find((v) => v.id === viewId);
+          if (view?.payload != null) applySavedViewPayload(view.payload);
+        }}
         onSaveNewView={() => setSaveNewOpen(true)}
         onViewAction={(viewId, action) => {
           if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((v) => v.id === viewId);
-            if (source) void createView(`${source.label} copy`);
+            if (source) {
+              void createView(
+                `${source.label} copy`,
+                (source.payload as Record<string, unknown> | undefined) ??
+                  currentViewPayload(),
+              );
+            }
           }
         }}
       />
@@ -755,9 +918,17 @@ export function PricingRulesPage() {
         open={saveNewOpen}
         onClose={() => setSaveNewOpen(false)}
         onConfirm={({ name }) => {
-          void createView(name);
+          void createView(name, currentViewPayload());
         }}
       />
+
+      <CrmHistoryModal
+        open={historyOpen}
+        title={historyTitle}
+        events={historyEvents}
+        onClose={() => setHistoryOpen(false)}
+      />
     </div>
+    </CrmListLoadGate>
   );
 }

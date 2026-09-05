@@ -60,6 +60,7 @@ model User {
   eodReports          EodReport[]          @relation("EodReportRep")
   salesActivities     SalesActivity[]      @relation("SalesActivityRep")
   quotesOwned         Quote[]              @relation("QuoteOwner")
+  workOrdersOwned     WorkOrder[]          @relation("WorkOrderAssignedRep")
   savedViews          SavedView[]
 }
 
@@ -192,6 +193,7 @@ model Customer {
   formRules     FormRule[]
   routeRules    RouteRule[]
   quotes        Quote[]
+  workOrders    WorkOrder[]
   activities    SalesActivity[]
   documents     CrmDocument[]
   contactLinks  ContactCustomer[]
@@ -281,6 +283,7 @@ model Location {
   updatedAt       DateTime        @updatedAt
 
   routeRules RouteRule[]
+  workOrders WorkOrder[]
 
   @@index([customerId])
   @@index([status])
@@ -499,8 +502,10 @@ model Quote {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
-  lineItems  QuoteLineItem[]
-  activities SalesActivity[]
+  lineItems   QuoteLineItem[]
+  activities  SalesActivity[]
+  workOrders  WorkOrder[]
+  attachments QuoteAttachment[]
 
   @@index([customerId])
   @@index([contactId])
@@ -519,6 +524,57 @@ model QuoteLineItem {
   sortOrder   Int     @default(0)
 
   @@index([quoteId])
+}
+
+model QuoteAttachment {
+  id          String   @id @default(uuid())
+  quoteId     String
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  fileName    String
+  mimeType    String?
+  sizeBytes   Int?
+  storagePath String // relative path under uploads/
+  createdAt   DateTime @default(now())
+
+  @@index([quoteId])
+}
+
+// ─── Work Order ──────────────────────────────────────────────────────────────
+
+model WorkOrder {
+  id             String          @id @default(uuid())
+  code           String          @unique
+  title          String?
+  category       String?
+  status         CrmRecordStatus @default(DRAFT)
+  serviceDate    DateTime?
+  scheduledStart String?
+  scheduledEnd   String?
+  notes          String?
+  customerId     String
+  customer       Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  locationId     String?
+  location       Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  quoteId        String?
+  quote          Quote?          @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  assignedRepId  String?
+  assignedRep    User?           @relation("WorkOrderAssignedRep", fields: [assignedRepId], references: [id], onDelete: SetNull)
+  archivedAt     DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([customerId])
+  @@index([locationId])
+  @@index([quoteId])
+  @@index([status])
+}
+
+// ─── CRM sync state ──────────────────────────────────────────────────────────
+
+model CrmSyncState {
+  id        String   @id @default("crm")
+  syncedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ─── Documents (customer hub) ────────────────────────────────────────────────

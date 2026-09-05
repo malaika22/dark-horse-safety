@@ -1,7 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CrmRecordStatus, Prisma } from '@prisma/client';
 import { CodeGeneratorService } from '../../common/services/code-generator.service';
-import { ExportService } from '../../common/services/export.service';
+import {
+  ExportService,
+  isoDate,
+} from '../../common/services/export.service';
 import {
   containsCi,
   orderByFrom,
@@ -210,7 +213,12 @@ export class LocationsService {
     return { data: { updated: result.count } };
   }
 
-  async exportCsv(query: LocationListQueryDto & { ids?: string }) {
+  async exportCsv(
+    query: LocationListQueryDto & {
+      ids?: string;
+      format?: 'csv' | 'pdf' | 'xlsx';
+    },
+  ) {
     const ids = this.exportService.parseIds(query.ids);
     const where: Prisma.LocationWhereInput = ids?.length
       ? { id: { in: ids } }
@@ -219,15 +227,61 @@ export class LocationsService {
       where,
       orderBy: { name: 'asc' },
       take: 5000,
+      include: {
+        customer: { select: { id: true, name: true, code: true } },
+      },
     });
-    const csv = this.exportService.toCsv(rows, [
-      { key: 'code', header: 'Code', value: (r) => r.code },
-      { key: 'name', header: 'Name', value: (r) => r.name },
-      { key: 'county', header: 'County', value: (r) => r.county },
-      { key: 'state', header: 'State', value: (r) => r.state },
-      { key: 'status', header: 'Status', value: (r) => r.status },
-    ]);
-    return { data: { csv, filename: 'locations.csv' } };
+    type Row = (typeof rows)[number];
+    const columns = [
+      { key: 'code', header: 'Code', value: (r: Row) => r.code },
+      { key: 'name', header: 'Name', value: (r: Row) => r.name },
+      {
+        key: 'customer',
+        header: 'Customer',
+        value: (r: Row) => r.customer?.name,
+      },
+      {
+        key: 'wellPad',
+        header: 'Well/Pad',
+        value: (r: Row) => r.wellPadNumber,
+      },
+      { key: 'apiNumber', header: 'API #', value: (r: Row) => r.apiNumber },
+      { key: 'county', header: 'County', value: (r: Row) => r.county },
+      { key: 'state', header: 'State', value: (r: Row) => r.state },
+      { key: 'city', header: 'City', value: (r: Row) => r.city },
+      { key: 'siteType', header: 'Site Type', value: (r: Row) => r.siteType },
+      { key: 'status', header: 'Status', value: (r: Row) => r.status },
+      { key: 'lat', header: 'Lat', value: (r: Row) => r.latitude },
+      { key: 'lng', header: 'Lng', value: (r: Row) => r.longitude },
+      {
+        key: 'gpsRequired',
+        header: 'GPS Required',
+        value: (r: Row) => (r.gpsRequired ? 'Yes' : 'No'),
+      },
+      {
+        key: 'geofence',
+        header: 'Geofence',
+        value: (r: Row) => r.geofenceRadius,
+      },
+      { key: 'openJobs', header: 'Open Jobs', value: (r: Row) => r.openJobs },
+      {
+        key: 'gpsStatus',
+        header: 'GPS Status',
+        value: (r: Row) => r.gpsStatus,
+      },
+      {
+        key: 'createdAt',
+        header: 'Created At',
+        value: (r: Row) => isoDate(r.createdAt),
+      },
+    ];
+    return this.exportService.buildExport(
+      'Locations',
+      'locations',
+      rows,
+      columns,
+      query.format ?? 'csv',
+    );
   }
 
   private async ensureExists(id: string) {

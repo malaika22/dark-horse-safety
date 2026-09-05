@@ -138,3 +138,41 @@ export class UpdateQuoteLineItemDto {
   @Type(() => Number)
   rate?: number;
 }
+
+export class SendQuoteDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  to?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  subject?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  message?: string;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  attachmentIds?: string[];
+}
+
+export class AddQuoteAttachmentDto {
+  @ApiProperty()
+  @IsString()
+  fileName!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  mimeType?: string;
+
+  @ApiProperty({ description: 'Base64-encoded file contents' })
+  @IsString()
+  contentBase64!: string;
+}

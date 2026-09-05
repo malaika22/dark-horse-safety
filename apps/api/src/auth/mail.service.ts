@@ -4,6 +4,12 @@ import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { Resend } from 'resend';
 
+type EmailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+};
+
 type EmailPayload = {
   to: string;
   subject: string;
@@ -12,6 +18,7 @@ type EmailPayload = {
   kind: string;
   /** When Resend test mode blocks delivery, relay goes to admin with this label */
   intendedRecipient?: string;
+  attachments?: EmailAttachment[];
 };
 
 type SendResult = {
@@ -150,6 +157,26 @@ export class MailService implements OnModuleInit {
     });
   }
 
+  async sendCrmEmail(opts: {
+    to: string;
+    subject: string;
+    title: string;
+    bodyHtml: string;
+    kind: string;
+    attachments?: EmailAttachment[];
+  }) {
+    this.logger.log(`[${opts.kind}] recipient=${opts.to} subject=${opts.subject}`);
+    await this.deliver({
+      to: opts.to,
+      subject: opts.subject,
+      title: opts.title,
+      body: opts.bodyHtml,
+      kind: opts.kind,
+      intendedRecipient: opts.to,
+      attachments: opts.attachments,
+    });
+  }
+
   private async deliver(payload: EmailPayload) {
     const html = this.layout(payload.title, payload.body);
 
@@ -169,6 +196,7 @@ export class MailService implements OnModuleInit {
       subject: payload.subject,
       html,
       replyTo: this.adminEmail,
+      attachments: payload.attachments,
     });
 
     if (primary.ok) {
@@ -205,6 +233,7 @@ export class MailService implements OnModuleInit {
         subject: `[Forward to ${recipient}] ${payload.subject}`,
         html: relayHtml,
         replyTo: recipient,
+        attachments: payload.attachments,
       });
     }
   }
@@ -214,6 +243,7 @@ export class MailService implements OnModuleInit {
     subject: string;
     html: string;
     replyTo?: string;
+    attachments?: EmailAttachment[];
   }): Promise<SendResult> {
     // Prefer SMTP so any recipient works in local/dev
     if (this.smtp) {
@@ -242,6 +272,7 @@ export class MailService implements OnModuleInit {
     subject: string;
     html: string;
     replyTo?: string;
+    attachments?: EmailAttachment[];
   }): Promise<SendResult> {
     try {
       const { data, error } = await this.resend!.emails.send({
@@ -250,6 +281,11 @@ export class MailService implements OnModuleInit {
         replyTo: options.replyTo,
         subject: options.subject,
         html: options.html,
+        attachments: options.attachments?.map((a) => ({
+          filename: a.filename,
+          content: a.content,
+          contentType: a.contentType,
+        })),
       });
 
       if (error) {
@@ -273,6 +309,7 @@ export class MailService implements OnModuleInit {
     subject: string;
     html: string;
     replyTo?: string;
+    attachments?: EmailAttachment[];
   }): Promise<SendResult> {
     if (!this.smtp) {
       return { ok: false, error: 'SMTP not configured' };
@@ -285,6 +322,11 @@ export class MailService implements OnModuleInit {
         replyTo: options.replyTo,
         subject: options.subject,
         html: options.html,
+        attachments: options.attachments?.map((a) => ({
+          filename: a.filename,
+          content: a.content,
+          contentType: a.contentType,
+        })),
       });
       this.logger.log(`SMTP sent to=${options.to}`);
       return { ok: true, provider: 'smtp' };

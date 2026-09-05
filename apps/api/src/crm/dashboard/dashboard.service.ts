@@ -16,6 +16,7 @@ export class DashboardService {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
     const [
+      syncState,
       customersTotal,
       customersActive,
       customersArchived,
@@ -36,6 +37,7 @@ export class DashboardService {
       recentActivities,
       openPipeline,
     ] = await Promise.all([
+      this.prisma.crmSyncState.findUnique({ where: { id: 'crm' } }),
       this.prisma.customer.count({ where: { archivedAt: null } }),
       this.prisma.customer.count({
         where: { archivedAt: null, status: CrmRecordStatus.ACTIVE },
@@ -140,6 +142,7 @@ export class DashboardService {
     const pipelineSum = openPipeline._sum.amount;
     const pipelineValue =
       pipelineSum == null ? 0 : Number(pipelineSum.toString());
+    const syncedAt = (syncState?.syncedAt ?? new Date()).toISOString();
 
     return {
       data: {
@@ -183,8 +186,81 @@ export class DashboardService {
           outcome: a.outcome,
           status: a.status,
         })),
-        syncedAt: new Date().toISOString(),
+        syncedAt,
       },
     };
+  }
+
+  async sync() {
+    const now = new Date();
+    await this.prisma.crmSyncState.upsert({
+      where: { id: 'crm' },
+      create: { id: 'crm', syncedAt: now },
+      update: { syncedAt: now },
+    });
+    const overview = await this.overview();
+    return {
+      data: {
+        ...overview.data,
+        ok: true,
+      },
+    };
+  }
+
+  async notifications() {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const [pendingEod, followUps, expiringQuotes] = await Promise.all([
+      this.prisma.eodReport.count({
+        where: {
+          status: {
+            in: [CrmRecordStatus.PENDING, CrmRecordStatus.DRAFT],
+          },
+        },
+      }),
+      this.prisma.salesActivity.count({
+        where: {
+          archivedAt: null,
+          followUpAt: { not: null, lte: new Date(Date.now() + 24 * 60 * 60 * 1000) },
+        },
+      }),
+      this.prisma.quote.count({
+        where: {
+          archivedAt: null,
+          status: { in: [CrmRecordStatus.SENT, CrmRecordStatus.OPEN] },
+          expiresAt: {
+            lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            gte: startOfToday,
+          },
+        },
+      }),
+    ]);
+
+    const items = [
+      pendingEod > 0
+        ? {
+            id: 'eod-pending',
+            title: `${pendingEod} EOD report(s) need attention`,
+            href: '/crm/eod-reports',
+          }
+        : null,
+      followUps > 0
+        ? {
+            id: 'sales-followups',
+            title: `${followUps} follow-up(s) due soon`,
+            href: '/crm/sales',
+          }
+        : null,
+      expiringQuotes > 0
+        ? {
+            id: 'quotes-expiring',
+            title: `${expiringQuotes} quote(s) expiring within 7 days`,
+            href: '/crm/quotes',
+          }
+        : null,
+    ].filter(Boolean);
+
+    return { data: { items, count: items.length } };
   }
 }

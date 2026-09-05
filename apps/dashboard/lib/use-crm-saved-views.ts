@@ -5,9 +5,13 @@ import type { DashboardSavedView } from "@dark-horse-safety/ui";
 import { crmApi } from "@/lib/crm-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 
+export type CrmSavedViewItem = DashboardSavedView & {
+  payload?: unknown;
+};
+
 /** Load / create / delete CRM saved views for a backend SavedViewScope. */
 export function useCrmSavedViews(scope: string) {
-  const [savedViews, setSavedViews] = React.useState<DashboardSavedView[]>([]);
+  const [savedViews, setSavedViews] = React.useState<CrmSavedViewItem[]>([]);
   const [activeViewId, setActiveViewId] = React.useState<string | null>(null);
 
   const reload = React.useCallback(async () => {
@@ -17,6 +21,7 @@ export function useCrmSavedViews(scope: string) {
         res.data.map((v) => ({
           id: v.id,
           label: v.name,
+          payload: v.payload,
         })),
       );
     } catch (err) {
@@ -29,17 +34,24 @@ export function useCrmSavedViews(scope: string) {
     void reload();
   }, [reload]);
 
-  async function createView(name: string) {
+  async function createView(
+    name: string,
+    payload?: Record<string, unknown>,
+  ) {
     try {
       const res = await crmApi.createSavedView({
         name,
         scope,
-        payload: {},
+        payload: payload ?? {},
       });
       toastSuccess("View saved");
       setSavedViews((prev) => [
         ...prev,
-        { id: res.data.id, label: res.data.name },
+        {
+          id: res.data.id,
+          label: res.data.name,
+          payload: res.data.payload ?? payload ?? {},
+        },
       ]);
       setActiveViewId(res.data.id);
       return res.data.id;
@@ -60,6 +72,12 @@ export function useCrmSavedViews(scope: string) {
     }
   }
 
+  function getActivePayload(): unknown | null {
+    if (!activeViewId) return null;
+    const view = savedViews.find((v) => v.id === activeViewId);
+    return view?.payload ?? null;
+  }
+
   return {
     savedViews,
     setSavedViews,
@@ -67,6 +85,7 @@ export function useCrmSavedViews(scope: string) {
     setActiveViewId,
     createView,
     deleteView,
+    getActivePayload,
     reload,
   };
 }

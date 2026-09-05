@@ -1427,6 +1427,68 @@ async function main() {
     }
   }
 
+  // ─── Work orders ──────────────────────────────────────────────────────────
+  const workOrderDefs = [
+    {
+      code: 'WO-000001',
+      title: 'Wireline logging – Wolfcamp 12-4H',
+      category: 'Wireline',
+      status: CrmRecordStatus.IN_PROGRESS,
+      serviceDate: new Date('2026-09-08'),
+      scheduledStart: '07:00' as string | null,
+      scheduledEnd: '17:00' as string | null,
+      notes: 'Open job for Permian Basin Energy',
+      customerId: c1.id,
+      locationId: loc1.id,
+      assignedRepId: admin.id,
+    },
+    {
+      code: 'WO-000002',
+      title: 'Pump down – Spraberry Pad 7',
+      category: 'Pump Down',
+      status: CrmRecordStatus.OPEN,
+      serviceDate: new Date('2026-09-10'),
+      scheduledStart: '06:30' as string | null,
+      scheduledEnd: '16:30' as string | null,
+      notes: 'Follow-up WO linked to open jobs',
+      customerId: c1.id,
+      locationId: loc2.id,
+      assignedRepId: admin.id,
+    },
+    {
+      code: 'WO-000003',
+      title: 'Perforating – Avalon 9H',
+      category: 'Perforating',
+      status: CrmRecordStatus.DRAFT,
+      serviceDate: new Date('2026-09-12'),
+      scheduledStart: null as string | null,
+      scheduledEnd: null as string | null,
+      notes: 'Draft WO for Delaware Basin Co.',
+      customerId: c5.id,
+      locationId: loc5.id,
+      assignedRepId: nguyen.id,
+    },
+  ];
+
+  for (const data of workOrderDefs) {
+    await prisma.workOrder.upsert({
+      where: { code: data.code },
+      update: {
+        title: data.title,
+        category: data.category,
+        status: data.status,
+        serviceDate: data.serviceDate,
+        scheduledStart: data.scheduledStart,
+        scheduledEnd: data.scheduledEnd,
+        notes: data.notes,
+        customerId: data.customerId,
+        locationId: data.locationId,
+        assignedRepId: data.assignedRepId,
+      },
+      create: data,
+    });
+  }
+
   // Clean legacy short EOD codes if present from older seed
   await prisma.eodReport.deleteMany({
     where: { reportCode: { in: ['EOD-2026-0904', 'EOD-2026-0905'] } },
@@ -1439,7 +1501,7 @@ async function main() {
     `Pricing ${pricingDefs.length}, requirements ${reqDefs.length}, form ${formDefs.length}, route ${routeDefs.length}`,
   );
   console.log(
-    `Quotes ${quoteDefs.length}, sales ${activityDefs.length}, EOD ${eodDefs.length}, docs ${docDefs.length}`,
+    `Quotes ${quoteDefs.length}, sales ${activityDefs.length}, EOD ${eodDefs.length}, docs ${docDefs.length}, workOrders ${workOrderDefs.length}`,
   );
 }
 

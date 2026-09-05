@@ -1,7 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CrmRecordStatus, Prisma } from '@prisma/client';
+import { MailService } from '../../auth/mail.service';
 import { CodeGeneratorService } from '../../common/services/code-generator.service';
-import { ExportService } from '../../common/services/export.service';
+import {
+  ExportService,
+  isoDate,
+  userLabel,
+} from '../../common/services/export.service';
 import {
   containsCi,
   orderByFrom,
@@ -29,6 +34,7 @@ export class EodReportsService {
     private readonly prisma: PrismaService,
     private readonly codes: CodeGeneratorService,
     private readonly exportService: ExportService,
+    private readonly mail: MailService,
   ) {}
 
   private where(query: EodReportListQueryDto): Prisma.EodReportWhereInput {
@@ -151,11 +157,65 @@ export class EodReportsService {
   }
 
   async remind(id: string) {
-    await this.ensureExists(id);
-    return { data: { sent: true } };
+    const report = await this.prisma.eodReport.findUnique({
+      where: { id },
+      include: {
+        rep: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
+    });
+    if (!report) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'EOD report not found',
+      });
+    }
+
+    const to = report.rep?.email?.trim();
+    if (!to) {
+      return { data: { sent: false, id, reason: 'no_email' as const } };
+    }
+
+    const repName =
+      [report.rep?.firstName, report.rep?.lastName].filter(Boolean).join(' ') ||
+      'there';
+
+    await this.mail.sendCrmEmail({
+      to,
+      subject: `EOD reminder: ${report.reportCode}`,
+      title: 'EOD Report Reminder',
+      bodyHtml: `<p style="margin:0 0 16px;color:#d1d5db">Hi <strong style="color:#fff">${repName}</strong>,</p>
+        <p style="margin:0 0 16px;color:#d1d5db">This is a reminder to submit or review your end-of-day report <strong style="color:#fff">${report.reportCode}</strong>.</p>
+        <p style="margin:0;color:#9ca3af;font-size:13px">Please complete the report when you can.</p>`,
+      kind: 'crm-eod-remind',
+    });
+
+    return { data: { sent: true, id } };
   }
 
-  async exportCsv(query: EodReportListQueryDto & { ids?: string }) {
+  async bulkRemind(ids: string[]) {
+    const unique = [...new Set(ids.filter(Boolean))];
+    let sent = 0;
+    const results: Array<{
+      sent: boolean;
+      id: string;
+      reason?: 'no_email';
+    }> = [];
+    for (const id of unique) {
+      const result = await this.remind(id);
+      results.push(result.data);
+      if (result.data.sent) sent += 1;
+    }
+    return { data: { sent, ids: unique, results } };
+  }
+
+  async exportCsv(
+    query: EodReportListQueryDto & {
+      ids?: string;
+      format?: 'csv' | 'pdf' | 'xlsx';
+    },
+  ) {
     const ids = this.exportService.parseIds(query.ids);
     const where: Prisma.EodReportWhereInput = ids?.length
       ? { id: { in: ids } }
@@ -165,30 +225,80 @@ export class EodReportsService {
       orderBy: { reportDate: 'desc' },
       take: 5000,
       include: {
-        rep: { select: { firstName: true, lastName: true } },
+        rep: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
       },
     });
-    const csv = this.exportService.toCsv(rows, [
-      { key: 'reportCode', header: 'Code', value: (r) => r.reportCode },
+    type Row = (typeof rows)[number];
+    const columns = [
       {
-        key: 'reportDate',
+        key: 'reportCode',
+        header: 'Report Code',
+        value: (r: Row) => r.reportCode,
+      },
+      {
+        key: 'date',
         header: 'Date',
-        value: (r) => r.reportDate.toISOString().slice(0, 10),
+        value: (r: Row) => isoDate(r.reportDate),
       },
+      { key: 'rep', header: 'Rep', value: (r: Row) => userLabel(r.rep) },
+      { key: 'status', header: 'Status', value: (r: Row) => r.status },
       {
-        key: 'rep',
-        header: 'Rep',
-        value: (r) =>
-          [r.rep.firstName, r.rep.lastName].filter(Boolean).join(' '),
-      },
-      { key: 'status', header: 'Status', value: (r) => r.status },
-      {
-        key: 'activitiesCount',
+        key: 'activities',
         header: 'Activities',
-        value: (r) => r.activitiesCount,
+        value: (r: Row) => r.activitiesCount,
       },
-    ]);
-    return { data: { csv, filename: 'eod-reports.csv' } };
+      {
+        key: 'calls',
+        header: 'Calls',
+        value: (r: Row) => r.callsCount,
+      },
+      {
+        key: 'visits',
+        header: 'Visits',
+        value: (r: Row) => r.visitsCount,
+      },
+      {
+        key: 'meetings',
+        header: 'Meetings',
+        value: (r: Row) => r.meetingsCount,
+      },
+      {
+        key: 'quotesSent',
+        header: 'Quotes Sent',
+        value: (r: Row) => r.quotesSent,
+      },
+      {
+        key: 'pipelineValue',
+        header: 'Pipeline Value',
+        value: (r: Row) =>
+          r.pipelineValue == null ? '' : Number(r.pipelineValue),
+      },
+      {
+        key: 'closedToday',
+        header: 'Closed Today',
+        value: (r: Row) =>
+          r.closedToday == null ? '' : Number(r.closedToday),
+      },
+      {
+        key: 'submittedAt',
+        header: 'Submitted At',
+        value: (r: Row) => isoDate(r.submittedAt),
+      },
+      {
+        key: 'createdAt',
+        header: 'Created At',
+        value: (r: Row) => isoDate(r.createdAt),
+      },
+    ];
+    return this.exportService.buildExport(
+      'EOD Reports',
+      'eod-reports',
+      rows,
+      columns,
+      query.format ?? 'csv',
+    );
   }
 
   private async ensureExists(id: string) {

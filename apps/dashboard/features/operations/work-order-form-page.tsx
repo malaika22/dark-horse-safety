@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   DashboardFormGrid,
   DashboardSelectField,
@@ -9,8 +9,9 @@ import {
 } from "@dark-horse-safety/ui";
 import { CrmFormPageShell } from "@/features/crm/crm-form-page-shell";
 import type { DashboardSelectOption } from "@dark-horse-safety/ui";
+import { ApiError } from "@dark-horse-safety/api-client";
 import { crmApi } from "@/lib/crm-api";
-
+import { toastApiError, toastSuccess } from "@/lib/toast";
 
 const WO_CATEGORIES = [
   { value: "site-safety", label: "Site Safety" },
@@ -27,12 +28,26 @@ const WO_STATUSES = [
 ];
 
 export function WorkOrderFormPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const customerId = searchParams.get("customerId") ?? "";
+  const customerIdParam = searchParams.get("customerId") ?? "";
   const customerName = searchParams.get("customer") ?? "";
+  const quoteId = searchParams.get("quoteId") ?? "";
+  const workOrderId = searchParams.get("workOrderId") ?? "";
+
   const [customerOptions, setCustomerOptions] = React.useState<DashboardSelectOption[]>([]);
   const [repOptions, setRepOptions] = React.useState<DashboardSelectOption[]>([]);
-  const [customer, setCustomer] = React.useState(customerId);
+  const [customer, setCustomer] = React.useState(customerIdParam);
+  const [location, setLocation] = React.useState("");
+  const [category, setCategory] = React.useState("site-safety");
+  const [assignedRep, setAssignedRep] = React.useState("");
+  const [serviceDate, setServiceDate] = React.useState("");
+  const [status, setStatus] = React.useState("draft");
+  const [scheduledStart, setScheduledStart] = React.useState("");
+  const [scheduledEnd, setScheduledEnd] = React.useState("");
+  const [notes, setNotes] = React.useState("");
+  const [quoteNumber, setQuoteNumber] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -47,8 +62,8 @@ export function WorkOrderFormPage() {
           value: c.id,
           label: c.name,
         }));
-        if (customerId && customerName && !opts.some((o) => o.value === customerId)) {
-          opts.unshift({ value: customerId, label: customerName });
+        if (customerIdParam && customerName && !opts.some((o) => o.value === customerIdParam)) {
+          opts.unshift({ value: customerIdParam, label: customerName });
         }
         setCustomerOptions(opts);
         setRepOptions(
@@ -60,7 +75,9 @@ export function WorkOrderFormPage() {
               r.id,
           })),
         );
-        if (!customer && opts[0]) setCustomer(opts[0].value);
+        if (!customerIdParam && opts[0] && !quoteId) {
+          setCustomer((prev) => prev || opts[0]!.value);
+        }
       } catch {
         /* keep empty options */
       }
@@ -68,17 +85,117 @@ export function WorkOrderFormPage() {
     return () => {
       cancelled = true;
     };
-  }, [customerId, customerName, customer]);
+  }, [customerIdParam, customerName, quoteId]);
+
+  React.useEffect(() => {
+    if (!quoteId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.getQuote(quoteId);
+        if (cancelled) return;
+        const quote = res.data;
+        setQuoteNumber(quote.quoteNumber ?? "");
+        if (quote.customer?.id) {
+          setCustomer(quote.customer.id);
+          setCustomerOptions((prev) => {
+            if (prev.some((o) => o.value === quote.customer!.id)) return prev;
+            return [
+              {
+                value: quote.customer!.id,
+                label: quote.customer!.name,
+              },
+              ...prev,
+            ];
+          });
+        }
+        const noteParts = [quote.terms, quote.notes].filter(Boolean);
+        if (noteParts.length) {
+          setNotes(noteParts.join("\n\n"));
+        }
+      } catch (err) {
+        toastApiError(err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [quoteId]);
+
+  async function handleSave() {
+    if (!customer) {
+      toastApiError(new Error("Customer is required"));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const body = {
+        customerId: customer,
+        locationName: location || undefined,
+        category: category || undefined,
+        assignedRepId: assignedRep || undefined,
+        serviceDate: serviceDate || undefined,
+        status: status || undefined,
+        scheduledStart: scheduledStart || undefined,
+        scheduledEnd: scheduledEnd || undefined,
+        notes: notes || undefined,
+        quoteId: quoteId || undefined,
+      };
+
+      let woId: string | undefined;
+
+      if (
+        quoteId &&
+        !workOrderId &&
+        typeof crmApi.convertQuoteToWorkOrder === "function"
+      ) {
+        try {
+          const converted = await crmApi.convertQuoteToWorkOrder(quoteId);
+          woId = converted.data?.id;
+        } catch (err) {
+          if (!(err instanceof ApiError && err.status === 404)) {
+            throw err;
+          }
+        }
+      }
+
+      if (!woId) {
+        const created = await crmApi.createWorkOrder(body);
+        woId = created.data?.id;
+      }
+
+      toastSuccess("Work order created");
+      if (woId) {
+        router.push(`/operations/work-orders/${woId}`);
+      } else {
+        router.push("/operations/work-orders");
+      }
+    } catch (err) {
+      toastApiError(err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <CrmFormPageShell
       cancelHref="/operations/work-orders"
       submitLabel="Create Work Order"
+      submitting={submitting}
+      onSave={handleSave}
       sections={[
         {
           title: "Work Order Details",
           content: (
             <DashboardFormGrid className="gap-x-4 gap-y-5">
+              {quoteId ? (
+                <DashboardTextField
+                  label="Source Quote"
+                  value={quoteNumber || quoteId}
+                  readOnly
+                  containerClassName="md:col-span-2"
+                />
+              ) : null}
               <DashboardSelectField
                 label="Customer *"
                 value={customer}
@@ -87,42 +204,50 @@ export function WorkOrderFormPage() {
               />
               <DashboardTextField
                 label="Location / Well"
-                defaultValue=""
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
                 placeholder="Location"
               />
               <DashboardSelectField
                 label="Category *"
-                defaultValue="site-safety"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
                 options={WO_CATEGORIES}
               />
               <DashboardSelectField
                 label="Assigned Rep *"
-                defaultValue=""
-                options={repOptions}
+                value={assignedRep}
+                onChange={(e) => setAssignedRep(e.target.value)}
+                options={[{ value: "", label: "Select rep" }, ...repOptions]}
               />
               <DashboardTextField
                 label="Service Date *"
-                defaultValue=""
+                value={serviceDate}
+                onChange={(e) => setServiceDate(e.target.value)}
                 placeholder="MM/DD/YYYY"
               />
               <DashboardSelectField
                 label="Status"
-                defaultValue="draft"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
                 options={WO_STATUSES}
               />
               <DashboardTextField
                 label="Scheduled Start"
-                defaultValue=""
+                value={scheduledStart}
+                onChange={(e) => setScheduledStart(e.target.value)}
                 placeholder="Time"
               />
               <DashboardTextField
                 label="Scheduled End"
-                defaultValue=""
+                value={scheduledEnd}
+                onChange={(e) => setScheduledEnd(e.target.value)}
                 placeholder="Time"
               />
               <DashboardTextField
                 label="Notes"
-                defaultValue=""
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
                 placeholder="Notes"
                 containerClassName="md:col-span-2"
               />

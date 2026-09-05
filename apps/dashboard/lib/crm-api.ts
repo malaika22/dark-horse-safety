@@ -36,10 +36,34 @@ export const crmApi = {
     api.patch<ApiData<CrmCustomer>>(`/crm/customers/${id}`, body),
   archiveCustomer: (id: string) =>
     api.post<ApiData<CrmCustomer>>(`/crm/customers/${id}/archive`),
+  duplicateCustomer: (id: string) =>
+    api.post<ApiData<CrmCustomer>>(`/crm/customers/${id}/duplicate`),
   bulkArchiveCustomers: (ids: string[]) =>
     api.post<ApiData<{ updated: number }>>("/crm/customers/bulk/archive", { ids }),
+  updateCustomerDocument: (
+    customerId: string,
+    documentId: string,
+    body: Record<string, unknown>,
+  ) =>
+    api.patch<ApiData<CrmCustomerDocument>>(
+      `/crm/customers/${customerId}/documents/${documentId}`,
+      body,
+    ),
+  deleteCustomerDocument: (customerId: string, documentId: string) =>
+    api.delete<ApiData<{ deleted: boolean; id: string }>>(
+      `/crm/customers/${customerId}/documents/${documentId}`,
+    ),
+  bulkUpdateCustomers: (body: {
+    ids: string[];
+    status?: string;
+    assignedRepId?: string;
+  }) =>
+    api.post<ApiData<{ updated: number }>>(
+      "/crm/customers/bulk/update",
+      body,
+    ),
   exportCustomers: (params?: CrmListParams) =>
-    api.get<ApiData<{ csv: string; filename: string }>>(
+    api.get<ApiData<{ csv?: string; pdf?: string; xlsx?: string; filename: string }>>(
       `/crm/customers/export${q(params)}`,
     ),
 
@@ -55,8 +79,16 @@ export const crmApi = {
     api.patch<ApiData<CrmContact>>(`/crm/contacts/${id}`, body),
   archiveContact: (id: string) =>
     api.post<ApiData<CrmContact>>(`/crm/contacts/${id}/archive`),
+  bulkArchiveContacts: (ids: string[]) =>
+    api.post<ApiData<{ updated: number }>>("/crm/contacts/bulk/archive", {
+      ids,
+    }),
+  setContactPrimary: (id: string, customerId: string) =>
+    api.post<ApiData<CrmContact>>(`/crm/contacts/${id}/set-primary`, {
+      customerId,
+    }),
   exportContacts: (params?: CrmListParams) =>
-    api.get<ApiData<{ csv: string; filename: string }>>(
+    api.get<ApiData<{ csv?: string; pdf?: string; xlsx?: string; filename: string }>>(
       `/crm/contacts/export${q(params)}`,
     ),
 
@@ -75,8 +107,12 @@ export const crmApi = {
     api.patch<ApiData<CrmLocation>>(`/crm/locations/${id}`, body),
   archiveLocation: (id: string) =>
     api.post<ApiData<CrmLocation>>(`/crm/locations/${id}/archive`),
+  bulkArchiveLocations: (ids: string[]) =>
+    api.post<ApiData<{ updated: number }>>("/crm/locations/bulk/archive", {
+      ids,
+    }),
   exportLocations: (params?: CrmListParams) =>
-    api.get<ApiData<{ csv: string; filename: string }>>(
+    api.get<ApiData<{ csv?: string; pdf?: string; xlsx?: string; filename: string }>>(
       `/crm/locations/export${q(params)}`,
     ),
 
@@ -100,10 +136,18 @@ export const crmApi = {
           ids: [id],
         }),
     ),
+  bulkDeletePricingRules: (ids: string[]) =>
+    api.post<ApiData<{ updated: number }>>("/crm/pricing-rules/bulk/delete", {
+      ids,
+    }),
   exportPricingRules: (params?: CrmListParams) =>
-    api.get<ApiData<{ csv: string; filename: string }>>(
+    api.get<ApiData<{ csv?: string; pdf?: string; xlsx?: string; filename: string }>>(
       `/crm/pricing-rules/export${q(params)}`,
     ),
+  pricingRuleHistory: (id: string) =>
+    api.get<
+      ApiData<{ events: { id: string; at: string; label: string; detail?: string }[] }>
+    >(`/crm/pricing-rules/${id}/history`),
 
   // ── Requirements ─────────────────────────────────────────────────────────
   listRequirements: (params?: CrmListParams) =>
@@ -116,10 +160,35 @@ export const crmApi = {
     api.post<ApiData<CrmRequirement>>("/crm/requirements", body),
   updateRequirement: (id: string, body: Record<string, unknown>) =>
     api.patch<ApiData<CrmRequirement>>(`/crm/requirements/${id}`, body),
+  archiveRequirement: (id: string) =>
+    api.post<ApiData<CrmRequirement>>(`/crm/requirements/${id}/archive`),
+  bulkDeleteRequirements: (ids: string[]) =>
+    api.post<ApiData<{ updated: number }>>("/crm/requirements/bulk/delete", {
+      ids,
+    }),
   exportRequirements: (params?: CrmListParams) =>
-    api.get<ApiData<{ csv: string; filename: string }>>(
+    api.get<ApiData<{ csv?: string; pdf?: string; xlsx?: string; filename: string }>>(
       `/crm/requirements/export${q(params)}`,
     ),
+  requirementsAffectedSummary: () =>
+    api.get<
+      ApiData<{
+        technicians: { id: string; name: string; role: string }[];
+        workOrders: { id: string; workOrder: string; priority: string }[];
+        statusWells: {
+          id: string;
+          label: string;
+          status: { label: string; variant: string };
+        }[];
+      }>
+    >("/crm/requirements/affected-summary"),
+  requirementAffected: (id: string) =>
+    api.get<
+      ApiData<{
+        technicians: { id: string; name: string; role: string }[];
+        workOrders: { id: string; workOrder: string; priority: string }[];
+      }>
+    >(`/crm/requirements/${id}/affected`),
 
   // ── Form rules ───────────────────────────────────────────────────────────
   listFormRules: (params?: CrmListParams) =>
@@ -132,10 +201,35 @@ export const crmApi = {
     api.post<ApiData<CrmFormRule>>("/crm/form-rules", body),
   updateFormRule: (id: string, body: Record<string, unknown>) =>
     api.patch<ApiData<CrmFormRule>>(`/crm/form-rules/${id}`, body),
+  archiveFormRule: (id: string) =>
+    api.post<ApiData<CrmFormRule>>(`/crm/form-rules/${id}/archive`),
+  duplicateFormRule: (id: string) =>
+    api.post<ApiData<CrmFormRule>>(`/crm/form-rules/${id}/duplicate`),
+  copyFormRuleToCustomer: (id: string, customerId: string) =>
+    api.post<ApiData<CrmFormRule>>(`/crm/form-rules/${id}/copy-to-customer`, {
+      customerId,
+    }),
+  bulkDeleteFormRules: (ids: string[]) =>
+    api.post<ApiData<{ updated: number }>>("/crm/form-rules/bulk/delete", {
+      ids,
+    }),
   exportFormRules: (params?: CrmListParams) =>
-    api.get<ApiData<{ csv: string; filename: string }>>(
+    api.get<ApiData<{ csv?: string; pdf?: string; xlsx?: string; filename: string }>>(
       `/crm/form-rules/export${q(params)}`,
     ),
+  formRuleHistory: (id: string) =>
+    api.get<
+      ApiData<{ events: { id: string; at: string; label: string; detail?: string }[] }>
+    >(`/crm/form-rules/${id}/history`),
+  testFormRule: (id: string, jobType: string) =>
+    api.post<
+      ApiData<{
+        matches: boolean;
+        reason: string;
+        ruleJobType?: string | null;
+        formTemplate?: string;
+      }>
+    >(`/crm/form-rules/${id}/test`, { jobType }),
 
   // ── Route rules ──────────────────────────────────────────────────────────
   listRouteRules: (params?: CrmListParams) =>
@@ -148,10 +242,35 @@ export const crmApi = {
     api.post<ApiData<CrmRouteRule>>("/crm/route-rules", body),
   updateRouteRule: (id: string, body: Record<string, unknown>) =>
     api.patch<ApiData<CrmRouteRule>>(`/crm/route-rules/${id}`, body),
+  archiveRouteRule: (id: string) =>
+    api.post<ApiData<CrmRouteRule>>(`/crm/route-rules/${id}/archive`),
+  copyRouteRuleToLocation: (id: string, locationId: string) =>
+    api.post<ApiData<CrmRouteRule>>(`/crm/route-rules/${id}/copy-to-location`, {
+      locationId,
+    }),
+  bulkDeleteRouteRules: (ids: string[]) =>
+    api.post<ApiData<{ updated: number }>>("/crm/route-rules/bulk/delete", {
+      ids,
+    }),
   exportRouteRules: (params?: CrmListParams) =>
-    api.get<ApiData<{ csv: string; filename: string }>>(
+    api.get<ApiData<{ csv?: string; pdf?: string; xlsx?: string; filename: string }>>(
       `/crm/route-rules/export${q(params)}`,
     ),
+  testRouteCoordinate: (id: string, lat: number, lng: number) =>
+    api.post<
+      ApiData<{
+        inside: boolean;
+        distanceFt: number;
+        radiusFt: number;
+        locationName?: string | null;
+      }>
+    >(`/crm/route-rules/${id}/test-coordinate`, { lat, lng }),
+  routeRuleGpsFlags: (id: string) =>
+    api.get<
+      ApiData<{
+        flags: { id: string; severity: string; message: string; at: string }[];
+      }>
+    >(`/crm/route-rules/${id}/gps-flags`),
 
   // ── EOD reports ──────────────────────────────────────────────────────────
   listEodReports: (params?: CrmListParams) =>
@@ -160,8 +279,21 @@ export const crmApi = {
     api.get<ApiData<Record<string, number>>>("/crm/eod-reports/kpi"),
   getEodReport: (id: string) =>
     api.get<ApiData<CrmEodReport>>(`/crm/eod-reports/${id}`),
+  createEodReport: (body: Record<string, unknown>) =>
+    api.post<ApiData<CrmEodReport>>("/crm/eod-reports", body),
+  updateEodReport: (id: string, body: Record<string, unknown>) =>
+    api.patch<ApiData<CrmEodReport>>(`/crm/eod-reports/${id}`, body),
+  remindEodReport: (id: string) =>
+    api.post<ApiData<{ sent: boolean; id?: string }>>(
+      `/crm/eod-reports/${id}/remind`,
+    ),
+  bulkRemindEodReports: (ids: string[]) =>
+    api.post<ApiData<{ sent: number; ids: string[] }>>(
+      "/crm/eod-reports/bulk/remind",
+      { ids },
+    ),
   exportEodReports: (params?: CrmListParams) =>
-    api.get<ApiData<{ csv: string; filename: string }>>(
+    api.get<ApiData<{ csv?: string; pdf?: string; xlsx?: string; filename: string }>>(
       `/crm/eod-reports/export${q(params)}`,
     ),
 
@@ -176,8 +308,16 @@ export const crmApi = {
     api.post<ApiData<CrmSalesActivity>>("/crm/sales-activities", body),
   updateSalesActivity: (id: string, body: Record<string, unknown>) =>
     api.patch<ApiData<CrmSalesActivity>>(`/crm/sales-activities/${id}`, body),
+  followUpSalesActivity: (
+    id: string,
+    body: { followUpAt: string; notes?: string },
+  ) =>
+    api.post<ApiData<CrmSalesActivity>>(
+      `/crm/sales-activities/${id}/follow-up`,
+      body,
+    ),
   exportSalesActivities: (params?: CrmListParams) =>
-    api.get<ApiData<{ csv: string; filename: string }>>(
+    api.get<ApiData<{ csv?: string; pdf?: string; xlsx?: string; filename: string }>>(
       `/crm/sales-activities/export${q(params)}`,
     ),
 
@@ -190,12 +330,67 @@ export const crmApi = {
     api.post<ApiData<CrmQuote>>("/crm/quotes", body),
   updateQuote: (id: string, body: Record<string, unknown>) =>
     api.patch<ApiData<CrmQuote>>(`/crm/quotes/${id}`, body),
-  sendQuote: (id: string) =>
-    api.post<ApiData<CrmQuote>>(`/crm/quotes/${id}/send`),
+  sendQuote: (
+    id: string,
+    body?: {
+      to?: string;
+      subject?: string;
+      message?: string;
+      schedule?: string;
+      attachmentIds?: string[];
+    },
+  ) => api.post<ApiData<CrmQuote>>(`/crm/quotes/${id}/send`, body ?? {}),
+  listQuoteAttachments: (quoteId: string) =>
+    api.get<ApiData<CrmQuoteAttachment[]>>(
+      `/crm/quotes/${quoteId}/attachments`,
+    ),
+  uploadQuoteAttachment: (
+    quoteId: string,
+    body: { fileName: string; mimeType?: string; contentBase64: string },
+  ) =>
+    api.post<ApiData<CrmQuoteAttachment>>(
+      `/crm/quotes/${quoteId}/attachments`,
+      body,
+    ),
+  deleteQuoteAttachment: (quoteId: string, attachmentId: string) =>
+    api.delete<ApiData<{ deleted: boolean }> | void>(
+      `/crm/quotes/${quoteId}/attachments/${attachmentId}`,
+    ),
+  convertQuoteToWorkOrder: (id: string) =>
+    api.post<ApiData<CrmWorkOrder>>(`/crm/quotes/${id}/convert-to-work-order`),
+  duplicateQuote: (id: string) =>
+    api.post<ApiData<CrmQuote>>(`/crm/quotes/${id}/duplicate`),
+  markQuoteWon: (id: string) =>
+    api.post<ApiData<CrmQuote>>(`/crm/quotes/${id}/mark-won`),
+  markQuoteLost: (id: string) =>
+    api.post<ApiData<CrmQuote>>(`/crm/quotes/${id}/mark-lost`),
+  archiveQuote: (id: string) =>
+    api.post<ApiData<CrmQuote>>(`/crm/quotes/${id}/archive`),
+  bulkArchiveQuotes: (ids: string[]) =>
+    api.post<ApiData<{ updated: number }>>("/crm/quotes/bulk/archive", { ids }),
   exportQuotes: (params?: CrmListParams) =>
-    api.get<ApiData<{ csv: string; filename: string }>>(
+    api.get<ApiData<{ csv?: string; pdf?: string; xlsx?: string; filename: string }>>(
       `/crm/quotes/export${q(params)}`,
     ),
+
+  // ── Work orders ──────────────────────────────────────────────────────────
+  createWorkOrder: (body: Record<string, unknown>) =>
+    api.post<ApiData<CrmWorkOrder>>("/crm/work-orders", body),
+  listWorkOrders: (params?: CrmListParams) =>
+    api.get<ApiList<CrmWorkOrder>>(`/crm/work-orders${q(params)}`),
+  getWorkOrder: (id: string) =>
+    api.get<ApiData<CrmWorkOrder>>(`/crm/work-orders/${id}`),
+
+  // ── Dashboard extras ─────────────────────────────────────────────────────
+  dashboardSync: () =>
+    api.post<ApiData<{ syncedAt: string; ok: boolean }>>("/crm/dashboard/sync"),
+  dashboardNotifications: () =>
+    api.get<
+      ApiData<{
+        items: { id: string; title: string; href: string }[];
+        count: number;
+      }>
+    >("/crm/dashboard/notifications"),
 
   // ── Saved views ──────────────────────────────────────────────────────────
   listSavedViews: (scope: string) =>
@@ -266,6 +461,14 @@ export type CrmCustomer = {
   _count?: { contacts?: number; locations?: number };
 };
 
+export type CrmCustomerDocument = {
+  id: string;
+  name: string;
+  kind?: string | null;
+  url?: string | null;
+  expiresAt?: string | null;
+};
+
 export type CrmCustomerDetail = CrmCustomer & {
   legalEntityName?: string | null;
   website?: string | null;
@@ -287,6 +490,13 @@ export type CrmCustomerDetail = CrmCustomer & {
   defaultRequiredForms?: string | null;
   contacts?: CrmContact[];
   locations?: CrmLocation[];
+  pricingRules?: CrmPricingRule[];
+  requirements?: CrmRequirement[];
+  formRules?: CrmFormRule[];
+  routeRules?: CrmRouteRule[];
+  documents?: CrmCustomerDocument[];
+  quotes?: CrmQuote[];
+  activities?: CrmSalesActivity[];
 };
 
 export type CrmContact = {
@@ -306,8 +516,21 @@ export type CrmContact = {
   lastActivityAt?: string | null;
   createdAt: string;
   primaryCustomerId?: string | null;
-  primaryCustomer?: { id: string; name: string; code?: string } | null;
+  primaryCustomer?: {
+    id: string;
+    name: string;
+    code?: string;
+    openJobs?: number;
+  } | null;
   assignedRep?: CrmUserRef | null;
+  customers?: {
+    customerId?: string;
+    isPrimary?: boolean;
+    roleAtCustomer?: string | null;
+    customer?: { id: string; name: string; code?: string; openJobs?: number };
+  }[];
+  activities?: CrmSalesActivity[];
+  quotes?: CrmQuote[];
 };
 
 export type CrmLocation = {
@@ -491,6 +714,35 @@ export type CrmQuote = {
   createdAt: string;
 };
 
+export type CrmWorkOrder = {
+  id: string;
+  code?: string | null;
+  workOrderNumber?: string | null;
+  title?: string | null;
+  status?: string | null;
+  customerId?: string | null;
+  locationId?: string | null;
+  quoteId?: string | null;
+  notes?: string | null;
+  category?: string | null;
+  serviceDate?: string | null;
+  assignedRepId?: string | null;
+  locationName?: string | null;
+  scheduledStart?: string | null;
+  scheduledEnd?: string | null;
+  createdAt?: string;
+};
+
+export type CrmQuoteAttachment = {
+  id: string;
+  quoteId: string;
+  fileName: string;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  storagePath?: string;
+  createdAt?: string;
+};
+
 export type CrmSavedView = {
   id: string;
   name: string;
@@ -550,6 +802,36 @@ export function downloadCsv(csv: string, filename: string) {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Trigger browser download for base64 PDF payloads from CRM export APIs. */
+export function downloadPdf(base64: string, filename: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Trigger browser download for base64 Excel (.xlsx) payloads. */
+export function downloadXlsx(base64: string, filename: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
 }

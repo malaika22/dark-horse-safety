@@ -26,26 +26,38 @@ import {
   type DashboardDataTableColumn,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
-import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapRequirementRow } from "@/lib/crm-mappers";
 import { kpiCellsFromApi } from "@/lib/crm-ui";
 import { useCrmList } from "@/lib/use-crm-list";
 import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
+import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
 import { REQUIREMENTS_KPI_SHELL, REQUIREMENTS_SORT_OPTIONS } from "./crm-constants";
 import type { RequirementRow } from "./crm-types";
 
-const REQUIREMENTS_AFFECTED_TECHS: { id: string; name: string; role: string }[] = [];
-const REQUIREMENTS_AFFECTED_WO: { id: string; workOrder: string; priority: string }[] = [];
-const REQUIREMENTS_BLOCKED_BY: { id: string; name: string; initials: string }[] = [];
-const REQUIREMENTS_BLOCKED_PROCESSES: string[] = [];
-const REQUIREMENTS_ENFORCEMENT: { id: string; label: string; rate: string }[] = [];
-const REQUIREMENTS_STATUS_WELLS: {
+type AffectedTech = { id: string; name: string; role: string };
+type AffectedWo = { id: string; workOrder: string; priority: string };
+type AffectedWell = {
   id: string;
   label: string;
   status: { label: string; variant: "success" | "warning" | "error" | "offline" | "neutral" };
-}[] = [];
+};
+
+function wellStatusBadge(status: string): AffectedWell["status"] {
+  const upper = status.toUpperCase();
+  if (upper.includes("ACTIVE") || upper === "OK") {
+    return { label: status, variant: "success" };
+  }
+  if (upper.includes("WARN") || upper.includes("PENDING")) {
+    return { label: status, variant: "warning" };
+  }
+  if (upper.includes("BLOCK") || upper.includes("INACTIVE") || upper.includes("FAIL")) {
+    return { label: status, variant: "error" };
+  }
+  return { label: status || "—", variant: "neutral" };
+}
 
 type RequirementFilters = {
   customer: string;
@@ -335,6 +347,19 @@ export function RequirementsPage() {
   const [filtersApplied, setFiltersApplied] = React.useState(false);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewOpen, setSaveNewOpen] = React.useState(false);
+  const [affectedTechs, setAffectedTechs] = React.useState<AffectedTech[]>([]);
+  const [affectedWos, setAffectedWos] = React.useState<AffectedWo[]>([]);
+  const [affectedWells, setAffectedWells] = React.useState<AffectedWell[]>([]);
+  const [affectedFocusLabel, setAffectedFocusLabel] = React.useState<string | null>(
+    null,
+  );
+  const [enforcementItems, setEnforcementItems] = React.useState<
+    { id: string; label: string; rate: string }[]
+  >([]);
+  const [blockedBy, setBlockedBy] = React.useState<
+    { id: string; name: string; initials: string }[]
+  >([]);
+  const [blockedProcesses, setBlockedProcesses] = React.useState<string[]>([]);
   const {
     savedViews,
     activeViewId,
@@ -360,7 +385,7 @@ export function RequirementsPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters, filtersApplied]);
 
-  const { rows, total, kpiData, loading } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
     list: (p) => crmApi.listRequirements(p),
     mapRow: mapRequirementRow,
     kpi: () => crmApi.requirementsKpi(),
@@ -383,16 +408,262 @@ export function RequirementsPage() {
 
   React.useEffect(() => { setPage(1); }, [query, appliedFilters, sortField, sortDir, pageSize, filtersApplied]);
 
-  async function handleExport() {
+  function currentViewPayload() {
+    return {
+      filters: appliedFilters,
+      sortField,
+      sortDirection: sortDir,
+      query,
+      filtersApplied,
+    };
+  }
+
+  function applySavedViewPayload(payload: unknown) {
+    if (!payload || typeof payload !== "object") return;
+    const p = payload as {
+      filters?: RequirementFilters;
+      sortField?: string;
+      sortDirection?: DashboardSortDirection;
+      query?: string;
+      filtersApplied?: boolean;
+    };
+    if (p.filters) {
+      const nextFilters = { ...DEFAULT_FILTERS, ...p.filters };
+      setAppliedFilters(nextFilters);
+      setDraftFilters(nextFilters);
+      setFiltersApplied(
+        p.filtersApplied ??
+          Object.values(nextFilters).some((v) => Boolean(v)),
+      );
+    } else if (typeof p.filtersApplied === "boolean") {
+      setFiltersApplied(p.filtersApplied);
+    }
+    if (typeof p.sortField === "string") setSortField(p.sortField);
+    if (p.sortDirection === "asc" || p.sortDirection === "desc") {
+      setSortDir(p.sortDirection);
+    }
+    if (typeof p.query === "string") setQuery(p.query);
+  }
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.requirementsAffectedSummary();
+        if (cancelled) return;
+        const techs = res.data.technicians ?? [];
+        const wos = res.data.workOrders ?? [];
+        setAffectedTechs(techs);
+        setAffectedWos(wos);
+        setAffectedWells(
+          (res.data.statusWells ?? []).map((w) => ({
+            id: w.id,
+            label: w.label,
+            status: {
+              label: w.status?.label ?? "—",
+              variant: (w.status?.variant as AffectedWell["status"]["variant"]) ?? "neutral",
+            },
+          })),
+        );
+        setAffectedFocusLabel(null);
+        setBlockedBy(
+          techs.map((t) => ({
+            id: t.id,
+            name: t.name,
+            initials: t.name
+              .split(/\s+/)
+              .map((p) => p[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase(),
+          })),
+        );
+        setBlockedProcesses(
+          Array.from(new Set(wos.map((w) => w.priority || "Work Order"))),
+        );
+      } catch (err) {
+        if (!cancelled) toastApiError(err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const key = row.enforcementLevel || "—";
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const totalRows = rows.length || 1;
+    setEnforcementItems(
+      Array.from(counts.entries()).map(([label, count]) => ({
+        id: label,
+        label: label.replace(/_/g, " "),
+        rate: `${Math.round((count / totalRows) * 100)}%`,
+      })),
+    );
+  }, [rows]);
+
+  React.useEffect(() => {
+    if (selectedIds.length !== 1) return;
+    const id = selectedIds[0];
+    const row = rows.find((r) => r.id === id);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.requirementAffected(id);
+        if (cancelled) return;
+        const techs = res.data.technicians ?? [];
+        const wos = res.data.workOrders ?? [];
+        setAffectedTechs(techs);
+        setAffectedWos(wos);
+        setAffectedFocusLabel(row?.requirement ?? row?.code ?? id);
+        setBlockedBy(
+          techs.map((t) => ({
+            id: t.id,
+            name: t.name,
+            initials: t.name
+              .split(/\s+/)
+              .map((p) => p[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase(),
+          })),
+        );
+        setBlockedProcesses(
+          Array.from(new Set(wos.map((w) => w.priority || "Work Order"))),
+        );
+      } catch (err) {
+        if (!cancelled) toastApiError(err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedIds, rows]);
+
+  async function runExport(opts?: {
+    format?: "csv" | "pdf" | "xlsx";
+    selectedOnly?: boolean;
+  }) {
     try {
+      if (opts?.selectedOnly && selectedIds.length === 0) {
+        toastApiError(new Error("Select at least one requirement to export"));
+        return;
+      }
+      const format = opts?.format ?? "csv";
       const res = await crmApi.exportRequirements({
         q: query || undefined,
         sort: sortField,
         direction: sortDir,
+        format: format === "csv" ? undefined : format,
+        ids: opts?.selectedOnly ? selectedIds.join(",") : undefined,
         ...extraParams,
       });
+      if (format === "pdf") {
+        if (!res.data.pdf) throw new Error("No PDF");
+        downloadPdf(res.data.pdf, res.data.filename);
+        toastSuccess("PDF downloaded");
+        return;
+      }
+      if (format === "xlsx") {
+        if (!res.data.xlsx) throw new Error("No Excel file");
+        downloadXlsx(res.data.xlsx, res.data.filename);
+        toastSuccess("Excel downloaded");
+        return;
+      }
+      if (!res.data.csv) throw new Error("No CSV");
       downloadCsv(res.data.csv, res.data.filename);
       toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleArchive(id: string) {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this requirement?")
+    ) {
+      return;
+    }
+    try {
+      await crmApi.archiveRequirement(id);
+      toastSuccess("Requirement deleted");
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`Delete ${selectedIds.length} requirement(s)?`)
+    ) {
+      return;
+    }
+    try {
+      await crmApi.bulkDeleteRequirements(selectedIds);
+      toastSuccess("Requirements deleted");
+      setSelectedIds([]);
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleEnforcementLevel(id: string) {
+    const useSoft =
+      typeof window === "undefined" ||
+      window.confirm(
+        "Set enforcement to SOFT_GATE?\n\nOK = SOFT_GATE, Cancel = ACTIVE",
+      );
+    try {
+      await crmApi.updateRequirement(id, {
+        enforcementLevel: useSoft ? "SOFT_GATE" : "ACTIVE",
+      });
+      toastSuccess(
+        useSoft ? "Enforcement set to SOFT_GATE" : "Enforcement set to ACTIVE",
+      );
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleViewAffected(id: string, label: string, focus: "techs" | "wo") {
+    try {
+      const res = await crmApi.requirementAffected(id);
+      const techs = res.data.technicians ?? [];
+      const wos = res.data.workOrders ?? [];
+      setAffectedTechs(techs);
+      setAffectedWos(wos);
+      setAffectedFocusLabel(label);
+      setBlockedBy(
+        techs.map((t) => ({
+          id: t.id,
+          name: t.name,
+          initials: t.name
+            .split(/\s+/)
+            .map((p) => p[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase(),
+        })),
+      );
+      setBlockedProcesses(
+        Array.from(new Set(wos.map((w) => w.priority || "Work Order"))),
+      );
+      const techCount = techs.length;
+      const woCount = wos.length;
+      toastSuccess(
+        focus === "techs"
+          ? `${techCount} technician(s) affected · ${label}`
+          : `${woCount} work order(s) affected · ${label}`,
+      );
     } catch (err) {
       toastApiError(err);
     }
@@ -491,10 +762,29 @@ export function RequirementsPage() {
                 onSelect: () =>
                   router.push(`/crm/requirements/${row.id}/edit`),
               },
-              { id: "techs", label: "View Affected Technicians" },
-              { id: "wo", label: "View Affected Work Orders" },
-              { id: "level", label: "Change Enforcement Level" },
-              { id: "delete", label: "Delete", destructive: true },
+              {
+                id: "techs",
+                label: "View Affected Technicians",
+                onSelect: () =>
+                  void handleViewAffected(row.id, row.requirement, "techs"),
+              },
+              {
+                id: "wo",
+                label: "View Affected Work Orders",
+                onSelect: () =>
+                  void handleViewAffected(row.id, row.requirement, "wo"),
+              },
+              {
+                id: "level",
+                label: "Change Enforcement Level",
+                onSelect: () => void handleEnforcementLevel(row.id),
+              },
+              {
+                id: "delete",
+                label: "Delete",
+                destructive: true,
+                onSelect: () => void handleArchive(row.id),
+              },
             ]}
           />
         ),
@@ -504,6 +794,7 @@ export function RequirementsPage() {
   );
 
   return (
+    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
@@ -518,16 +809,55 @@ export function RequirementsPage() {
           selectedCount={selectedIds.length}
           actions={
             <>
-              <DashboardToolbarButton className="!border-[#4B212B] !bg-[#3D1F1F] !text-[#FFBBCA]">
+              <DashboardToolbarButton
+                className="!border-[#4B212B] !bg-[#3D1F1F] !text-[#FFBBCA]"
+                onClick={() => void handleBulkDelete()}
+              >
                 Delete
               </DashboardToolbarButton>
-              <DashboardToolbarButton>Set Status</DashboardToolbarButton>
+              <DashboardToolbarButton
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      await Promise.all(
+                        selectedIds.map((id) =>
+                          crmApi.updateRequirement(id, { status: "ACTIVE" }),
+                        ),
+                      );
+                      toastSuccess("Status set to Active");
+                      setSelectedIds([]);
+                      reload();
+                    } catch (err) {
+                      toastApiError(err);
+                    }
+                  })();
+                }}
+              >
+                Set Status
+              </DashboardToolbarButton>
               <DashboardExportMenu
                 triggerLabel="Export selected"
                 items={[
-                  { id: "csv", label: "Export selected • CSV" },
-                  { id: "all", label: "Export all • CSV" },
-                  { id: "pdf", label: "Export as PDF" },
+                  {
+                    id: "csv",
+                    label: "Export selected • CSV",
+                    onSelect: () => void runExport({ selectedOnly: true }),
+                  },
+                  {
+                    id: "all",
+                    label: "Export all • CSV",
+                    onSelect: () => void runExport(),
+                  },
+                  {
+                    id: "xlsx",
+                    label: "Export as Excel",
+                    onSelect: () => void runExport({ format: "xlsx", selectedOnly: true }),
+                  },
+                  {
+                    id: "pdf",
+                    label: "Export as PDF",
+                    onSelect: () => void runExport({ format: "pdf", selectedOnly: true }),
+                  },
                 ]}
               />
             </>
@@ -574,9 +904,18 @@ export function RequirementsPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
-                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
-                  { id: "pdf", label: "Export as PDF" },
+                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void runExport() },
+                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void runExport() },
+                  {
+                    id: "xlsx",
+                    label: "Export as Excel",
+                    onSelect: () => void runExport({ format: "xlsx" }),
+                  },
+                  {
+                    id: "pdf",
+                    label: "Export as PDF",
+                    onSelect: () => void runExport({ format: "pdf" }),
+                  },
                 ]}
               />
             </>
@@ -588,7 +927,7 @@ export function RequirementsPage() {
         columns={columns}
         rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage={loading ? "Loading…" : "No requirements found"}
+        emptyMessage="No requirements found"
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -609,17 +948,27 @@ export function RequirementsPage() {
             <DashboardPanelTitle
               icon="lightning"
               title="Affected Technicians"
-              trailing={countTrailing("3 Technicians")}
+              trailing={countTrailing(
+                affectedFocusLabel
+                  ? `${affectedTechs.length} Technicians · ${affectedFocusLabel}`
+                  : `${affectedTechs.length} Technicians`,
+              )}
             />
           </div>
           <div className="pb-2">
-            {REQUIREMENTS_AFFECTED_TECHS.map((item) => (
-              <WidgetRow
-                key={item.id}
-                left={item.name}
-                right={item.role}
-              />
-            ))}
+            {affectedTechs.length === 0 ? (
+              <p className="px-4 py-2.5 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
+                No affected technicians
+              </p>
+            ) : (
+              affectedTechs.map((item) => (
+                <WidgetRow
+                  key={item.id}
+                  left={item.name}
+                  right={item.role}
+                />
+              ))
+            )}
           </div>
         </DashboardPanel>
 
@@ -628,17 +977,27 @@ export function RequirementsPage() {
             <DashboardPanelTitle
               icon="lightning"
               title="Affected Work Orders"
-              trailing={countTrailing("3 Work Orders")}
+              trailing={countTrailing(
+                affectedFocusLabel
+                  ? `${affectedWos.length} Work Orders · ${affectedFocusLabel}`
+                  : `${affectedWos.length} Work Orders`,
+              )}
             />
           </div>
           <div className="pb-2">
-            {REQUIREMENTS_AFFECTED_WO.map((item) => (
-              <WidgetRow
-                key={item.id}
-                left={item.workOrder}
-                right={item.priority}
-              />
-            ))}
+            {affectedWos.length === 0 ? (
+              <p className="px-4 py-2.5 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
+                No affected work orders
+              </p>
+            ) : (
+              affectedWos.map((item) => (
+                <WidgetRow
+                  key={item.id}
+                  left={item.workOrder}
+                  right={item.priority}
+                />
+              ))
+            )}
           </div>
         </DashboardPanel>
 
@@ -647,27 +1006,35 @@ export function RequirementsPage() {
             <DashboardPanelTitle
               icon="lightning"
               title="Requirement Status"
-              trailing={countTrailing("12 Wells · 9 Active")}
+              trailing={countTrailing(
+                `${affectedWells.length} Wells · ${affectedWells.filter((w) => w.status.variant === "success").length} Active`,
+              )}
             />
           </div>
           <div className="pb-2">
-            {REQUIREMENTS_STATUS_WELLS.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 px-4 py-2.5 sm:px-5"
-              >
-                <span className="min-w-0 flex-1 truncate font-sans text-[11px] uppercase leading-[1.35] tracking-[-0.02em] text-[#959597]">
-                  {item.label}
-                </span>
-                <DashboardBadge
-                  variant={item.status.variant}
-                  pill
-                  className="shrink-0"
+            {affectedWells.length === 0 ? (
+              <p className="px-4 py-2.5 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
+                No wells
+              </p>
+            ) : (
+              affectedWells.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 px-4 py-2.5 sm:px-5"
                 >
-                  {item.status.label}
-                </DashboardBadge>
-              </div>
-            ))}
+                  <span className="min-w-0 flex-1 truncate font-sans text-[11px] uppercase leading-[1.35] tracking-[-0.02em] text-[#959597]">
+                    {item.label}
+                  </span>
+                  <DashboardBadge
+                    variant={item.status.variant}
+                    pill
+                    className="shrink-0"
+                  >
+                    {item.status.label}
+                  </DashboardBadge>
+                </div>
+              ))
+            )}
           </div>
         </DashboardPanel>
 
@@ -676,17 +1043,25 @@ export function RequirementsPage() {
             <DashboardPanelTitle
               icon="lightning"
               title="Enforcement Level"
-              trailing={countTrailing("2 Active Rules")}
+              trailing={countTrailing(
+                `${enforcementItems.length} Active Rules`,
+              )}
             />
           </div>
           <div className="pb-2">
-            {REQUIREMENTS_ENFORCEMENT.map((item) => (
-              <WidgetRow
-                key={item.id}
-                left={item.label}
-                right={item.rate}
-              />
-            ))}
+            {enforcementItems.length === 0 ? (
+              <p className="px-4 py-2.5 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
+                No enforcement data
+              </p>
+            ) : (
+              enforcementItems.map((item) => (
+                <WidgetRow
+                  key={item.id}
+                  left={item.label}
+                  right={item.rate}
+                />
+              ))
+            )}
           </div>
         </DashboardPanel>
       </div>
@@ -696,31 +1071,45 @@ export function RequirementsPage() {
           <DashboardPanelTitle
             icon="lightning"
             title="Who Does This Block?"
-            trailing={countTrailing("4 People · 4 Processes")}
+            trailing={countTrailing(
+              `${blockedBy.length} People · ${blockedProcesses.length} Processes`,
+            )}
           />
         </div>
         <div className="flex flex-col gap-4 px-4 pb-5 sm:flex-row sm:items-start sm:justify-between sm:px-5">
           <ul className="flex list-none flex-col gap-3">
-            {REQUIREMENTS_BLOCKED_BY.map((person) => (
-              <li key={person.id} className="flex items-center gap-2.5">
-                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#2A2A2A] font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                  {person.initials}
-                </span>
-                <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                  {person.name}
-                </span>
+            {blockedBy.length === 0 ? (
+              <li className="font-sans text-[11px] uppercase text-[#959597]">
+                No people blocked
               </li>
-            ))}
+            ) : (
+              blockedBy.map((person) => (
+                <li key={person.id} className="flex items-center gap-2.5">
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#2A2A2A] font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                    {person.initials}
+                  </span>
+                  <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                    {person.name}
+                  </span>
+                </li>
+              ))
+            )}
           </ul>
           <ul className="flex list-none flex-col gap-3 sm:items-end">
-            {REQUIREMENTS_BLOCKED_PROCESSES.map((process) => (
-              <li
-                key={process}
-                className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]"
-              >
-                {process}
+            {blockedProcesses.length === 0 ? (
+              <li className="font-sans text-[11px] uppercase text-[#959597]">
+                No processes
               </li>
-            ))}
+            ) : (
+              blockedProcesses.map((process) => (
+                <li
+                  key={process}
+                  className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]"
+                >
+                  {process}
+                </li>
+              ))
+            )}
           </ul>
         </div>
       </DashboardPanel>
@@ -750,13 +1139,23 @@ export function RequirementsPage() {
         onClose={() => setSavedViewsOpen(false)}
         views={savedViews}
         activeViewId={activeViewId}
-        onSelectView={setActiveViewId}
+        onSelectView={(viewId) => {
+          setActiveViewId(viewId);
+          const view = savedViews.find((v) => v.id === viewId);
+          if (view?.payload != null) applySavedViewPayload(view.payload);
+        }}
         onSaveNewView={() => setSaveNewOpen(true)}
         onViewAction={(viewId, action) => {
           if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((v) => v.id === viewId);
-            if (source) void createView(`${source.label} copy`);
+            if (source) {
+              void createView(
+                `${source.label} copy`,
+                (source.payload as Record<string, unknown> | undefined) ??
+                  currentViewPayload(),
+              );
+            }
           }
         }}
       />
@@ -764,9 +1163,10 @@ export function RequirementsPage() {
         open={saveNewOpen}
         onClose={() => setSaveNewOpen(false)}
         onConfirm={({ name }) => {
-          void createView(name);
+          void createView(name, currentViewPayload());
         }}
       />
     </div>
+    </CrmListLoadGate>
   );
 }

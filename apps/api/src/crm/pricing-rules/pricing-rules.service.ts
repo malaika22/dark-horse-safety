@@ -1,7 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CrmRecordStatus, Prisma } from '@prisma/client';
 import { CodeGeneratorService } from '../../common/services/code-generator.service';
-import { ExportService } from '../../common/services/export.service';
+import {
+  ExportService,
+  isoDate,
+  userLabel,
+} from '../../common/services/export.service';
 import {
   containsCi,
   orderByFrom,
@@ -223,7 +227,12 @@ export class PricingRulesService {
     return { data: copy };
   }
 
-  async exportCsv(query: PricingRuleListQueryDto & { ids?: string }) {
+  async exportCsv(
+    query: PricingRuleListQueryDto & {
+      ids?: string;
+      format?: 'csv' | 'pdf' | 'xlsx';
+    },
+  ) {
     const ids = this.exportService.parseIds(query.ids);
     const where: Prisma.PricingRuleWhereInput = ids?.length
       ? { id: { in: ids } }
@@ -232,15 +241,115 @@ export class PricingRulesService {
       where,
       orderBy: { serviceItem: 'asc' },
       take: 5000,
+      include: {
+        customer: { select: { id: true, name: true, code: true } },
+        owner: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
     });
-    const csv = this.exportService.toCsv(rows, [
-      { key: 'code', header: 'Code', value: (r) => r.code },
-      { key: 'serviceItem', header: 'Service', value: (r) => r.serviceItem },
-      { key: 'rateType', header: 'Rate Type', value: (r) => r.rateType },
-      { key: 'rate', header: 'Rate', value: (r) => Number(r.rate) },
-      { key: 'status', header: 'Status', value: (r) => r.status },
-    ]);
-    return { data: { csv, filename: 'pricing-rules.csv' } };
+    type Row = (typeof rows)[number];
+    const columns = [
+      { key: 'code', header: 'Code', value: (r: Row) => r.code },
+      {
+        key: 'customer',
+        header: 'Customer',
+        value: (r: Row) => r.customer?.name,
+      },
+      {
+        key: 'serviceItem',
+        header: 'Service/Item',
+        value: (r: Row) => r.serviceItem,
+      },
+      { key: 'status', header: 'Status', value: (r: Row) => r.status },
+      { key: 'rate', header: 'Rate', value: (r: Row) => Number(r.rate) },
+      { key: 'rateType', header: 'Rate Type', value: (r: Row) => r.rateType },
+      { key: 'unit', header: 'Unit', value: (r: Row) => r.unit },
+      {
+        key: 'effectiveFrom',
+        header: 'Effective From',
+        value: (r: Row) => isoDate(r.effectiveFrom),
+      },
+      {
+        key: 'effectiveTo',
+        header: 'Effective To',
+        value: (r: Row) => isoDate(r.effectiveTo),
+      },
+      {
+        key: 'owner',
+        header: 'Owner',
+        value: (r: Row) => userLabel(r.owner),
+      },
+      {
+        key: 'createdAt',
+        header: 'Created At',
+        value: (r: Row) => isoDate(r.createdAt),
+      },
+    ];
+    return this.exportService.buildExport(
+      'Pricing Rules',
+      'pricing-rules',
+      rows,
+      columns,
+      query.format ?? 'csv',
+    );
+  }
+
+  async history(id: string) {
+    const rule = await this.prisma.pricingRule.findUnique({ where: { id } });
+    if (!rule) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Pricing rule not found',
+      });
+    }
+    const events: { id: string; at: string; label: string; detail: string }[] =
+      [
+        {
+          id: `${id}-created`,
+          at: rule.createdAt.toISOString(),
+          label: 'Created',
+          detail: `Rule ${rule.code} created for ${rule.serviceItem}`,
+        },
+        {
+          id: `${id}-status`,
+          at: rule.updatedAt.toISOString(),
+          label: 'Status',
+          detail: rule.status,
+        },
+        {
+          id: `${id}-rate`,
+          at: rule.updatedAt.toISOString(),
+          label: 'Rate',
+          detail: `${Number(rule.rate)}${rule.unit ? ` / ${rule.unit}` : ''}${rule.rateType ? ` (${rule.rateType})` : ''}`,
+        },
+      ];
+    if (rule.effectiveFrom) {
+      events.push({
+        id: `${id}-effective-from`,
+        at: rule.effectiveFrom.toISOString(),
+        label: 'Effective From',
+        detail: rule.effectiveFrom.toISOString().slice(0, 10),
+      });
+    }
+    if (rule.effectiveTo) {
+      events.push({
+        id: `${id}-effective-to`,
+        at: rule.effectiveTo.toISOString(),
+        label: 'Effective To',
+        detail: rule.effectiveTo.toISOString().slice(0, 10),
+      });
+    }
+    if (rule.updatedAt.getTime() !== rule.createdAt.getTime()) {
+      events.push({
+        id: `${id}-updated`,
+        at: rule.updatedAt.toISOString(),
+        label: 'Updated',
+        detail: `Last modified ${rule.updatedAt.toISOString()}`,
+      });
+    }
+    events.sort((a, b) => b.at.localeCompare(a.at));
+    return { data: { events } };
   }
 
   private async ensureExists(id: string) {

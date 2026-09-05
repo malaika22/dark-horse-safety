@@ -31,6 +31,7 @@ export const APP_NAV: NavItem[] = [
       { id: "crm-eod", label: "EOD Reports", href: "/crm/eod-reports" },
       { id: "crm-contacts", label: "Contacts", href: "/crm/contacts" },
       { id: "crm-sales", label: "Sales", href: "/crm/sales" },
+      { id: "crm-quotes", label: "Quotes", href: "/crm/quotes" },
       { id: "crm-locations", label: "Locations / Wells", href: "/crm/locations" },
       { id: "crm-pricing", label: "Pricing Rules", href: "/crm/pricing-rules" },
       {

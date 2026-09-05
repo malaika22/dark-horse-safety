@@ -24,13 +24,19 @@ import {
   type CrmLocationCard,
   type CrmMapPin,
 } from "./crm-map-split-view";
-import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapRouteLocationCard } from "@/lib/crm-mappers";
 import { kpiCellsFromApi, latLngToMapPin } from "@/lib/crm-ui";
 import { useCrmList } from "@/lib/use-crm-list";
 import { useCrmLookups } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
+import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
+import {
+  CrmHistoryModal,
+  CrmPickModal,
+  CrmPromptFieldsModal,
+} from "./crm-action-modals";
 import { ROUTE_RULES_KPI_SHELL, ROUTE_RULES_SORT_OPTIONS } from "./crm-constants";
 
 type RouteFilters = {
@@ -374,6 +380,21 @@ export function RouteRulesPage() {
   const [filtersApplied, setFiltersApplied] = React.useState(false);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
+  const [highlightedLocationId, setHighlightedLocationId] = React.useState<
+    string | null
+  >(null);
+  const [copyPickOpen, setCopyPickOpen] = React.useState(false);
+  const [copyRuleId, setCopyRuleId] = React.useState<string | null>(null);
+  const [geofenceOpen, setGeofenceOpen] = React.useState(false);
+  const [geofenceRuleId, setGeofenceRuleId] = React.useState<string | null>(null);
+  const [geofenceDefault, setGeofenceDefault] = React.useState("");
+  const [testCoordOpen, setTestCoordOpen] = React.useState(false);
+  const [testCoordRuleId, setTestCoordRuleId] = React.useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [historyTitle, setHistoryTitle] = React.useState("GPS Flags");
+  const [historyEvents, setHistoryEvents] = React.useState<
+    { id: string; at: string; label: string; detail?: string }[]
+  >([]);
   const {
     savedViews,
     activeViewId,
@@ -395,7 +416,7 @@ export function RouteRulesPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters, filtersApplied]);
 
-  const { rows, total, kpiData, loading } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
     list: (p) => crmApi.listRouteRules(p),
     mapRow: mapRouteLocationCard,
     kpi: () => crmApi.routeRulesKpi(),
@@ -412,15 +433,15 @@ export function RouteRulesPage() {
     [kpiData],
   );
 
-  const [mapPins, setMapPins] = React.useState<CrmMapPin[]>([]);
+  const [mapPinsBase, setMapPinsBase] = React.useState<CrmMapPin[]>([]);
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const res = await crmApi.locationsMapPins();
         if (cancelled) return;
-        setMapPins(
-          res.data.map((pin) => {
+        setMapPinsBase(
+          res.data.flatMap((pin) => {
             const mapped = latLngToMapPin(
               pin.id,
               pin.label ?? pin.name ?? pin.id,
@@ -428,24 +449,77 @@ export function RouteRulesPage() {
               pin.longitude,
               pin.active ?? true,
             );
-            return {
-              id: mapped.id,
-              label: mapped.label,
-              x: pin.x ?? mapped.x,
-              y: pin.y ?? mapped.y,
-              highlighted: mapped.active,
-            };
+            if (!mapped) return [];
+            return [
+              {
+                id: mapped.id,
+                label: mapped.label,
+                x: pin.x ?? mapped.x,
+                y: pin.y ?? mapped.y,
+                highlighted: mapped.active,
+              },
+            ];
           }),
         );
       } catch (err) {
         toastApiError(err);
-        setMapPins([]);
+        setMapPinsBase([]);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const mapPins = React.useMemo(
+    () =>
+      mapPinsBase.map((pin) => ({
+        ...pin,
+        highlighted: highlightedLocationId
+          ? pin.id === highlightedLocationId
+          : pin.highlighted,
+      })),
+    [mapPinsBase, highlightedLocationId],
+  );
+
+  function currentViewPayload() {
+    return {
+      filters: appliedFilters,
+      sortField,
+      sortDirection,
+      query,
+      filtersApplied,
+    };
+  }
+
+  function applySavedViewPayload(payload: unknown) {
+    if (!payload || typeof payload !== "object") return;
+    const p = payload as {
+      filters?: RouteFilters;
+      sortField?: string;
+      sortDirection?: DashboardSortDirection;
+      query?: string;
+      filtersApplied?: boolean;
+    };
+    if (p.filters) {
+      const nextFilters = { ...DEFAULT_FILTERS, ...p.filters };
+      setAppliedFilters(nextFilters);
+      setDraftFilters(nextFilters);
+      setFiltersApplied(
+        p.filtersApplied ??
+          Object.values(nextFilters).some((v) =>
+            typeof v === "boolean" ? v : Boolean(v),
+          ),
+      );
+    } else if (typeof p.filtersApplied === "boolean") {
+      setFiltersApplied(p.filtersApplied);
+    }
+    if (typeof p.sortField === "string") setSortField(p.sortField);
+    if (p.sortDirection === "asc" || p.sortDirection === "desc") {
+      setSortDirection(p.sortDirection);
+    }
+    if (typeof p.query === "string") setQuery(p.query);
+  }
 
   async function handleExport() {
     try {
@@ -455,6 +529,7 @@ export function RouteRulesPage() {
         direction: sortDirection,
         ...extraParams,
       });
+      if (!res.data.csv) throw new Error("No CSV");
       downloadCsv(res.data.csv, res.data.filename);
       toastSuccess("Export downloaded");
     } catch (err) {
@@ -462,11 +537,178 @@ export function RouteRulesPage() {
     }
   }
 
+  async function handleExportPdf() {
+    try {
+      const res = await crmApi.exportRouteRules({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDirection,
+        format: "pdf",
+        ...extraParams,
+      });
+      if (!res.data.pdf) throw new Error("No PDF");
+      downloadPdf(res.data.pdf, res.data.filename);
+      toastSuccess("PDF downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleExportExcel() {
+    try {
+      const res = await crmApi.exportRouteRules({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDirection,
+        format: "xlsx",
+        ...extraParams,
+      });
+      if (!res.data.xlsx) throw new Error("No Excel file");
+      downloadXlsx(res.data.xlsx, res.data.filename);
+      toastSuccess("Excel downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleArchive(id: string) {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this route rule?")
+    ) {
+      return;
+    }
+    try {
+      await crmApi.archiveRouteRule(id);
+      toastSuccess("Route rule deleted");
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  function openCopyPicker(id: string, customerId?: string) {
+    setCopyRuleId(id);
+    void reloadEntities({ customerId: customerId || undefined });
+    setCopyPickOpen(true);
+  }
+
+  async function handleCopyConfirm(locationId: string) {
+    if (!copyRuleId) return;
+    try {
+      await crmApi.copyRouteRuleToLocation(copyRuleId, locationId);
+      const name =
+        locations.find((l) => l.value === locationId)?.label ?? "location";
+      toastSuccess(`Copied to ${name}`);
+      reload();
+    } catch (err) {
+      toastApiError(err);
+      throw err;
+    }
+  }
+
+  function openGeofence(card: CrmLocationCard) {
+    setGeofenceRuleId(card.id);
+    setGeofenceDefault(card.geofenceRadius ?? "");
+    if (card.locationId) setHighlightedLocationId(card.locationId);
+    setGeofenceOpen(true);
+  }
+
+  async function handleGeofenceConfirm(values: Record<string, string>) {
+    if (!geofenceRuleId) return;
+    const radius = values.geofenceRadius?.trim();
+    if (!radius) {
+      toastApiError(new Error("Geofence radius is required"));
+      throw new Error("Geofence radius is required");
+    }
+    try {
+      await crmApi.updateRouteRule(geofenceRuleId, {
+        geofenceRadius: radius,
+      });
+      toastSuccess(`Geofence updated to ${radius}`);
+      reload();
+    } catch (err) {
+      toastApiError(err);
+      throw err;
+    }
+  }
+
+  function openTestCoord(id: string) {
+    setTestCoordRuleId(id);
+    setTestCoordOpen(true);
+  }
+
+  async function handleTestCoordConfirm(values: Record<string, string>) {
+    if (!testCoordRuleId) return;
+    const lat = Number(values.lat);
+    const lng = Number(values.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      toastApiError(new Error("Enter valid latitude and longitude"));
+      throw new Error("Invalid coordinates");
+    }
+    try {
+      const res = await crmApi.testRouteCoordinate(testCoordRuleId, lat, lng);
+      const { inside, distanceFt, radiusFt, locationName } = res.data;
+      toastSuccess(
+        inside
+          ? `Inside geofence · ${distanceFt.toFixed(0)} ft from center (${radiusFt} ft)${locationName ? ` · ${locationName}` : ""}`
+          : `Outside geofence · ${distanceFt.toFixed(0)} ft from center (${radiusFt} ft)${locationName ? ` · ${locationName}` : ""}`,
+      );
+    } catch (err) {
+      toastApiError(err);
+      throw err;
+    }
+  }
+
+  async function handleViewGpsFlags(id: string, label?: string) {
+    try {
+      const res = await crmApi.routeRuleGpsFlags(id);
+      setHistoryTitle(label ? `GPS Flags · ${label}` : "GPS Flags");
+      setHistoryEvents(
+        (res.data.flags ?? []).map((f) => ({
+          id: f.id,
+          at: f.at,
+          label: f.message,
+          detail: f.severity,
+        })),
+      );
+      setHistoryOpen(true);
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  const copyLocationOptions = React.useMemo(
+    () => locations.map((l) => ({ value: l.value, label: l.label })),
+    [locations],
+  );
+
+  const geofenceFields = React.useMemo(
+    () => [
+      {
+        key: "geofenceRadius",
+        label: "Geofence Radius (ft)",
+        placeholder: "e.g. 500",
+        defaultValue: geofenceDefault,
+      },
+    ],
+    [geofenceDefault],
+  );
+
+  const testCoordFields = React.useMemo(
+    () => [
+      { key: "lat", label: "Latitude", placeholder: "e.g. 31.8457" },
+      { key: "lng", label: "Longitude", placeholder: "e.g. -102.3676" },
+    ],
+    [],
+  );
+
   void total;
   const listCards: CrmLocationCard[] = rows;
 
   return (
-    <div className={`space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5 ${loading ? "opacity-60" : ""}`}>
+    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
+    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
           {kpiCells.map((cell) => (
@@ -517,7 +759,16 @@ export function RouteRulesPage() {
               items={[
                 { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
                 { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
-                { id: "pdf", label: "Export as PDF" },
+                {
+                  id: "xlsx",
+                  label: "Export as Excel",
+                  onSelect: () => void handleExportExcel(),
+                },
+                {
+                  id: "pdf",
+                  label: "Export as PDF",
+                  onSelect: () => void handleExportPdf(),
+                },
               ]}
             />
           </>
@@ -547,11 +798,33 @@ export function RouteRulesPage() {
                   onSelect: () =>
                     router.push(`/crm/route-rules/${card.id}/edit`),
                 },
-                { id: "geofence", label: "Adjust Geofence on Map" },
-                { id: "test", label: "Test with a Sample Coordinate" },
-                { id: "copy", label: "Copy to Another Site" },
-                { id: "flags", label: "View GPS Flags Raised Here" },
-                { id: "delete", label: "Delete Rule", destructive: true },
+                {
+                  id: "geofence",
+                  label: "Adjust Geofence on Map",
+                  onSelect: () => openGeofence(card),
+                },
+                {
+                  id: "test",
+                  label: "Test with a Sample Coordinate",
+                  onSelect: () => openTestCoord(card.id),
+                },
+                {
+                  id: "copy",
+                  label: "Copy to Another Site",
+                  onSelect: () =>
+                    openCopyPicker(card.id, card.customerId),
+                },
+                {
+                  id: "flags",
+                  label: "View GPS Flags Raised Here",
+                  onSelect: () => void handleViewGpsFlags(card.id, card.name),
+                },
+                {
+                  id: "delete",
+                  label: "Delete Rule",
+                  destructive: true,
+                  onSelect: () => void handleArchive(card.id),
+                },
               ]}
             />
           )}
@@ -587,13 +860,23 @@ export function RouteRulesPage() {
         onClose={() => setSavedViewsOpen(false)}
         views={savedViews}
         activeViewId={activeViewId}
-        onSelectView={setActiveViewId}
+        onSelectView={(viewId) => {
+          setActiveViewId(viewId);
+          const view = savedViews.find((v) => v.id === viewId);
+          if (view?.payload != null) applySavedViewPayload(view.payload);
+        }}
         onSaveNewView={() => setSaveNewViewOpen(true)}
         onViewAction={(viewId, action) => {
           if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((v) => v.id === viewId);
-            if (source) void createView(`${source.label} copy`);
+            if (source) {
+              void createView(
+                `${source.label} copy`,
+                (source.payload as Record<string, unknown> | undefined) ??
+                  currentViewPayload(),
+              );
+            }
           }
         }}
       />
@@ -602,9 +885,54 @@ export function RouteRulesPage() {
         open={saveNewViewOpen}
         onClose={() => setSaveNewViewOpen(false)}
         onConfirm={({ name }) => {
-          void createView(name);
+          void createView(name, currentViewPayload());
         }}
       />
+
+      <CrmPickModal
+        open={copyPickOpen}
+        title="Copy Rule to Another Site"
+        label="Location"
+        options={copyLocationOptions}
+        confirmLabel="Copy"
+        onClose={() => {
+          setCopyPickOpen(false);
+          setCopyRuleId(null);
+        }}
+        onConfirm={handleCopyConfirm}
+      />
+
+      <CrmPromptFieldsModal
+        open={geofenceOpen}
+        title="Adjust Geofence"
+        fields={geofenceFields}
+        confirmLabel="Update"
+        onClose={() => {
+          setGeofenceOpen(false);
+          setGeofenceRuleId(null);
+        }}
+        onConfirm={handleGeofenceConfirm}
+      />
+
+      <CrmPromptFieldsModal
+        open={testCoordOpen}
+        title="Test Sample Coordinate"
+        fields={testCoordFields}
+        confirmLabel="Run test"
+        onClose={() => {
+          setTestCoordOpen(false);
+          setTestCoordRuleId(null);
+        }}
+        onConfirm={handleTestCoordConfirm}
+      />
+
+      <CrmHistoryModal
+        open={historyOpen}
+        title={historyTitle}
+        events={historyEvents}
+        onClose={() => setHistoryOpen(false)}
+      />
     </div>
+    </CrmListLoadGate>
   );
 }

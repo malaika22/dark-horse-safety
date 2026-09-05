@@ -17,6 +17,7 @@ import {
   type CrmDashboardOverview,
 } from "@/lib/crm-api";
 import { formatKpiValue, kpiCellsFromApi } from "@/lib/crm-ui";
+import { BrandLoader } from "@/features/loading/brand-loader";
 import {
   CUSTOMERS_KPI_SHELL,
   EOD_KPI_SHELL,
@@ -28,17 +29,23 @@ import {
 export function CrmWidgetSection({
   title,
   actionLabel,
+  onAction,
   children,
   className,
 }: {
   title: string;
   actionLabel?: string;
+  onAction?: () => void;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <section className={cn("space-y-2", className)}>
-      <DashboardWidgetHeader title={title} actionLabel={actionLabel} />
+      <DashboardWidgetHeader
+        title={title}
+        actionLabel={actionLabel}
+        onAction={onAction}
+      />
       <DashboardPanel className="p-3.5 sm:p-4">{children}</DashboardPanel>
     </section>
   );
@@ -52,21 +59,33 @@ export function CrmDashboardDataProvider({
   children: React.ReactNode;
 }) {
   const [data, setData] = React.useState<CrmDashboardOverview | null>(null);
+  const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
+      setLoading(true);
       try {
         const res = await crmApi.dashboardOverview();
         if (!cancelled) setData(res.data);
       } catch {
         if (!cancelled) setData(null);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  if (loading && !data) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center bg-shell p-6">
+        <BrandLoader label="Loading dashboard" />
+      </div>
+    );
+  }
 
   return (
     <DashboardCtx.Provider value={data}>{children}</DashboardCtx.Provider>

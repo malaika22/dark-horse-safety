@@ -39,9 +39,17 @@ export class RequirementsController {
   }
 
   @Get('export')
-  @ApiOperation({ summary: 'Export requirements CSV' })
+  @ApiOperation({ summary: 'Export requirements CSV or PDF' })
   export(@Query() query: ExportQueryDto & RequirementListQueryDto) {
     return this.requirements.exportCsv(query);
+  }
+
+  @Get('affected-summary')
+  @ApiOperation({
+    summary: 'Aggregate affected technicians / work orders / wells',
+  })
+  affectedSummary() {
+    return this.requirements.affectedSummary();
   }
 
   @Post('bulk/delete')
@@ -60,6 +68,14 @@ export class RequirementsController {
   @ApiOperation({ summary: 'Requirement detail' })
   get(@Param('id') id: string) {
     return this.requirements.getById(id);
+  }
+
+  @Get(':id/affected')
+  @ApiOperation({
+    summary: 'Technicians and work orders affected by a requirement',
+  })
+  affected(@Param('id') id: string) {
+    return this.requirements.affected(id);
   }
 
   @Patch(':id')

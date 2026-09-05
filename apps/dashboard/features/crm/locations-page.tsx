@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   DashboardExportMenu,
   DashboardListToolbar,
+  DashboardRowActionMenu,
   DashboardSaveNewViewModal,
   DashboardSaveViewsModal,
   DashboardSearchInput,
@@ -22,13 +23,14 @@ import {
   type CrmLocationCard,
   type CrmMapPin,
 } from "./crm-map-split-view";
-import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapLocationCard } from "@/lib/crm-mappers";
 import { kpiCellsFromApi, latLngToMapPin } from "@/lib/crm-ui";
 import { useCrmList } from "@/lib/use-crm-list";
 import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
+import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
 import { LOCATIONS_KPI_SHELL, LOCATIONS_SORT_OPTIONS } from "./crm-constants";
 
 type LocationFilters = {
@@ -406,7 +408,7 @@ export function LocationsPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters, filtersApplied]);
 
-  const { rows, total, kpiData, loading } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
     list: (p) => crmApi.listLocations(p),
     mapRow: mapLocationCard,
     kpi: () => crmApi.locationsKpi(),
@@ -423,6 +425,45 @@ export function LocationsPage() {
     [kpiData],
   );
 
+  function currentViewPayload() {
+    return {
+      filters: appliedFilters,
+      sortField,
+      sortDirection,
+      query,
+      filtersApplied,
+    };
+  }
+
+  function applySavedViewPayload(payload: unknown) {
+    if (!payload || typeof payload !== "object") return;
+    const p = payload as {
+      filters?: LocationFilters;
+      sortField?: string;
+      sortDirection?: DashboardSortDirection;
+      query?: string;
+      filtersApplied?: boolean;
+    };
+    if (p.filters) {
+      const nextFilters = { ...DEFAULT_LOCATION_FILTERS, ...p.filters };
+      setAppliedFilters(nextFilters);
+      setDraftFilters(nextFilters);
+      setFiltersApplied(
+        p.filtersApplied ??
+          Object.values(nextFilters).some((v) =>
+            typeof v === "boolean" ? v : Boolean(v),
+          ),
+      );
+    } else if (typeof p.filtersApplied === "boolean") {
+      setFiltersApplied(p.filtersApplied);
+    }
+    if (typeof p.sortField === "string") setSortField(p.sortField);
+    if (p.sortDirection === "asc" || p.sortDirection === "desc") {
+      setSortDirection(p.sortDirection);
+    }
+    if (typeof p.query === "string") setQuery(p.query);
+  }
+
   const [mapPins, setMapPins] = React.useState<CrmMapPin[]>([]);
   React.useEffect(() => {
     let cancelled = false;
@@ -431,7 +472,7 @@ export function LocationsPage() {
         const res = await crmApi.locationsMapPins();
         if (cancelled) return;
         setMapPins(
-          res.data.map((pin) => {
+          res.data.flatMap((pin) => {
             const mapped = latLngToMapPin(
               pin.id,
               pin.label ?? pin.name ?? pin.id,
@@ -439,13 +480,16 @@ export function LocationsPage() {
               pin.longitude,
               pin.active ?? pin.status !== "INACTIVE",
             );
-            return {
-              id: mapped.id,
-              label: mapped.label,
-              x: pin.x ?? mapped.x,
-              y: pin.y ?? mapped.y,
-              highlighted: mapped.active,
-            };
+            if (!mapped) return [];
+            return [
+              {
+                id: mapped.id,
+                label: mapped.label,
+                x: pin.x ?? mapped.x,
+                y: pin.y ?? mapped.y,
+                highlighted: mapped.active,
+              },
+            ];
           }),
         );
       } catch (err) {
@@ -466,8 +510,59 @@ export function LocationsPage() {
         direction: sortDirection,
         ...extraParams,
       });
+      if (!res.data.csv) throw new Error("No CSV");
       downloadCsv(res.data.csv, res.data.filename);
       toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleExportPdf() {
+    try {
+      const res = await crmApi.exportLocations({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDirection,
+        format: "pdf",
+        ...extraParams,
+      });
+      if (!res.data.pdf) throw new Error("No PDF");
+      downloadPdf(res.data.pdf, res.data.filename);
+      toastSuccess("PDF downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleExportExcel() {
+    try {
+      const res = await crmApi.exportLocations({
+        q: query || undefined,
+        sort: sortField,
+        direction: sortDirection,
+        format: "xlsx",
+        ...extraParams,
+      });
+      if (!res.data.xlsx) throw new Error("No Excel file");
+      downloadXlsx(res.data.xlsx, res.data.filename);
+      toastSuccess("Excel downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleArchive(id: string) {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Archive this location?")
+    ) {
+      return;
+    }
+    try {
+      await crmApi.archiveLocation(id);
+      toastSuccess("Location archived");
+      reload();
     } catch (err) {
       toastApiError(err);
     }
@@ -479,7 +574,8 @@ export function LocationsPage() {
   const showList = viewMode === "list" || viewMode === "split";
 
   return (
-    <div className={`space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5 ${loading ? "opacity-60" : ""}`}>
+    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
+    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
           {kpiCells.map((cell) => (
@@ -533,7 +629,16 @@ export function LocationsPage() {
                 items={[
                   { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
                   { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
-                  { id: "pdf", label: "Export as PDF" },
+                  {
+                    id: "xlsx",
+                    label: "Export as Excel",
+                    onSelect: () => void handleExportExcel(),
+                  },
+                  {
+                    id: "pdf",
+                    label: "Export as PDF",
+                    onSelect: () => void handleExportPdf(),
+                  },
                 ]}
               />
             </>
@@ -564,6 +669,18 @@ export function LocationsPage() {
           <CrmLocationsListPanel
             cards={listCards}
             countLabel={`Locations · ${listCards.length} Wells`}
+            renderCardActions={(card) => (
+              <DashboardRowActionMenu
+                items={[
+                  {
+                    id: "archive",
+                    label: "Archive / Deactivate",
+                    destructive: true,
+                    onSelect: () => void handleArchive(card.id),
+                  },
+                ]}
+              />
+            )}
           />
         ) : null}
       </div>
@@ -592,13 +709,23 @@ export function LocationsPage() {
         onClose={() => setSavedViewsOpen(false)}
         views={savedViews}
         activeViewId={activeViewId}
-        onSelectView={setActiveViewId}
+        onSelectView={(viewId) => {
+          setActiveViewId(viewId);
+          const view = savedViews.find((v) => v.id === viewId);
+          if (view?.payload != null) applySavedViewPayload(view.payload);
+        }}
         onSaveNewView={() => setSaveNewViewOpen(true)}
         onViewAction={(viewId, action) => {
           if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((v) => v.id === viewId);
-            if (source) void createView(`${source.label} copy`);
+            if (source) {
+              void createView(
+                `${source.label} copy`,
+                (source.payload as Record<string, unknown> | undefined) ??
+                  currentViewPayload(),
+              );
+            }
           }
         }}
       />
@@ -607,9 +734,10 @@ export function LocationsPage() {
         open={saveNewViewOpen}
         onClose={() => setSaveNewViewOpen(false)}
         onConfirm={({ name }) => {
-          void createView(name);
+          void createView(name, currentViewPayload());
         }}
       />
     </div>
+    </CrmListLoadGate>
   );
 }

@@ -65,12 +65,14 @@ export function CrmFormPageShell({
           <DashboardToolbarButton>Cancel</DashboardToolbarButton>
         </Link>
         {extraFooterActions}
-        <DashboardToolbarButton
-          disabled={submitting}
-          onClick={() => void onSaveAndAddAnother?.()}
-        >
-          {saveAndAddAnotherLabel}
-        </DashboardToolbarButton>
+        {onSaveAndAddAnother ? (
+          <DashboardToolbarButton
+            disabled={submitting}
+            onClick={() => void onSaveAndAddAnother()}
+          >
+            {saveAndAddAnotherLabel}
+          </DashboardToolbarButton>
+        ) : null}
         <DashboardToolbarButton
           variant="primary"
           disabled={submitting}

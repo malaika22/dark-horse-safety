@@ -5,10 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   DashboardBadge,
-  DashboardRowActionMenu,
   DashboardToolbarButton,
 } from "@dark-horse-safety/ui";
-import { crmApi, type CrmContact } from "@/lib/crm-api";
+import {
+  crmApi,
+  type CrmContact,
+  type CrmQuote,
+  type CrmSalesActivity,
+} from "@/lib/crm-api";
+import { BrandLoader } from "@/features/loading/brand-loader";
 import { toastApiError } from "@/lib/toast";
 import { CONTACT_DETAIL_TABS } from "./crm-constants";
 
@@ -46,7 +51,10 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
   const router = useRouter();
   const [tab, setTab] = React.useState<ContactDetailTab>("overview");
   const [contact, setContact] = React.useState<CrmContact | null>(null);
+  const [activities, setActivities] = React.useState<CrmSalesActivity[]>([]);
+  const [quotes, setQuotes] = React.useState<CrmQuote[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [tabLoading, setTabLoading] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -54,7 +62,11 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
       setLoading(true);
       try {
         const res = await crmApi.getContact(contactId);
-        if (!cancelled) setContact(res.data);
+        if (!cancelled) {
+          setContact(res.data);
+          setActivities(res.data.activities ?? []);
+          setQuotes(res.data.quotes ?? []);
+        }
       } catch (err) {
         toastApiError(err);
         if (!cancelled) setContact(null);
@@ -65,8 +77,84 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
     return () => { cancelled = true; };
   }, [contactId]);
 
+  React.useEffect(() => {
+    if (!contact || (tab !== "activity" && tab !== "quotes")) return;
+    if (tab === "activity" && (contact.activities?.length ?? 0) > 0) return;
+    if (tab === "quotes" && (contact.quotes?.length ?? 0) > 0) return;
+
+    let cancelled = false;
+    (async () => {
+      setTabLoading(true);
+      try {
+        if (tab === "activity") {
+          const res = await crmApi.listSalesActivities({
+            contactId,
+            pageSize: 50,
+          });
+          if (!cancelled) setActivities(res.data.items ?? []);
+        } else {
+          const res = await crmApi.listQuotes({
+            contactId,
+            pageSize: 50,
+          });
+          let items = res.data.items ?? [];
+          if (items.length === 0 && contact.primaryCustomerId) {
+            const byCustomer = await crmApi.listQuotes({
+              customerId: contact.primaryCustomerId,
+              pageSize: 50,
+            });
+            items = (byCustomer.data.items ?? []).filter(
+              (q) => q.contact?.id === contactId || !q.contact,
+            );
+          }
+          if (!cancelled) setQuotes(items);
+        }
+      } catch (err) {
+        if (!cancelled) toastApiError(err);
+      } finally {
+        if (!cancelled) setTabLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contact, contactId, tab]);
+
+  const linkedCustomers = React.useMemo(() => {
+    if (!contact) return [];
+    const map = new Map<
+      string,
+      { id: string; name: string; code?: string; openJobs?: number; isPrimary?: boolean }
+    >();
+    if (contact.primaryCustomer) {
+      map.set(contact.primaryCustomer.id, {
+        ...contact.primaryCustomer,
+        isPrimary: true,
+      });
+    }
+    for (const link of contact.customers ?? []) {
+      const c = link.customer;
+      if (!c) continue;
+      const existing = map.get(c.id);
+      map.set(c.id, {
+        ...c,
+        isPrimary:
+          existing?.isPrimary ||
+          link.isPrimary ||
+          c.id === contact.primaryCustomerId,
+      });
+    }
+    return Array.from(map.values());
+  }, [contact]);
+
+  const openJobs = linkedCustomers.reduce((sum, c) => sum + (c.openJobs ?? 0), 0);
+
   if (loading) {
-    return <div className="bg-shell p-6 font-sans text-sm text-[#959597]">Loading contact…</div>;
+    return (
+      <div className="flex min-h-[320px] items-center justify-center bg-shell p-6">
+        <BrandLoader label="Loading contact" />
+      </div>
+    );
   }
   if (!contact) {
     return <div className="bg-shell p-6 font-sans text-sm text-[#959597]">Contact not found</div>;
@@ -84,8 +172,17 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <GlassBtn href="/crm/contacts">Back</GlassBtn>
         <div className="flex flex-wrap items-center gap-2">
+          <GlassBtn href={`/crm/contacts/${contact.id}/edit`}>Edit</GlassBtn>
           <GlassBtn href={`/crm/sales/new?contactId=${encodeURIComponent(contact.id)}`}>Log Activity</GlassBtn>
-          <DashboardToolbarButton variant="primary" leftIcon={<ClipboardIcon className="shrink-0" />} onClick={() => router.push(`/crm/quotes/new?customerId=${encodeURIComponent(contact.primaryCustomerId ?? "")}`)}>
+          <DashboardToolbarButton
+            variant="primary"
+            leftIcon={<ClipboardIcon className="shrink-0" />}
+            onClick={() =>
+              router.push(
+                `/crm/quotes/new?customerId=${encodeURIComponent(contact.primaryCustomerId ?? "")}&contactId=${encodeURIComponent(contact.id)}`,
+              )
+            }
+          >
             Create Quote
           </DashboardToolbarButton>
         </div>
@@ -142,11 +239,109 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
             </ul>
           </Panel>
         </div>
-      ) : (
-        <div className="rounded-xl bg-panel p-6 font-sans text-[12px] uppercase text-[#959597]">
-          {CONTACT_DETAIL_TABS.find((t) => t.id === tab)?.label} — coming soon
-        </div>
-      )}
+      ) : null}
+
+      {tab === "activity" ? (
+        <Panel title={`Activity (${activities.length})`}>
+          {tabLoading ? (
+            <div className="flex min-h-[160px] items-center justify-center">
+              <BrandLoader size="sm" label="Loading" />
+            </div>
+          ) : activities.length === 0 ? (
+            <p className="font-sans text-[12px] uppercase text-[#959597]">No activities</p>
+          ) : (
+            <ul className="space-y-3">
+              {activities.map((a) => (
+                <li key={a.id}>
+                  <Link
+                    href={`/crm/sales/${a.id}`}
+                    className="flex items-center justify-between gap-3 font-sans text-[11px] uppercase text-[#FDFDFF] hover:underline"
+                  >
+                    <span className="truncate">
+                      {a.activityCode} · {a.type} · {a.subject ?? "—"}
+                    </span>
+                    <span className="shrink-0 text-[#959597]">
+                      {a.activityAt?.slice(0, 10) ?? "—"}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      ) : null}
+
+      {tab === "quotes" ? (
+        <Panel title={`Quotes (${quotes.length})`}>
+          {tabLoading ? (
+            <div className="flex min-h-[160px] items-center justify-center">
+              <BrandLoader size="sm" label="Loading" />
+            </div>
+          ) : quotes.length === 0 ? (
+            <p className="font-sans text-[12px] uppercase text-[#959597]">No quotes</p>
+          ) : (
+            <ul className="space-y-3">
+              {quotes.map((q) => (
+                <li key={q.id}>
+                  <Link
+                    href={`/crm/quotes/${q.id}`}
+                    className="flex items-center justify-between gap-3 font-sans text-[11px] uppercase text-[#FDFDFF] hover:underline"
+                  >
+                    <span className="truncate">
+                      {q.quoteNumber} · {q.status}
+                    </span>
+                    <span className="shrink-0 text-[#959597]">{String(q.amount)}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      ) : null}
+
+      {tab === "work-orders" ? (
+        <Panel title="Work Orders">
+          <p className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+            Open jobs on related customers: {openJobs}
+          </p>
+          <p className="mt-3 font-sans text-[11px] uppercase text-[#959597]">
+            Work orders are managed in Operations.
+          </p>
+          <div className="mt-4">
+            <Link
+              href="/operations/work-orders"
+              className="font-sans text-[11px] uppercase text-[#FDFDFF] underline underline-offset-2"
+            >
+              View work orders
+            </Link>
+          </div>
+        </Panel>
+      ) : null}
+
+      {tab === "customers" ? (
+        <Panel title={`Customers (${linkedCustomers.length})`}>
+          {linkedCustomers.length === 0 ? (
+            <p className="font-sans text-[12px] uppercase text-[#959597]">No linked customers</p>
+          ) : (
+            <ul className="space-y-3">
+              {linkedCustomers.map((c) => (
+                <li key={c.id} className="flex items-center justify-between gap-3">
+                  <Link
+                    href={`/crm/accounts/${c.id}`}
+                    className="font-sans text-[11px] uppercase text-[#FDFDFF] hover:underline"
+                  >
+                    {c.name}
+                    {c.isPrimary ? " · Primary" : ""}
+                  </Link>
+                  <span className="font-sans text-[11px] uppercase text-[#959597]">
+                    {c.code ?? "—"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      ) : null}
     </div>
   );
 }

@@ -24,18 +24,30 @@ import {
   type DashboardDataTableColumn,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
-import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { ApiError } from "@dark-horse-safety/api-client";
+import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapQuoteRow } from "@/lib/crm-mappers";
 import { kpiCellsFromApi } from "@/lib/crm-ui";
 import { useCrmList } from "@/lib/use-crm-list";
 import { useCrmLookups, lookupOptions, optionLabel } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
+import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
 import { QUOTES_KPI_SHELL, QUOTES_SORT_OPTIONS } from "./crm-constants";
 import type { QuoteRow } from "./crm-types";
-import { SendQuoteModal } from "./send-quote-modal";
+import { SendQuoteModal, type SendQuotePayload } from "./send-quote-modal";
 import { DocumentPlusIcon } from "./crm-list-page-shell";
 import Link from "next/link";
+
+async function fileToBase64(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(binary);
+}
 
 const DEFAULT_CHIPS: { id: string; label: string }[] = [];
 
@@ -271,6 +283,7 @@ export function QuotesPage() {
   const [pageSize, setPageSize] = React.useState(25);
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [sendOpen, setSendOpen] = React.useState(false);
+  const [sendQuoteId, setSendQuoteId] = React.useState<string | null>(null);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
   const {
@@ -292,7 +305,7 @@ export function QuotesPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters.status, appliedFilters.customer, appliedFilters.rep]);
 
-  const { rows, total, kpiData, loading } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
     list: (p) => crmApi.listQuotes(p),
     mapRow: mapQuoteRow,
     kpi: () => crmApi.quotesKpi(),
@@ -315,16 +328,209 @@ export function QuotesPage() {
 
   React.useEffect(() => { setPage(1); }, [query, appliedFilters, sortField, sortDirection, pageSize]);
 
-  async function handleExport() {
+  function currentViewPayload() {
+    return {
+      filters: appliedFilters,
+      sortField,
+      sortDirection,
+      query,
+    };
+  }
+
+  function applySavedViewPayload(payload: unknown) {
+    if (!payload || typeof payload !== "object") return;
+    const p = payload as {
+      filters?: QuoteFilters;
+      sortField?: string;
+      sortDirection?: DashboardSortDirection;
+      query?: string;
+    };
+    if (p.filters) {
+      const nextFilters = { ...DEFAULT_FILTERS, ...p.filters };
+      const nextChips = chipsFromFilters(nextFilters, {
+        statuses: statusOptions,
+        customers,
+        reps,
+      });
+      setAppliedFilters(nextFilters);
+      setDraftFilters(nextFilters);
+      setChips(nextChips);
+    }
+    if (typeof p.sortField === "string") setSortField(p.sortField);
+    if (p.sortDirection === "asc" || p.sortDirection === "desc") {
+      setSortDirection(p.sortDirection);
+    }
+    if (typeof p.query === "string") setQuery(p.query);
+  }
+
+  async function runExport(opts?: {
+    format?: "csv" | "pdf" | "xlsx";
+    selectedOnly?: boolean;
+  }) {
     try {
+      if (opts?.selectedOnly && selectedIds.length === 0) {
+        toastApiError(new Error("Select at least one quote to export"));
+        return;
+      }
+      const format = opts?.format ?? "csv";
       const res = await crmApi.exportQuotes({
         q: query || undefined,
         sort: sortField,
         direction: sortDirection,
+        format: format === "csv" ? undefined : format,
+        ids: opts?.selectedOnly ? selectedIds.join(",") : undefined,
         ...extraParams,
       });
+      if (format === "pdf") {
+        if (!res.data.pdf) throw new Error("No PDF");
+        downloadPdf(res.data.pdf, res.data.filename);
+        toastSuccess("PDF downloaded");
+        return;
+      }
+      if (format === "xlsx") {
+        if (!res.data.xlsx) throw new Error("No Excel file");
+        downloadXlsx(res.data.xlsx, res.data.filename);
+        toastSuccess("Excel downloaded");
+        return;
+      }
+      if (!res.data.csv) throw new Error("No CSV");
       downloadCsv(res.data.csv, res.data.filename);
       toastSuccess("Export downloaded");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleDuplicate(id: string) {
+    try {
+      const res = await crmApi.duplicateQuote(id);
+      toastSuccess("Quote duplicated");
+      router.push(`/crm/quotes/${res.data.id}`);
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleMarkWon(id: string) {
+    try {
+      await crmApi.markQuoteWon(id);
+      toastSuccess("Quote marked as won");
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleMarkLost(id: string) {
+    try {
+      await crmApi.markQuoteLost(id);
+      toastSuccess("Quote marked as lost");
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleArchive(id: string) {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this draft quote?")
+    ) {
+      return;
+    }
+    try {
+      await crmApi.archiveQuote(id);
+      toastSuccess("Quote archived");
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleBulkArchive() {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`Delete ${selectedIds.length} quote(s)?`)
+    ) {
+      return;
+    }
+    try {
+      await crmApi.bulkArchiveQuotes(selectedIds);
+      toastSuccess("Quotes archived");
+      setSelectedIds([]);
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleConvertToWorkOrder(id: string) {
+    try {
+      if (typeof crmApi.convertQuoteToWorkOrder === "function") {
+        const res = await crmApi.convertQuoteToWorkOrder(id);
+        const wo = res.data;
+        toastSuccess("Converted to work order");
+        if (wo?.id) {
+          router.push(`/operations/work-orders/${wo.id}`);
+        } else {
+          router.push(
+            `/operations/work-orders/new?quoteId=${encodeURIComponent(id)}`,
+          );
+        }
+        return;
+      }
+      router.push(
+        `/operations/work-orders/new?quoteId=${encodeURIComponent(id)}`,
+      );
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        router.push(
+          `/operations/work-orders/new?quoteId=${encodeURIComponent(id)}`,
+        );
+        return;
+      }
+      toastApiError(err);
+    }
+  }
+
+  async function handleSendConfirm(payload: SendQuotePayload) {
+    if (!sendQuoteId) return;
+    try {
+      const attachmentIds: string[] = [];
+      for (const file of payload.files ?? []) {
+        const data = await fileToBase64(file);
+        const uploaded = await crmApi.uploadQuoteAttachment(sendQuoteId, {
+          fileName: file.name,
+          mimeType: file.type || undefined,
+          contentBase64: data,
+        });
+        if (uploaded.data?.id) attachmentIds.push(uploaded.data.id);
+      }
+      await crmApi.sendQuote(sendQuoteId, {
+        to: payload.recipient,
+        subject: payload.subject,
+        message: payload.message,
+        schedule: payload.schedule,
+        attachmentIds: attachmentIds.length ? attachmentIds : undefined,
+      });
+      toastSuccess("Quote sent");
+      setSendQuoteId(null);
+      reload();
+    } catch (err) {
+      toastApiError(err);
+      throw err;
+    }
+  }
+
+  async function handleDownloadPdf(id: string) {
+    try {
+      const res = await crmApi.exportQuotes({
+        format: "pdf",
+        ids: id,
+      });
+      if (!res.data.pdf) throw new Error("No PDF");
+      downloadPdf(res.data.pdf, res.data.filename);
+      toastSuccess("PDF downloaded");
     } catch (err) {
       toastApiError(err);
     }
@@ -432,14 +638,30 @@ export function QuotesPage() {
           <DashboardRowActionMenu
             items={[
               { id: "open",    label: "Open Quote",              onSelect: () => router.push(`/crm/quotes/${row.id}`) },
-              { id: "edit",    label: "Edit" },
-              { id: "dup",     label: "Duplicate Quote" },
-              { id: "send",    label: "Send to Customer",        onSelect: () => setSendOpen(true) },
-              { id: "pdf",     label: "Download PDF",            onSelect: () => router.push(`/crm/quotes/${row.id}/preview`) },
-              { id: "convert", label: "Convert to Work Order" },
-              { id: "won",     label: "Mark as Won" },
-              { id: "lost",    label: "Mark as Lost" },
-              { id: "delete",  label: "Delete Draft",            destructive: true },
+              { id: "edit",    label: "Edit",                    onSelect: () => router.push(`/crm/quotes/${row.id}/edit`) },
+              { id: "dup",     label: "Duplicate Quote",         onSelect: () => void handleDuplicate(row.id) },
+              {
+                id: "send",
+                label: "Send to Customer",
+                onSelect: () => {
+                  setSendQuoteId(row.id);
+                  setSendOpen(true);
+                },
+              },
+              { id: "pdf",     label: "Download PDF",            onSelect: () => void handleDownloadPdf(row.id) },
+              {
+                id: "convert",
+                label: "Convert to Work Order",
+                onSelect: () => void handleConvertToWorkOrder(row.id),
+              },
+              { id: "won",     label: "Mark as Won",             onSelect: () => void handleMarkWon(row.id) },
+              { id: "lost",    label: "Mark as Lost",            onSelect: () => void handleMarkLost(row.id) },
+              {
+                id: "delete",
+                label: "Delete Draft",
+                destructive: true,
+                onSelect: () => void handleArchive(row.id),
+              },
             ]}
           />
         ),
@@ -449,6 +671,7 @@ export function QuotesPage() {
   );
 
   return (
+    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={5}>
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-sans text-[18px] font-normal uppercase leading-none tracking-[-0.02em] text-foreground md:text-[24px]">
@@ -478,15 +701,27 @@ export function QuotesPage() {
           selectedCount={selectedIds.length}
           actions={
             <>
-              <DashboardToolbarButton className="!border-[#4B212B] !bg-[#3D1F1F] !text-[#FFBBCA]">
+              <DashboardToolbarButton
+                className="!border-[#4B212B] !bg-[#3D1F1F] !text-[#FFBBCA]"
+                onClick={() => void handleBulkArchive()}
+              >
                 Delete
               </DashboardToolbarButton>
               <DashboardExportMenu
                 triggerLabel="Export selected"
                 items={[
-                  { id: "selected-csv", label: "Export selected view • CSV", onSelect: () => void handleExport() },
-                  { id: "all-csv",      label: "Export all • CSV" },
-                  { id: "pdf",          label: "Export as PDF" },
+                  { id: "selected-csv", label: "Export selected view • CSV", onSelect: () => void runExport({ selectedOnly: true }) },
+                  { id: "all-csv",      label: "Export all • CSV", onSelect: () => void runExport() },
+                  {
+                    id: "xlsx",
+                    label: "Export as Excel",
+                    onSelect: () => void runExport({ format: "xlsx", selectedOnly: true }),
+                  },
+                  {
+                    id: "pdf",
+                    label: "Export as PDF",
+                    onSelect: () => void runExport({ format: "pdf", selectedOnly: true }),
+                  },
                 ]}
               />
             </>
@@ -516,9 +751,18 @@ export function QuotesPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
-                  { id: "all-csv",  label: "Export all • CSV", onSelect: () => void handleExport() },
-                  { id: "pdf",      label: "Export as PDF" },
+                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void runExport() },
+                  { id: "all-csv",  label: "Export all • CSV", onSelect: () => void runExport() },
+                  {
+                    id: "xlsx",
+                    label: "Export as Excel",
+                    onSelect: () => void runExport({ format: "xlsx" }),
+                  },
+                  {
+                    id: "pdf",
+                    label: "Export as PDF",
+                    onSelect: () => void runExport({ format: "pdf" }),
+                  },
                 ]}
               />
               <DashboardSortMenu
@@ -559,7 +803,7 @@ export function QuotesPage() {
         columns={columns}
         rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage={loading ? "Loading quotes…" : "No quotes found"}
+        emptyMessage="No quotes found"
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -604,13 +848,23 @@ export function QuotesPage() {
         onClose={() => setSavedViewsOpen(false)}
         views={savedViews}
         activeViewId={activeViewId}
-        onSelectView={setActiveViewId}
+        onSelectView={(viewId) => {
+          setActiveViewId(viewId);
+          const view = savedViews.find((v) => v.id === viewId);
+          if (view?.payload != null) applySavedViewPayload(view.payload);
+        }}
         onSaveNewView={() => setSaveNewViewOpen(true)}
         onViewAction={(viewId, action) => {
           if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((v) => v.id === viewId);
-            if (source) void createView(`${source.label} copy`);
+            if (source) {
+              void createView(
+                `${source.label} copy`,
+                (source.payload as Record<string, unknown> | undefined) ??
+                  currentViewPayload(),
+              );
+            }
           }
         }}
       />
@@ -619,10 +873,18 @@ export function QuotesPage() {
         open={saveNewViewOpen}
         onClose={() => setSaveNewViewOpen(false)}
         onConfirm={({ name }) => {
-          void createView(name);
+          void createView(name, currentViewPayload());
         }}
       />
-      <SendQuoteModal open={sendOpen} onClose={() => setSendOpen(false)} />
+      <SendQuoteModal
+        open={sendOpen}
+        onClose={() => {
+          setSendOpen(false);
+          setSendQuoteId(null);
+        }}
+        onConfirm={(payload) => handleSendConfirm(payload)}
+      />
     </div>
+    </CrmListLoadGate>
   );
 }

@@ -47,6 +47,7 @@ export function useCrmList<TItem, TRow>(options: {
   const [total, setTotal] = React.useState(0);
   const [kpiData, setKpiData] = React.useState<Record<string, number>>({});
   const [loading, setLoading] = React.useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [reloadKey, setReloadKey] = React.useState(0);
 
@@ -75,6 +76,7 @@ export function useCrmList<TItem, TRow>(options: {
         setRows(listRes.data.items.map(mapRow));
         setTotal(listRes.data.total);
         if (kpiRes) setKpiData(kpiRes.data);
+        setHasLoadedOnce(true);
       } catch (err) {
         if (cancelled) return;
         const message =
@@ -82,6 +84,7 @@ export function useCrmList<TItem, TRow>(options: {
         setError(message);
         setRows([]);
         setTotal(0);
+        setHasLoadedOnce(true);
         toastApiError(err);
       } finally {
         if (!cancelled) setLoading(false);
@@ -104,5 +107,14 @@ export function useCrmList<TItem, TRow>(options: {
     JSON.stringify(extraParams ?? {}),
   ]);
 
-  return { rows, total, kpiData, loading, error, reload };
+  return {
+    rows,
+    total,
+    kpiData,
+    loading,
+    /** True until the first list request finishes (success or error). */
+    initialLoading: loading && !hasLoadedOnce,
+    error,
+    reload,
+  };
 }

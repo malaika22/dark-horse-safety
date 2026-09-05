@@ -40,6 +40,8 @@ export class CodeGeneratorService {
         return this.prisma.salesActivity.count();
       case 'quote':
         return this.prisma.quote.count();
+      case 'workOrder':
+        return this.prisma.workOrder.count();
       default:
         return Promise.resolve(0);
     }

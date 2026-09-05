@@ -27,6 +27,7 @@ export type ContactRow = {
   name: string;
   code: string;
   customer: string;
+  primaryCustomerId?: string;
   role: string;
   email: string;
   phone: string;
@@ -77,6 +78,7 @@ export type RequirementRow = {
   requirement: string;
   status: StatusBadge;
   type: string;
+  enforcementLevel: string;
   owner: string;
   due: string;
   review: StatusBadge;
@@ -86,8 +88,10 @@ export type RequirementRow = {
 export type FormRuleRow = {
   id: string;
   customer: string;
+  customerId?: string;
   code: string;
   formTemplate: string;
+  jobType: string;
   status: StatusBadge;
   trigger: string;
   hardGate: string;
@@ -99,6 +103,7 @@ export type FormRuleRow = {
 export type RouteRuleRow = {
   id: string;
   customer: string;
+  customerId?: string;
   code: string;
   location: string;
   status: StatusBadge;
@@ -113,6 +118,9 @@ export type RouteLocationCard = {
   id: string;
   name: string;
   customer: string;
+  customerId?: string;
+  locationId?: string;
+  geofenceRadius?: string;
   city: string;
   openJobs: number;
   gpsStatus: string;
@@ -199,7 +207,7 @@ export type CustomerDetail = {
 export type KpiCell = {
   title: string;
   value: string;
-  meta: string;
+  meta?: string;
   icon: StatIconName;
 };
 

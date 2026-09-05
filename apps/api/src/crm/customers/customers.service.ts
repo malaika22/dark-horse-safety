@@ -4,7 +4,11 @@ import {
 } from '@nestjs/common';
 import { CrmRecordStatus, Prisma } from '@prisma/client';
 import { CodeGeneratorService } from '../../common/services/code-generator.service';
-import { ExportService } from '../../common/services/export.service';
+import {
+  ExportService,
+  isoDate,
+  userLabel,
+} from '../../common/services/export.service';
 import {
   containsCi,
   orderByFrom,
@@ -17,6 +21,11 @@ import {
   CustomerListQueryDto,
   UpdateCustomerDto,
 } from './dto/customer.dto';
+
+type BulkUpdatePayload = {
+  status?: string;
+  assignedRepId?: string;
+};
 
 const SORT_MAP: Record<string, string> = {
   name: 'name',
@@ -236,7 +245,121 @@ export class CustomersService {
     return { data: { updated: result.count } };
   }
 
-  async exportCsv(query: CustomerListQueryDto & { ids?: string }) {
+  async bulkUpdate(ids: string[], payload: BulkUpdatePayload) {
+    const data: Prisma.CustomerUncheckedUpdateManyInput = {
+      ...(payload.status !== undefined
+        ? { status: payload.status as CrmRecordStatus }
+        : {}),
+      ...(payload.assignedRepId !== undefined
+        ? { assignedRepId: payload.assignedRepId }
+        : {}),
+    };
+    const result = await this.prisma.customer.updateMany({
+      where: { id: { in: ids } },
+      data,
+    });
+    return { data: { updated: result.count } };
+  }
+
+  async updateDocument(
+    customerId: string,
+    documentId: string,
+    dto: {
+      name?: string;
+      url?: string;
+      kind?: string;
+      expiresAt?: string | null;
+    },
+  ) {
+    await this.ensureExists(customerId);
+    const existing = await this.prisma.crmDocument.findFirst({
+      where: { id: documentId, customerId },
+    });
+    if (!existing) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Document not found',
+      });
+    }
+    const doc = await this.prisma.crmDocument.update({
+      where: { id: documentId },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.url !== undefined ? { url: dto.url } : {}),
+        ...(dto.kind !== undefined ? { kind: dto.kind } : {}),
+        ...(dto.expiresAt !== undefined
+          ? { expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null }
+          : {}),
+      },
+    });
+    return { data: doc };
+  }
+
+  async deleteDocument(customerId: string, documentId: string) {
+    await this.ensureExists(customerId);
+    const existing = await this.prisma.crmDocument.findFirst({
+      where: { id: documentId, customerId },
+    });
+    if (!existing) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Document not found',
+      });
+    }
+    await this.prisma.crmDocument.delete({ where: { id: documentId } });
+    return { data: { deleted: true, id: documentId } };
+  }
+
+  async duplicate(id: string) {
+    const existing = await this.prisma.customer.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Customer not found',
+      });
+    }
+    const code = await this.codes.next('customer');
+    const copy = await this.prisma.customer.create({
+      data: {
+        code,
+        name: `${existing.name} (Copy)`,
+        legalEntityName: existing.legalEntityName,
+        status: existing.status === CrmRecordStatus.ARCHIVED
+          ? CrmRecordStatus.ACTIVE
+          : existing.status,
+        industry: existing.industry,
+        website: existing.website,
+        phone: existing.phone,
+        email: existing.email,
+        billingAddress: existing.billingAddress,
+        mailingAddress: existing.mailingAddress,
+        paymentTerms: existing.paymentTerms,
+        creditLimit: existing.creditLimit,
+        taxExempt: existing.taxExempt,
+        taxId: existing.taxId,
+        pricingTier: existing.pricingTier,
+        netsuiteId: null,
+        isnId: existing.isnId,
+        veriforceId: existing.veriforceId,
+        msaOnFile: existing.msaOnFile,
+        msaExpiry: existing.msaExpiry,
+        coiExpiry: existing.coiExpiry,
+        w9OnFile: existing.w9OnFile,
+        clockInRadius: existing.clockInRadius,
+        requiresPo: existing.requiresPo,
+        defaultRequiredForms: existing.defaultRequiredForms,
+        assignedRepId: existing.assignedRepId,
+      },
+    });
+    return { data: copy };
+  }
+
+  async exportCsv(
+    query: CustomerListQueryDto & {
+      ids?: string;
+      format?: 'csv' | 'pdf' | 'xlsx';
+    },
+  ) {
     const ids = this.exportService.parseIds(query.ids);
     const where: Prisma.CustomerWhereInput = ids?.length
       ? { id: { in: ids } }
@@ -245,16 +368,81 @@ export class CustomersService {
       where,
       orderBy: { name: 'asc' },
       take: 5000,
+      include: {
+        assignedRep: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+        _count: { select: { contacts: true, locations: true } },
+      },
     });
-    const csv = this.exportService.toCsv(rows, [
-      { key: 'code', header: 'Code', value: (r) => r.code },
-      { key: 'name', header: 'Name', value: (r) => r.name },
-      { key: 'status', header: 'Status', value: (r) => r.status },
-      { key: 'industry', header: 'Industry', value: (r) => r.industry },
-      { key: 'phone', header: 'Phone', value: (r) => r.phone },
-      { key: 'email', header: 'Email', value: (r) => r.email },
-    ]);
-    return { data: { csv, filename: 'customers.csv' } };
+    type Row = (typeof rows)[number];
+    const columns = [
+      { key: 'code', header: 'Code', value: (r: Row) => r.code },
+      { key: 'name', header: 'Name', value: (r: Row) => r.name },
+      {
+        key: 'legalEntity',
+        header: 'Legal Entity',
+        value: (r: Row) => r.legalEntityName,
+      },
+      { key: 'status', header: 'Status', value: (r: Row) => r.status },
+      { key: 'industry', header: 'Industry', value: (r: Row) => r.industry },
+      { key: 'phone', header: 'Phone', value: (r: Row) => r.phone },
+      { key: 'email', header: 'Email', value: (r: Row) => r.email },
+      { key: 'website', header: 'Website', value: (r: Row) => r.website },
+      {
+        key: 'paymentTerms',
+        header: 'Payment Terms',
+        value: (r: Row) => r.paymentTerms,
+      },
+      {
+        key: 'pricingTier',
+        header: 'Pricing Tier',
+        value: (r: Row) => r.pricingTier,
+      },
+      { key: 'openJobs', header: 'Open Jobs', value: (r: Row) => r.openJobs },
+      {
+        key: 'msaOnFile',
+        header: 'MSA On File',
+        value: (r: Row) => (r.msaOnFile ? 'Yes' : 'No'),
+      },
+      {
+        key: 'msaExpiry',
+        header: 'MSA Expiry',
+        value: (r: Row) => isoDate(r.msaExpiry),
+      },
+      {
+        key: 'assignedRep',
+        header: 'Assigned Rep',
+        value: (r: Row) => userLabel(r.assignedRep),
+      },
+      {
+        key: 'contactsCount',
+        header: 'Contacts Count',
+        value: (r: Row) => r._count.contacts,
+      },
+      {
+        key: 'locationsCount',
+        header: 'Locations Count',
+        value: (r: Row) => r._count.locations,
+      },
+      {
+        key: 'lastActivity',
+        header: 'Last Activity',
+        value: (r: Row) => isoDate(r.lastActivityAt),
+      },
+      {
+        key: 'createdAt',
+        header: 'Created At',
+        value: (r: Row) => isoDate(r.createdAt),
+      },
+    ];
+    return this.exportService.buildExport(
+      'Customers',
+      'customers',
+      rows,
+      columns,
+      query.format ?? 'csv',
+    );
   }
 
   private async ensureExists(id: string) {

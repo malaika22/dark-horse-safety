@@ -25,13 +25,15 @@ import {
   type DashboardDataTableColumn,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
-import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapContactRow } from "@/lib/crm-mappers";
 import { kpiCellsFromApi } from "@/lib/crm-ui";
 import { useCrmList } from "@/lib/use-crm-list";
 import { useCrmLookups, lookupOptions, optionLabel } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
+import { logContactChannel } from "@/lib/crm-activity-log";
 import { toastApiError, toastSuccess } from "@/lib/toast";
+import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
 import {
   CONTACTS_KPI_SHELL,
   CONTACTS_SORT_OPTIONS,
@@ -318,7 +320,7 @@ export function ContactsPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters.customer, appliedFilters.assignedRep]);
 
-  const { rows, total, kpiData, loading, reload } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
     list: (p) => crmApi.listContacts(p),
     mapRow: mapContactRow,
     kpi: () => crmApi.contactsKpi(),
@@ -340,14 +342,72 @@ export function ContactsPage() {
 
   React.useEffect(() => { setPage(1); }, [query, appliedFilters, sortField, sortDir, pageSize]);
 
-  async function handleExport() {
+  function currentViewPayload() {
+    return {
+      filters: appliedFilters,
+      sortField,
+      sortDirection: sortDir,
+      query,
+    };
+  }
+
+  function applySavedViewPayload(payload: unknown) {
+    if (!payload || typeof payload !== "object") return;
+    const p = payload as {
+      filters?: ContactFilters;
+      sortField?: string;
+      sortDirection?: DashboardSortDirection;
+      query?: string;
+    };
+    if (p.filters) {
+      const nextFilters = { ...DEFAULT_FILTERS, ...p.filters };
+      const nextChips = chipsFromFilters(nextFilters, {
+        customers,
+        roles: roleOptions,
+        reps,
+      });
+      setAppliedFilters(nextFilters);
+      setDraftFilters(nextFilters);
+      setChips(nextChips);
+    }
+    if (typeof p.sortField === "string") setSortField(p.sortField);
+    if (p.sortDirection === "asc" || p.sortDirection === "desc") {
+      setSortDir(p.sortDirection);
+    }
+    if (typeof p.query === "string") setQuery(p.query);
+  }
+
+  async function runExport(opts?: {
+    format?: "csv" | "pdf" | "xlsx";
+    selectedOnly?: boolean;
+  }) {
     try {
+      if (opts?.selectedOnly && selectedIds.length === 0) {
+        toastApiError(new Error("Select at least one contact to export"));
+        return;
+      }
+      const format = opts?.format ?? "csv";
       const res = await crmApi.exportContacts({
         q: query || undefined,
         sort: sortField,
         direction: sortDir,
+        format: format === "csv" ? undefined : format,
+        ids: opts?.selectedOnly ? selectedIds.join(",") : undefined,
         ...extraParams,
       });
+      if (format === "pdf") {
+        if (!res.data.pdf) throw new Error("No PDF");
+        downloadPdf(res.data.pdf, res.data.filename);
+        toastSuccess("PDF downloaded");
+        return;
+      }
+      if (format === "xlsx") {
+        if (!res.data.xlsx) throw new Error("No Excel file");
+        downloadXlsx(res.data.xlsx, res.data.filename);
+        toastSuccess("Excel downloaded");
+        return;
+      }
+      if (!res.data.csv) throw new Error("No CSV");
       downloadCsv(res.data.csv, res.data.filename);
       toastSuccess("Export downloaded");
     } catch (err) {
@@ -362,6 +422,37 @@ export function ContactsPage() {
     try {
       await crmApi.archiveContact(id);
       toastSuccess("Contact archived");
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleBulkArchive() {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`Remove ${selectedIds.length} contact(s)?`)
+    ) {
+      return;
+    }
+    try {
+      await crmApi.bulkArchiveContacts(selectedIds);
+      toastSuccess("Contacts removed");
+      setSelectedIds([]);
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleSetPrimary(id: string, customerId?: string) {
+    if (!customerId) {
+      toastApiError(new Error("Contact has no linked customer"));
+      return;
+    }
+    try {
+      await crmApi.setContactPrimary(id, customerId);
+      toastSuccess("Contact set as primary");
       reload();
     } catch (err) {
       toastApiError(err);
@@ -432,11 +523,49 @@ export function ContactsPage() {
           items={[
             { id: "open",    label: "Open Contact",  onSelect: () => router.push(`/crm/contacts/${row.id}`) },
             { id: "edit",    label: "Edit",           onSelect: () => router.push(`/crm/contacts/${row.id}`) },
-            { id: "log",     label: "Log Activity" },
-            { id: "quote",   label: "Create Quote" },
-            { id: "primary", label: "Set as Primary" },
-            { id: "email",   label: "Email" },
-            { id: "call",    label: "Call" },
+            {
+              id: "log",
+              label: "Log Activity",
+              onSelect: () =>
+                router.push(`/crm/sales/new?contactId=${encodeURIComponent(row.id)}`),
+            },
+            {
+              id: "quote",
+              label: "Create Quote",
+              onSelect: () =>
+                router.push(`/crm/quotes/new?contactId=${encodeURIComponent(row.id)}`),
+            },
+            {
+              id: "primary",
+              label: "Set as Primary",
+              onSelect: () => void handleSetPrimary(row.id, row.primaryCustomerId),
+            },
+            {
+              id: "email",
+              label: "Email",
+              onSelect: () => {
+                void logContactChannel({
+                  type: "EMAIL",
+                  contactId: row.id,
+                  customerId: row.primaryCustomerId,
+                  email: row.hasEmail ? row.email : null,
+                  label: row.name,
+                });
+              },
+            },
+            {
+              id: "call",
+              label: "Call",
+              onSelect: () => {
+                void logContactChannel({
+                  type: "CALL",
+                  contactId: row.id,
+                  customerId: row.primaryCustomerId,
+                  phone: row.hasPhone ? row.phone : null,
+                  label: row.name,
+                });
+              },
+            },
             { id: "remove",  label: "Remove", destructive: true, onSelect: () => void handleArchive(row.id) },
           ]}
         />
@@ -447,6 +576,7 @@ export function ContactsPage() {
   const bulkOpen = selectedIds.length > 0;
 
   return (
+    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       {/* KPI strip */}
       <DashboardStatGrid>
@@ -463,16 +593,47 @@ export function ContactsPage() {
           selectedCount={selectedIds.length}
           actions={
             <>
-              <DashboardToolbarButton className="!border-[#4B212B] !bg-[#3D1F1F] !text-[#FFBBCA]">
+              <DashboardToolbarButton
+                className="!border-[#4B212B] !bg-[#3D1F1F] !text-[#FFBBCA]"
+                onClick={() => void handleBulkArchive()}
+              >
                 Remove
               </DashboardToolbarButton>
-              <DashboardToolbarButton>Set status</DashboardToolbarButton>
+              <DashboardToolbarButton
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      await Promise.all(
+                        selectedIds.map((id) =>
+                          crmApi.updateContact(id, { status: "ACTIVE" }),
+                        ),
+                      );
+                      toastSuccess("Status set to Active");
+                      setSelectedIds([]);
+                      reload();
+                    } catch (err) {
+                      toastApiError(err);
+                    }
+                  })();
+                }}
+              >
+                Set status
+              </DashboardToolbarButton>
               <DashboardExportMenu
                 triggerLabel="Export selected"
                 items={[
-                  { id: "csv",  label: "Export selected • CSV", onSelect: () => void handleExport() },
-                  { id: "all",  label: "Export all • CSV", onSelect: () => void handleExport() },
-                  { id: "pdf",  label: "Export as PDF" },
+                  { id: "csv",  label: "Export selected • CSV", onSelect: () => void runExport({ selectedOnly: true }) },
+                  { id: "all",  label: "Export all • CSV", onSelect: () => void runExport() },
+                  {
+                    id: "xlsx",
+                    label: "Export as Excel",
+                    onSelect: () => void runExport({ format: "xlsx", selectedOnly: true }),
+                  },
+                  {
+                    id: "pdf",
+                    label: "Export as PDF",
+                    onSelect: () => void runExport({ format: "pdf", selectedOnly: true }),
+                  },
                 ]}
               />
             </>
@@ -502,9 +663,18 @@ export function ContactsPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
-                  { id: "all-csv",  label: "Export all • CSV", onSelect: () => void handleExport() },
-                  { id: "pdf",      label: "Export as PDF" },
+                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void runExport() },
+                  { id: "all-csv",  label: "Export all • CSV", onSelect: () => void runExport() },
+                  {
+                    id: "xlsx",
+                    label: "Export as Excel",
+                    onSelect: () => void runExport({ format: "xlsx" }),
+                  },
+                  {
+                    id: "pdf",
+                    label: "Export as PDF",
+                    onSelect: () => void runExport({ format: "pdf" }),
+                  },
                 ]}
               />
               <DashboardSortMenu
@@ -542,18 +712,16 @@ export function ContactsPage() {
       )}
 
       {/* table */}
-      <div className={loading ? "opacity-60 transition-opacity" : undefined}>
-        <DashboardDataTable
-          columns={columns}
-          rows={rows}
-          getRowId={(row) => row.id}
-          emptyMessage={loading ? "Loading contacts…" : "No contacts found"}
-          selectable
-          selectedIds={selectedIds}
-          onSelectedIdsChange={setSelectedIds}
-          onRowClick={(row) => router.push(`/crm/contacts/${row.id}`)}
-        />
-      </div>
+      <DashboardDataTable
+        columns={columns}
+        rows={rows}
+        getRowId={(row) => row.id}
+        emptyMessage="No contacts found"
+        selectable
+        selectedIds={selectedIds}
+        onSelectedIdsChange={setSelectedIds}
+        onRowClick={(row) => router.push(`/crm/contacts/${row.id}`)}
+      />
 
       {/* pagination */}
       <DashboardPagination
@@ -596,13 +764,23 @@ export function ContactsPage() {
         onClose={() => setSavedViewsOpen(false)}
         views={savedViews}
         activeViewId={activeViewId}
-        onSelectView={setActiveViewId}
+        onSelectView={(viewId) => {
+          setActiveViewId(viewId);
+          const view = savedViews.find((v) => v.id === viewId);
+          if (view?.payload != null) applySavedViewPayload(view.payload);
+        }}
         onSaveNewView={() => setSaveNewOpen(true)}
         onViewAction={(viewId, action) => {
           if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const src = savedViews.find((v) => v.id === viewId);
-            if (src) void createView(`${src.label} copy`);
+            if (src) {
+              void createView(
+                `${src.label} copy`,
+                (src.payload as Record<string, unknown> | undefined) ??
+                  currentViewPayload(),
+              );
+            }
           }
         }}
       />
@@ -610,9 +788,10 @@ export function ContactsPage() {
         open={saveNewOpen}
         onClose={() => setSaveNewOpen(false)}
         onConfirm={({ name }) => {
-          void createView(name);
+          void createView(name, currentViewPayload());
         }}
       />
     </div>
+    </CrmListLoadGate>
   );
 }

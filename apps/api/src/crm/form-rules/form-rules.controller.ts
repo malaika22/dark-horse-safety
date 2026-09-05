@@ -16,6 +16,7 @@ import {
   CopyFormRuleDto,
   CreateFormRuleDto,
   FormRuleListQueryDto,
+  TestFormRuleDto,
   UpdateFormRuleDto,
 } from './dto/form-rule.dto';
 import { FormRulesService } from './form-rules.service';
@@ -40,7 +41,7 @@ export class FormRulesController {
   }
 
   @Get('export')
-  @ApiOperation({ summary: 'Export form rules CSV' })
+  @ApiOperation({ summary: 'Export form rules CSV or PDF' })
   export(@Query() query: ExportQueryDto & FormRuleListQueryDto) {
     return this.formRules.exportCsv(query);
   }
@@ -61,6 +62,12 @@ export class FormRulesController {
   @ApiOperation({ summary: 'Form rule detail' })
   get(@Param('id') id: string) {
     return this.formRules.getById(id);
+  }
+
+  @Get(':id/history')
+  @ApiOperation({ summary: 'Form rule history events' })
+  history(@Param('id') id: string) {
+    return this.formRules.history(id);
   }
 
   @Patch(':id')
@@ -85,5 +92,11 @@ export class FormRulesController {
   @ApiOperation({ summary: 'Copy form rule to another customer' })
   copyToCustomer(@Param('id') id: string, @Body() dto: CopyFormRuleDto) {
     return this.formRules.copyToCustomer(id, dto.customerId);
+  }
+
+  @Post(':id/test')
+  @ApiOperation({ summary: 'Test form rule against a job type' })
+  test(@Param('id') id: string, @Body() dto: TestFormRuleDto) {
+    return this.formRules.test(id, dto.jobType);
   }
 }

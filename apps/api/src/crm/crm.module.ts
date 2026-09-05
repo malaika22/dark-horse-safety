@@ -14,6 +14,7 @@ import { RequirementsModule } from './requirements/requirements.module';
 import { RouteRulesModule } from './route-rules/route-rules.module';
 import { SalesActivitiesModule } from './sales-activities/sales-activities.module';
 import { SavedViewsModule } from './saved-views/saved-views.module';
+import { WorkOrdersModule } from './work-orders/work-orders.module';
 
 @Module({
   providers: [ExportService, CodeGeneratorService],
@@ -30,6 +31,7 @@ import { SavedViewsModule } from './saved-views/saved-views.module';
     EodReportsModule,
     SalesActivitiesModule,
     QuotesModule,
+    WorkOrdersModule,
     SavedViewsModule,
     LookupsModule,
   ],

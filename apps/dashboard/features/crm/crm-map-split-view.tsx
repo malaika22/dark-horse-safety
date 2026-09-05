@@ -19,6 +19,9 @@ export type CrmLocationCard = {
   id: string;
   name: string;
   customer: string;
+  customerId?: string;
+  locationId?: string;
+  geofenceRadius?: string;
   city: string;
   openJobs: number;
   gpsStatus: string;

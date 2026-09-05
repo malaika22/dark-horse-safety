@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -18,8 +19,10 @@ import { ExportQueryDto } from '../../common/dto/list-query.dto';
 import { CustomersService } from './customers.service';
 import {
   BulkCustomerIdsDto,
+  BulkUpdateCustomersDto,
   CreateCustomerDto,
   CustomerListQueryDto,
+  UpdateCustomerDocumentDto,
   UpdateCustomerDto,
 } from './dto/customer.dto';
 
@@ -54,6 +57,15 @@ export class CustomersController {
     return this.customers.bulkArchive(dto.ids);
   }
 
+  @Post('bulk/update')
+  @ApiOperation({ summary: 'Bulk update customer status / assigned rep' })
+  bulkUpdate(@Body() dto: BulkUpdateCustomersDto) {
+    return this.customers.bulkUpdate(dto.ids, {
+      status: dto.status,
+      assignedRepId: dto.assignedRepId,
+    });
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create customer' })
   create(@Body() dto: CreateCustomerDto) {
@@ -76,5 +88,30 @@ export class CustomersController {
   @ApiOperation({ summary: 'Archive customer' })
   archive(@Param('id') id: string) {
     return this.customers.archive(id);
+  }
+
+  @Post(':id/duplicate')
+  @ApiOperation({ summary: 'Duplicate customer' })
+  duplicate(@Param('id') id: string) {
+    return this.customers.duplicate(id);
+  }
+
+  @Patch(':id/documents/:documentId')
+  @ApiOperation({ summary: 'Update customer document (name, url, expiry)' })
+  updateDocument(
+    @Param('id') id: string,
+    @Param('documentId') documentId: string,
+    @Body() dto: UpdateCustomerDocumentDto,
+  ) {
+    return this.customers.updateDocument(id, documentId, dto);
+  }
+
+  @Delete(':id/documents/:documentId')
+  @ApiOperation({ summary: 'Delete customer document' })
+  deleteDocument(
+    @Param('id') id: string,
+    @Param('documentId') documentId: string,
+  ) {
+    return this.customers.deleteDocument(id, documentId);
   }
 }

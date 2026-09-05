@@ -11,23 +11,11 @@ import {
 } from "@dark-horse-safety/ui";
 import { crmApi } from "@/lib/crm-api";
 import { toApiStatus, toIsoDate } from "@/lib/crm-ui";
+import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmFormPageShell } from "./crm-form-page-shell";
 
 const FORM_RULE_FORM = {
-  templates: [
-    { value: "Wireline Operations V2", label: "Wireline Operations V2" },
-    { value: "JSA", label: "JSA" },
-    { value: "Permit to work", label: "Permit to work" },
-    { value: "Tailgate", label: "Tailgate" },
-    { value: "EOD report", label: "EOD report" },
-  ] as DashboardSelectOption[],
-  jobTypes: [
-    { value: "JSA", label: "JSA" },
-    { value: "Permit to Work", label: "Permit to Work" },
-    { value: "Wireline", label: "Wireline" },
-    { value: "H2S", label: "H2S" },
-  ] as DashboardSelectOption[],
   dueOptions: [
     { value: "Before Job Start", label: "Before Job Start" },
     { value: "On Dispatch", label: "On Dispatch" },
@@ -44,6 +32,9 @@ export function FormRuleFormPage({
 }) {
   const router = useRouter();
   const isEdit = mode === "edit";
+  const { lookups } = useCrmLookups({ includeLocations: false });
+  const templateOptions = lookupOptions(lookups, "formTemplates");
+  const jobTypeOptions = lookupOptions(lookups, "jobTypes");
   const [submitting, setSubmitting] = React.useState(false);
   const [ready, setReady] = React.useState(!isEdit);
   const [customers, setCustomers] = React.useState<DashboardSelectOption[]>([]);
@@ -160,13 +151,21 @@ export function FormRuleFormPage({
                   label="Job Type *"
                   value={jobType}
                   onChange={(e) => setJobType(e.target.value)}
-                  options={FORM_RULE_FORM.jobTypes}
+                  options={
+                    jobTypeOptions.length
+                      ? jobTypeOptions
+                      : [{ value: "", label: "Loading…" }]
+                  }
                 />
                 <DashboardSelectField
                   label="Form Template *"
                   value={formTemplate}
                   onChange={(e) => setFormTemplate(e.target.value)}
-                  options={FORM_RULE_FORM.templates}
+                  options={
+                    templateOptions.length
+                      ? templateOptions
+                      : [{ value: "", label: "Loading…" }]
+                  }
                   containerClassName="md:col-span-2"
                 />
               </DashboardFormGrid>

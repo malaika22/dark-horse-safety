@@ -16,6 +16,7 @@ import {
   CopyRouteRuleDto,
   CreateRouteRuleDto,
   RouteRuleListQueryDto,
+  TestRouteCoordinateDto,
   UpdateRouteRuleDto,
 } from './dto/route-rule.dto';
 import { RouteRulesService } from './route-rules.service';
@@ -40,7 +41,7 @@ export class RouteRulesController {
   }
 
   @Get('export')
-  @ApiOperation({ summary: 'Export route rules CSV' })
+  @ApiOperation({ summary: 'Export route rules CSV or PDF' })
   export(@Query() query: ExportQueryDto & RouteRuleListQueryDto) {
     return this.routeRules.exportCsv(query);
   }
@@ -69,6 +70,12 @@ export class RouteRulesController {
     return this.routeRules.getById(id);
   }
 
+  @Get(':id/gps-flags')
+  @ApiOperation({ summary: 'Synthetic GPS flags for a route rule' })
+  gpsFlags(@Param('id') id: string) {
+    return this.routeRules.gpsFlags(id);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Update route rule' })
   update(@Param('id') id: string, @Body() dto: UpdateRouteRuleDto) {
@@ -85,5 +92,14 @@ export class RouteRulesController {
   @ApiOperation({ summary: 'Copy route rule to another location' })
   copyToLocation(@Param('id') id: string, @Body() dto: CopyRouteRuleDto) {
     return this.routeRules.copyToLocation(id, dto.locationId);
+  }
+
+  @Post(':id/test-coordinate')
+  @ApiOperation({ summary: 'Test sample coordinate against geofence' })
+  testCoordinate(
+    @Param('id') id: string,
+    @Body() dto: TestRouteCoordinateDto,
+  ) {
+    return this.routeRules.testCoordinate(id, dto.lat, dto.lng);
   }
 }

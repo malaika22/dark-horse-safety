@@ -19,7 +19,7 @@ import {
 export type CrmListKpi = {
   title: string;
   value: string;
-  meta: string;
+  meta?: string;
   icon?: StatIconName;
 };
 

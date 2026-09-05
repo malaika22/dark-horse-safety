@@ -32,7 +32,6 @@ const HEADER_TITLES: { path: string; title: string }[] = [
   { path: "/crm/quotes", title: "CRM / Customer / Quotes" },
   { path: "/crm/sales/new", title: "Log Activity" },
   { path: "/crm/sales", title: "CRM / Sales" },
-  { path: "/crm/leads", title: "CRM / Leads" },
   { path: "/crm", title: "CRM/Customer > CRM Dashboard" },
   { path: "/hr/pay-cycle", title: "Employees & HR / Pay Cycle Setting" },
   { path: "/hr/payroll-export", title: "Employees & HR / Payroll Export" },
@@ -84,6 +83,12 @@ function titleForPath(pathname: string) {
   }
   if (/^\/crm\/route-rules\/[^/]+\/edit$/.test(pathname)) {
     return "CRM / Route Rules / Edit Route Rule";
+  }
+  if (/^\/crm\/quotes\/[^/]+\/edit$/.test(pathname)) {
+    return "CRM / Customer / Edit Quote";
+  }
+  if (/^\/crm\/sales\/[^/]+\/edit$/.test(pathname)) {
+    return "Edit Activity";
   }
   if (/^\/crm\/accounts\/[^/]+$/.test(pathname)) {
     return "CRM / Customers / Detail";

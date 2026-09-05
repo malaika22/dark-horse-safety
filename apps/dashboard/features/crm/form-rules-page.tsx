@@ -9,6 +9,7 @@ import {
   DashboardDataTable,
   DashboardExportMenu,
   DashboardListToolbar,
+  DashboardModal,
   DashboardPagination,
   DashboardRowActionMenu,
   DashboardSaveNewViewModal,
@@ -24,13 +25,15 @@ import {
   type DashboardDataTableColumn,
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
-import { crmApi, downloadCsv } from "@/lib/crm-api";
+import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapFormRuleRow } from "@/lib/crm-mappers";
 import { kpiCellsFromApi } from "@/lib/crm-ui";
 import { useCrmList } from "@/lib/use-crm-list";
 import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
+import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
+import { CrmHistoryModal, CrmPickModal } from "./crm-action-modals";
 import { FORM_RULES_KPI_SHELL, FORM_RULES_SORT_OPTIONS } from "./crm-constants";
 import type { FormRuleRow } from "./crm-types";
 
@@ -334,6 +337,22 @@ export function FormRulesPage() {
   const [filtersApplied, setFiltersApplied] = React.useState(false);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
+  const [copyPickOpen, setCopyPickOpen] = React.useState(false);
+  const [copyRuleId, setCopyRuleId] = React.useState<string | null>(null);
+  const [copyExcludeCustomerId, setCopyExcludeCustomerId] = React.useState<
+    string | undefined
+  >();
+  const [testPickOpen, setTestPickOpen] = React.useState(false);
+  const [testRuleId, setTestRuleId] = React.useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [historyTitle, setHistoryTitle] = React.useState("Form Rule History");
+  const [historyEvents, setHistoryEvents] = React.useState<
+    { id: string; at: string; label: string; detail?: string }[]
+  >([]);
+  const [templateOpen, setTemplateOpen] = React.useState(false);
+  const [templateTitle, setTemplateTitle] = React.useState("Form Template");
+  const [templateForm, setTemplateForm] = React.useState("");
+  const [templateJobType, setTemplateJobType] = React.useState("");
   const {
     savedViews,
     activeViewId,
@@ -356,7 +375,7 @@ export function FormRulesPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters, filtersApplied]);
 
-  const { rows, total, kpiData, loading } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
     list: (p) => crmApi.listFormRules(p),
     mapRow: mapFormRuleRow,
     kpi: () => crmApi.formRulesKpi(),
@@ -379,20 +398,198 @@ export function FormRulesPage() {
 
   React.useEffect(() => { setPage(1); }, [query, sortField, sortDirection, pageSize, filtersApplied]);
 
-  async function handleExport() {
+  function currentViewPayload() {
+    return {
+      filters: appliedFilters,
+      sortField,
+      sortDirection,
+      query,
+      filtersApplied,
+    };
+  }
+
+  function applySavedViewPayload(payload: unknown) {
+    if (!payload || typeof payload !== "object") return;
+    const p = payload as {
+      filters?: FormRuleFilters;
+      sortField?: string;
+      sortDirection?: DashboardSortDirection;
+      query?: string;
+      filtersApplied?: boolean;
+    };
+    if (p.filters) {
+      const nextFilters = { ...DEFAULT_FILTERS, ...p.filters };
+      setAppliedFilters(nextFilters);
+      setDraftFilters(nextFilters);
+      setFiltersApplied(
+        p.filtersApplied ??
+          Object.values(nextFilters).some((v) =>
+            typeof v === "boolean" ? v : Boolean(v),
+          ),
+      );
+    } else if (typeof p.filtersApplied === "boolean") {
+      setFiltersApplied(p.filtersApplied);
+    }
+    if (typeof p.sortField === "string") setSortField(p.sortField);
+    if (p.sortDirection === "asc" || p.sortDirection === "desc") {
+      setSortDirection(p.sortDirection);
+    }
+    if (typeof p.query === "string") setQuery(p.query);
+  }
+
+  async function runExport(opts?: {
+    format?: "csv" | "pdf" | "xlsx";
+    selectedOnly?: boolean;
+  }) {
     try {
+      if (opts?.selectedOnly && selectedIds.length === 0) {
+        toastApiError(new Error("Select at least one form rule to export"));
+        return;
+      }
+      const format = opts?.format ?? "csv";
       const res = await crmApi.exportFormRules({
         q: query || undefined,
         sort: sortField,
         direction: sortDirection,
+        format: format === "csv" ? undefined : format,
+        ids: opts?.selectedOnly ? selectedIds.join(",") : undefined,
         ...extraParams,
       });
+      if (format === "pdf") {
+        if (!res.data.pdf) throw new Error("No PDF");
+        downloadPdf(res.data.pdf, res.data.filename);
+        toastSuccess("PDF downloaded");
+        return;
+      }
+      if (format === "xlsx") {
+        if (!res.data.xlsx) throw new Error("No Excel file");
+        downloadXlsx(res.data.xlsx, res.data.filename);
+        toastSuccess("Excel downloaded");
+        return;
+      }
+      if (!res.data.csv) throw new Error("No CSV");
       downloadCsv(res.data.csv, res.data.filename);
       toastSuccess("Export downloaded");
     } catch (err) {
       toastApiError(err);
     }
   }
+
+  async function handleArchive(id: string) {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this form rule?")
+    ) {
+      return;
+    }
+    try {
+      await crmApi.archiveFormRule(id);
+      toastSuccess("Form rule deleted");
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`Delete ${selectedIds.length} form rule(s)?`)
+    ) {
+      return;
+    }
+    try {
+      await crmApi.bulkDeleteFormRules(selectedIds);
+      toastSuccess("Form rules deleted");
+      setSelectedIds([]);
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  function openCopyPicker(id: string, currentCustomerId?: string) {
+    setCopyRuleId(id);
+    setCopyExcludeCustomerId(currentCustomerId);
+    setCopyPickOpen(true);
+  }
+
+  async function handleCopyConfirm(customerId: string) {
+    if (!copyRuleId) return;
+    try {
+      await crmApi.copyFormRuleToCustomer(copyRuleId, customerId);
+      const name =
+        customers.find((c) => c.value === customerId)?.label ?? "customer";
+      toastSuccess(`Copied to ${name}`);
+      reload();
+    } catch (err) {
+      toastApiError(err);
+      throw err;
+    }
+  }
+
+  function openTestPicker(id: string) {
+    setTestRuleId(id);
+    setTestPickOpen(true);
+  }
+
+  async function handleTestConfirm(jobType: string) {
+    if (!testRuleId) return;
+    try {
+      const res = await crmApi.testFormRule(testRuleId, jobType);
+      const { matches, reason } = res.data;
+      toastSuccess(
+        matches
+          ? `Match · ${reason}`
+          : `No match · ${reason}`,
+      );
+    } catch (err) {
+      toastApiError(err);
+      throw err;
+    }
+  }
+
+  async function handleViewHistory(id: string, label?: string) {
+    try {
+      const res = await crmApi.formRuleHistory(id);
+      setHistoryTitle(label ? `History · ${label}` : "Form Rule History");
+      setHistoryEvents(res.data.events ?? []);
+      setHistoryOpen(true);
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleViewTemplate(row: FormRuleRow) {
+    try {
+      let formTemplate = row.formTemplate;
+      let jobType = row.jobType;
+      if (!formTemplate || formTemplate === "—") {
+        const res = await crmApi.getFormRule(row.id);
+        formTemplate = res.data.formTemplate || "—";
+        jobType = res.data.jobType ?? res.data.appliesTo ?? jobType;
+      }
+      setTemplateTitle(formTemplate);
+      setTemplateForm(formTemplate);
+      setTemplateJobType(jobType || "—");
+      setTemplateOpen(true);
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  const copyOptions = React.useMemo(
+    () =>
+      customers
+        .filter((c) => c.value !== copyExcludeCustomerId)
+        .map((c) => ({ value: c.value, label: c.label })),
+    [customers, copyExcludeCustomerId],
+  );
+
+  const testJobTypeOptions = React.useMemo(
+    () => jobTypeOptions.map((o) => ({ value: o.value, label: o.label })),
+    [jobTypeOptions],
+  );
 
   const columns: DashboardDataTableColumn<FormRuleRow>[] = React.useMemo(
     () => [
@@ -471,10 +668,32 @@ export function FormRulesPage() {
                 onSelect: () =>
                   router.push(`/crm/form-rules/${row.id}/edit`),
               },
-              { id: "view-tpl", label: "View Form Template" },
-              { id: "test", label: "Test Rule Against a Job Type" },
-              { id: "copy", label: "Copy Rules to Another Customer" },
-              { id: "delete", label: "Delete Rule", destructive: true },
+              {
+                id: "view-tpl",
+                label: "View Form Template",
+                onSelect: () => void handleViewTemplate(row),
+              },
+              {
+                id: "test",
+                label: "Test Rule Against a Job Type",
+                onSelect: () => openTestPicker(row.id),
+              },
+              {
+                id: "copy",
+                label: "Copy Rules to Another Customer",
+                onSelect: () => openCopyPicker(row.id, row.customerId),
+              },
+              {
+                id: "history",
+                label: "View History",
+                onSelect: () => void handleViewHistory(row.id, row.customer),
+              },
+              {
+                id: "delete",
+                label: "Delete Rule",
+                destructive: true,
+                onSelect: () => void handleArchive(row.id),
+              },
             ]}
           />
         ),
@@ -484,6 +703,7 @@ export function FormRulesPage() {
   );
 
   return (
+    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
@@ -498,15 +718,27 @@ export function FormRulesPage() {
           selectedCount={selectedIds.length}
           actions={
             <>
-              <DashboardToolbarButton className="!border-[#4B212B] !bg-[#3D1F1F] !text-[#FFBBCA]">
+              <DashboardToolbarButton
+                className="!border-[#4B212B] !bg-[#3D1F1F] !text-[#FFBBCA]"
+                onClick={() => void handleBulkDelete()}
+              >
                 Delete
               </DashboardToolbarButton>
               <DashboardExportMenu
                 triggerLabel="Export selected"
                 items={[
-                  { id: "selected-csv", label: "Export selected view • CSV", onSelect: () => void handleExport() },
-                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
-                  { id: "pdf", label: "Export as PDF" },
+                  { id: "selected-csv", label: "Export selected view • CSV", onSelect: () => void runExport({ selectedOnly: true }) },
+                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void runExport() },
+                  {
+                    id: "xlsx",
+                    label: "Export as Excel",
+                    onSelect: () => void runExport({ format: "xlsx", selectedOnly: true }),
+                  },
+                  {
+                    id: "pdf",
+                    label: "Export as PDF",
+                    onSelect: () => void runExport({ format: "pdf", selectedOnly: true }),
+                  },
                 ]}
               />
             </>
@@ -553,9 +785,18 @@ export function FormRulesPage() {
               </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
-                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
-                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
-                  { id: "pdf", label: "Export as PDF" },
+                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void runExport() },
+                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void runExport() },
+                  {
+                    id: "xlsx",
+                    label: "Export as Excel",
+                    onSelect: () => void runExport({ format: "xlsx" }),
+                  },
+                  {
+                    id: "pdf",
+                    label: "Export as PDF",
+                    onSelect: () => void runExport({ format: "pdf" }),
+                  },
                 ]}
               />
             </>
@@ -567,7 +808,7 @@ export function FormRulesPage() {
         columns={columns}
         rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage={loading ? "Loading…" : "No form rules found"}
+        emptyMessage="No form rules found"
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -606,13 +847,23 @@ export function FormRulesPage() {
         onClose={() => setSavedViewsOpen(false)}
         views={savedViews}
         activeViewId={activeViewId}
-        onSelectView={setActiveViewId}
+        onSelectView={(viewId) => {
+          setActiveViewId(viewId);
+          const view = savedViews.find((v) => v.id === viewId);
+          if (view?.payload != null) applySavedViewPayload(view.payload);
+        }}
         onSaveNewView={() => setSaveNewViewOpen(true)}
         onViewAction={(viewId, action) => {
           if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const source = savedViews.find((v) => v.id === viewId);
-            if (source) void createView(`${source.label} copy`);
+            if (source) {
+              void createView(
+                `${source.label} copy`,
+                (source.payload as Record<string, unknown> | undefined) ??
+                  currentViewPayload(),
+              );
+            }
           }
         }}
       />
@@ -621,9 +872,70 @@ export function FormRulesPage() {
         open={saveNewViewOpen}
         onClose={() => setSaveNewViewOpen(false)}
         onConfirm={({ name }) => {
-          void createView(name);
+          void createView(name, currentViewPayload());
         }}
       />
+
+      <CrmPickModal
+        open={copyPickOpen}
+        title="Copy Rule to Customer"
+        label="Customer"
+        options={copyOptions}
+        confirmLabel="Copy"
+        onClose={() => {
+          setCopyPickOpen(false);
+          setCopyRuleId(null);
+        }}
+        onConfirm={handleCopyConfirm}
+      />
+
+      <CrmPickModal
+        open={testPickOpen}
+        title="Test Rule Against Job Type"
+        label="Job Type"
+        options={testJobTypeOptions}
+        confirmLabel="Run test"
+        onClose={() => {
+          setTestPickOpen(false);
+          setTestRuleId(null);
+        }}
+        onConfirm={handleTestConfirm}
+      />
+
+      <CrmHistoryModal
+        open={historyOpen}
+        title={historyTitle}
+        events={historyEvents}
+        onClose={() => setHistoryOpen(false)}
+      />
+
+      <DashboardModal
+        open={templateOpen}
+        onClose={() => setTemplateOpen(false)}
+        title="Form Template"
+        widthClassName="max-w-lg"
+        footer={
+          <DashboardToolbarButton onClick={() => setTemplateOpen(false)}>
+            Close
+          </DashboardToolbarButton>
+        }
+      >
+        <div className="space-y-3">
+          <div>
+            <p className="font-sans text-[10px] uppercase text-[#959597]">Template</p>
+            <p className="mt-1 font-sans text-[13px] uppercase text-[#FDFDFF]">
+              {templateForm || templateTitle || "—"}
+            </p>
+          </div>
+          <div>
+            <p className="font-sans text-[10px] uppercase text-[#959597]">Job Type</p>
+            <p className="mt-1 font-sans text-[13px] uppercase text-[#FDFDFF]">
+              {templateJobType || "—"}
+            </p>
+          </div>
+        </div>
+      </DashboardModal>
     </div>
+    </CrmListLoadGate>
   );
 }

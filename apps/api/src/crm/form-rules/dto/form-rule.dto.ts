@@ -124,3 +124,9 @@ export class CopyFormRuleDto {
   @IsUUID()
   customerId!: string;
 }
+
+export class TestFormRuleDto {
+  @ApiProperty({ description: 'Job type to test against the rule' })
+  @IsString()
+  jobType!: string;
+}

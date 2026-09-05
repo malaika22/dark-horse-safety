@@ -37,13 +37,13 @@ export class ListQueryDto {
 
 export class ExportQueryDto extends ListQueryDto {
   @ApiPropertyOptional({
-    enum: ['csv', 'pdf'],
+    enum: ['csv', 'pdf', 'xlsx'],
     default: 'csv',
-    description: 'Export format',
+    description: 'Export format (csv / pdf / excel)',
   })
   @IsOptional()
-  @IsIn(['csv', 'pdf'])
-  format?: 'csv' | 'pdf' = 'csv';
+  @IsIn(['csv', 'pdf', 'xlsx'])
+  format?: 'csv' | 'pdf' | 'xlsx' = 'csv';
 
   @ApiPropertyOptional({
     description: 'Comma-separated IDs — export selection only',

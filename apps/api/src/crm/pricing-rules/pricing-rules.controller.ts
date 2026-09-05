@@ -39,7 +39,7 @@ export class PricingRulesController {
   }
 
   @Get('export')
-  @ApiOperation({ summary: 'Export pricing rules CSV' })
+  @ApiOperation({ summary: 'Export pricing rules CSV or PDF' })
   export(@Query() query: ExportQueryDto & PricingRuleListQueryDto) {
     return this.pricingRules.exportCsv(query);
   }
@@ -60,6 +60,12 @@ export class PricingRulesController {
   @ApiOperation({ summary: 'Pricing rule detail' })
   get(@Param('id') id: string) {
     return this.pricingRules.getById(id);
+  }
+
+  @Get(':id/history')
+  @ApiOperation({ summary: 'Pricing rule history events' })
+  history(@Param('id') id: string) {
+    return this.pricingRules.history(id);
   }
 
   @Patch(':id')

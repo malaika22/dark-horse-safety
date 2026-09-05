@@ -1,7 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CrmRecordStatus, Prisma } from '@prisma/client';
 import { CodeGeneratorService } from '../../common/services/code-generator.service';
-import { ExportService } from '../../common/services/export.service';
+import {
+  ExportService,
+  isoDate,
+  userLabel,
+} from '../../common/services/export.service';
 import {
   containsCi,
   orderByFrom,
@@ -249,7 +253,12 @@ export class ContactsService {
     return this.getById(id);
   }
 
-  async exportCsv(query: ContactListQueryDto & { ids?: string }) {
+  async exportCsv(
+    query: ContactListQueryDto & {
+      ids?: string;
+      format?: 'csv' | 'pdf' | 'xlsx';
+    },
+  ) {
     const ids = this.exportService.parseIds(query.ids);
     const where: Prisma.ContactWhereInput = ids?.length
       ? { id: { in: ids } }
@@ -258,15 +267,69 @@ export class ContactsService {
       where,
       orderBy: { fullName: 'asc' },
       take: 5000,
+      include: {
+        primaryCustomer: { select: { id: true, name: true, code: true } },
+        assignedRep: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
     });
-    const csv = this.exportService.toCsv(rows, [
-      { key: 'code', header: 'Code', value: (r) => r.code },
-      { key: 'fullName', header: 'Name', value: (r) => r.fullName },
-      { key: 'email', header: 'Email', value: (r) => r.email },
-      { key: 'mobile', header: 'Mobile', value: (r) => r.mobile },
-      { key: 'status', header: 'Status', value: (r) => r.status },
-    ]);
-    return { data: { csv, filename: 'contacts.csv' } };
+    type Row = (typeof rows)[number];
+    const columns = [
+      { key: 'code', header: 'Code', value: (r: Row) => r.code },
+      { key: 'name', header: 'Name', value: (r: Row) => r.fullName },
+      { key: 'role', header: 'Role', value: (r: Row) => r.roleTitle },
+      { key: 'email', header: 'Email', value: (r: Row) => r.email },
+      { key: 'mobile', header: 'Mobile', value: (r: Row) => r.mobile },
+      {
+        key: 'officePhone',
+        header: 'Office Phone',
+        value: (r: Row) => r.officePhone,
+      },
+      {
+        key: 'customer',
+        header: 'Customer',
+        value: (r: Row) => r.primaryCustomer?.name,
+      },
+      {
+        key: 'location',
+        header: 'Location',
+        value: (r: Row) => r.locationLabel,
+      },
+      {
+        key: 'primary',
+        header: 'Primary',
+        value: (r: Row) => (r.isPrimary ? 'Yes' : 'No'),
+      },
+      { key: 'status', header: 'Status', value: (r: Row) => r.status },
+      {
+        key: 'assignedRep',
+        header: 'Assigned Rep',
+        value: (r: Row) => userLabel(r.assignedRep),
+      },
+      {
+        key: 'lastActivity',
+        header: 'Last Activity',
+        value: (r: Row) => isoDate(r.lastActivityAt),
+      },
+      {
+        key: 'preferredMethod',
+        header: 'Preferred Method',
+        value: (r: Row) => r.preferredMethod,
+      },
+      {
+        key: 'createdAt',
+        header: 'Created At',
+        value: (r: Row) => isoDate(r.createdAt),
+      },
+    ];
+    return this.exportService.buildExport(
+      'Contacts',
+      'contacts',
+      rows,
+      columns,
+      query.format ?? 'csv',
+    );
   }
 
   private async ensureExists(id: string) {
