@@ -39,6 +39,50 @@ function useClickOutside(
   }, [enabled, onOutside]);
 }
 
+/** Nested-safe lock for body + app shell scroll roots under open overlays. */
+let scrollLockCount = 0;
+const scrollLockPrev = new Map<HTMLElement, string>();
+
+function acquireScrollLock() {
+  scrollLockCount += 1;
+  if (scrollLockCount !== 1) return;
+
+  const roots = [
+    document.documentElement,
+    document.body,
+    ...Array.from(
+      document.querySelectorAll<HTMLElement>("[data-scroll-lock-root]"),
+    ),
+  ];
+
+  for (const el of roots) {
+    if (scrollLockPrev.has(el)) continue;
+    scrollLockPrev.set(el, el.style.overflow);
+    el.style.overflow = "hidden";
+  }
+}
+
+function releaseScrollLock() {
+  scrollLockCount = Math.max(0, scrollLockCount - 1);
+  if (scrollLockCount !== 0) return;
+  for (const [el, previous] of scrollLockPrev) {
+    el.style.overflow = previous;
+  }
+  scrollLockPrev.clear();
+}
+
+/**
+ * Locks page scroll while `locked` is true (html/body + `[data-scroll-lock-root]`).
+ * Safe with stacked modals via a shared lock counter.
+ */
+export function useScrollLock(locked: boolean) {
+  React.useEffect(() => {
+    if (!locked) return;
+    acquireScrollLock();
+    return () => releaseScrollLock();
+  }, [locked]);
+}
+
 export interface DashboardMenuItem {
   id: string;
   label: string;
@@ -52,7 +96,7 @@ export interface DashboardMenuPopoverProps {
   anchorRef: React.RefObject<HTMLElement | null>;
   items: DashboardMenuItem[];
   align?: "left" | "right";
-  /** Where the menu opens relative to the trigger. `auto` flips up near the viewport bottom. */
+  /** Where the menu opens relative to the trigger. Defaults to `auto` (flips up near viewport bottom). */
   placement?: "bottom" | "top" | "auto";
   className?: string;
   children?: React.ReactNode;
@@ -65,14 +109,16 @@ export function DashboardMenuPopover({
   anchorRef,
   items,
   align = "right",
-  placement = "bottom",
+  placement = "auto",
   className,
   children,
 }: DashboardMenuPopoverProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
-  const [coords, setCoords] = React.useState<{ top: number; left: number } | null>(
-    null,
-  );
+  const [coords, setCoords] = React.useState<{
+    top: number;
+    left: number;
+    maxHeight: number;
+  } | null>(null);
 
   const updatePosition = React.useCallback(() => {
     const anchor = anchorRef.current;
@@ -80,36 +126,54 @@ export function DashboardMenuPopover({
     if (!anchor) return;
     const rect = anchor.getBoundingClientRect();
     const width = panel?.offsetWidth ?? 200;
-    const height = panel?.offsetHeight ?? 120;
+    const measuredHeight = panel?.offsetHeight ?? 0;
     const gap = 8;
+    const edge = 8;
     const left =
       align === "right"
-        ? Math.max(8, rect.right - width)
-        : Math.min(window.innerWidth - width - 8, rect.left);
+        ? Math.max(edge, Math.min(rect.right - width, window.innerWidth - width - edge))
+        : Math.min(window.innerWidth - width - edge, Math.max(edge, rect.left));
 
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
+    const spaceBelow = window.innerHeight - rect.bottom - gap - edge;
+    const spaceAbove = rect.top - gap - edge;
+    const preferredHeight = Math.max(measuredHeight, 48);
+
     let openUp = placement === "top";
     if (placement === "auto") {
-      openUp = spaceBelow < height + gap && spaceAbove > spaceBelow;
+      openUp =
+        spaceBelow < preferredHeight && spaceAbove > spaceBelow;
     }
 
-    const top = openUp
-      ? Math.max(8, rect.top - height - gap)
-      : rect.bottom + gap;
+    const available = Math.max(120, openUp ? spaceAbove : spaceBelow);
+    const maxHeight = available;
+    const heightForPlacement = measuredHeight
+      ? Math.min(measuredHeight, maxHeight)
+      : Math.min(preferredHeight, maxHeight);
 
-    setCoords({ top, left });
+    let top = openUp
+      ? rect.top - gap - heightForPlacement
+      : rect.bottom + gap;
+    top = Math.max(edge, Math.min(top, window.innerHeight - edge - 40));
+
+    setCoords({ top, left, maxHeight });
   }, [align, anchorRef, placement]);
 
   React.useLayoutEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setCoords(null);
+      return;
+    }
     updatePosition();
     // Re-measure after paint so panel height is accurate for upward placement.
     const frame = window.requestAnimationFrame(updatePosition);
+    const frame2 = window.requestAnimationFrame(() => {
+      updatePosition();
+    });
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
     return () => {
       window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(frame2);
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
@@ -127,13 +191,17 @@ export function DashboardMenuPopover({
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
       className={cn(
-        "fixed z-[80] min-w-[140px] rounded-xl border border-[#2D2D30] bg-[#121212] px-4 py-3 shadow-xl",
+        "fixed z-[80] min-w-[140px] overflow-y-auto overscroll-contain rounded-xl border border-[#2D2D30] bg-[#121212] px-4 py-3 shadow-xl [scrollbar-width:thin]",
         className,
       )}
       style={
         coords
-          ? { top: coords.top, left: coords.left }
-          : { visibility: "hidden" as const }
+          ? {
+              top: coords.top,
+              left: coords.left,
+              maxHeight: coords.maxHeight,
+            }
+          : { visibility: "hidden" as const, top: 0, left: 0 }
       }
     >
       {children ?? (
@@ -187,20 +255,12 @@ export function DashboardModal({
   widthClassName = "max-w-md",
 }: DashboardModalProps) {
   useEscape(onClose, open);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [open]);
+  useScrollLock(open);
 
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-hidden p-4">
       <button
         type="button"
         aria-label="Close dialog backdrop"
@@ -212,7 +272,7 @@ export function DashboardModal({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "relative z-[1] w-full rounded-xl border border-[#2D2D30] bg-[#121212] p-5 shadow-2xl sm:p-6",
+          "relative z-[1] max-h-[min(92vh,900px)] w-full overflow-y-auto overscroll-contain rounded-xl border border-[#2D2D30] bg-[#121212] p-5 shadow-2xl scrollbar-hidden sm:p-6",
           widthClassName,
           className,
         )}
@@ -259,20 +319,12 @@ export function DashboardDrawer({
   widthClassName = "max-w-md",
 }: DashboardDrawerProps) {
   useEscape(onClose, open);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [open]);
+  useScrollLock(open);
 
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[90]">
+    <div className="fixed inset-0 z-[90] overflow-hidden">
       <button
         type="button"
         aria-label="Close drawer backdrop"

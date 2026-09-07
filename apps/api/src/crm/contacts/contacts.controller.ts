@@ -63,6 +63,35 @@ export class ContactsController {
     return this.contacts.getById(id);
   }
 
+  @Get(':id/activities')
+  @ApiOperation({ summary: 'Contact activity history' })
+  listActivities(
+    @Param('id') id: string,
+    @Query('type') type?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.contacts.listActivities(id, {
+      type,
+      from,
+      to,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+    });
+  }
+
+  @Get(':id/quotes')
+  @ApiOperation({ summary: 'Quotes where contact is named recipient' })
+  listQuotes(@Param('id') id: string) {
+    return this.contacts.listQuotes(id);
+  }
+
+  @Get(':id/work-orders')
+  @ApiOperation({ summary: 'Work orders at contact-linked customer sites' })
+  listWorkOrders(@Param('id') id: string) {
+    return this.contacts.listWorkOrders(id);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Update contact' })
   update(@Param('id') id: string, @Body() dto: UpdateContactDto) {

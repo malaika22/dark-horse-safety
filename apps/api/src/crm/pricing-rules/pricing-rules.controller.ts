@@ -38,6 +38,12 @@ export class PricingRulesController {
     return this.pricingRules.kpi();
   }
 
+  @Get('side-panels')
+  @ApiOperation({ summary: 'Pricing rules list page side panels' })
+  sidePanels() {
+    return this.pricingRules.sidePanels();
+  }
+
   @Get('export')
   @ApiOperation({ summary: 'Export pricing rules CSV or PDF' })
   export(@Query() query: ExportQueryDto & PricingRuleListQueryDto) {

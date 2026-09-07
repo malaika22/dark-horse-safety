@@ -33,6 +33,8 @@ import { useCrmLookups, lookupOptions, optionLabel } from "@/lib/use-crm-lookups
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
+import { CrmListEmptyState } from "@/features/crm/crm-states";
+import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
 import { QUOTES_KPI_SHELL, QUOTES_SORT_OPTIONS } from "./crm-constants";
 import type { QuoteRow } from "./crm-types";
 import { SendQuoteModal, type SendQuotePayload } from "./send-quote-modal";
@@ -209,7 +211,7 @@ function QuotesFiltersDrawer({
           </button>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5 scrollbar-hidden">
           <Row label="Status">
             <SelectEl fieldKey="status" options={statusOptions} />
           </Row>
@@ -272,6 +274,7 @@ function QuotesFiltersDrawer({
 
 export function QuotesPage() {
   const router = useRouter();
+  const { askConfirm, dialogs } = useCrmDialogs();
   const [query, setQuery] = React.useState("");
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [draftFilters, setDraftFilters] = React.useState<QuoteFilters>(DEFAULT_FILTERS);
@@ -305,7 +308,7 @@ export function QuotesPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters.status, appliedFilters.customer, appliedFilters.rep]);
 
-  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, error, reload } = useCrmList({
     list: (p) => crmApi.listQuotes(p),
     mapRow: mapQuoteRow,
     kpi: () => crmApi.quotesKpi(),
@@ -432,12 +435,13 @@ export function QuotesPage() {
   }
 
   async function handleArchive(id: string) {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("Delete this draft quote?")
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Delete draft quote",
+      description: "Delete this draft quote? This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.archiveQuote(id);
       toastSuccess("Quote archived");
@@ -448,12 +452,13 @@ export function QuotesPage() {
   }
 
   async function handleBulkArchive() {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(`Delete ${selectedIds.length} quote(s)?`)
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Delete quotes",
+      description: `Delete ${selectedIds.length} quote(s)? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.bulkArchiveQuotes(selectedIds);
       toastSuccess("Quotes archived");
@@ -671,7 +676,13 @@ export function QuotesPage() {
   );
 
   return (
-    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={5}>
+    <CrmListLoadGate
+      loading={loading}
+      hasData={!initialLoading}
+      error={error}
+      onRetry={reload}
+      kpiCount={5}
+    >
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-sans text-[18px] font-normal uppercase leading-none tracking-[-0.02em] text-foreground md:text-[24px]">
@@ -803,7 +814,21 @@ export function QuotesPage() {
         columns={columns}
         rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage="No quotes found"
+        emptyMessage={
+          <CrmListEmptyState
+            query={query}
+            filtersActive={chips.length > 0}
+            emptyDescription="Create your first quote to get started."
+            createLabel="+ New Quote"
+            createHref="/crm/quotes/new"
+            onClearFilters={() => {
+              setChips(DEFAULT_CHIPS);
+              setAppliedFilters(DEFAULT_FILTERS);
+              setDraftFilters(DEFAULT_FILTERS);
+            }}
+            onClearSearch={() => setQuery("")}
+          />
+        }
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -884,6 +909,7 @@ export function QuotesPage() {
         }}
         onConfirm={(payload) => handleSendConfirm(payload)}
       />
+      {dialogs}
     </div>
     </CrmListLoadGate>
   );

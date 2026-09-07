@@ -37,7 +37,7 @@ export function CrmDashboardOverview() {
             <CrmWidgetSection
               title="Rep performance"
               actionLabel="View all"
-              onAction={() => router.push("/crm/sales")}
+              onAction={() => router.push("/crm")}
             >
               <CrmRepPerformanceTable />
             </CrmWidgetSection>

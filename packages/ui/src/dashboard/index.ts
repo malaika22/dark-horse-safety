@@ -153,6 +153,7 @@ export {
   DashboardMenuPopover,
   DashboardModal,
   DashboardDrawer,
+  useScrollLock,
   type DashboardMenuItem,
   type DashboardMenuPopoverProps,
   type DashboardModalProps,

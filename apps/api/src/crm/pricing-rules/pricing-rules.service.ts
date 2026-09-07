@@ -295,6 +295,87 @@ export class PricingRulesService {
     );
   }
 
+  async sidePanels() {
+    const money = (value: Prisma.Decimal | number | null | undefined) => {
+      if (value == null) return '—';
+      const n = Number(value);
+      if (Number.isNaN(n)) return '—';
+      return `$${n.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    };
+
+    const [recentRules, scheduledRules, hardGates] = await Promise.all([
+      this.prisma.pricingRule.findMany({
+        where: { archivedAt: null },
+        include: { customer: { select: { id: true, name: true } } },
+        orderBy: { updatedAt: 'desc' },
+        take: 40,
+      }),
+      this.prisma.pricingRule.findMany({
+        where: {
+          archivedAt: null,
+          OR: [
+            { effectiveFrom: { not: null } },
+            { effectiveTo: { not: null } },
+          ],
+        },
+        include: { customer: { select: { id: true, name: true } } },
+        orderBy: [{ effectiveFrom: 'asc' }, { updatedAt: 'desc' }],
+        take: 20,
+      }),
+      this.prisma.customerRequirement.findMany({
+        where: {
+          archivedAt: null,
+          enforcementLevel: 'HARD_GATE' as const,
+        },
+        include: { customer: { select: { id: true, name: true } } },
+        orderBy: { updatedAt: 'desc' },
+        take: 20,
+      }),
+    ]);
+
+    const rateChanges = recentRules
+      .filter((r) => r.updatedAt.getTime() !== r.createdAt.getTime())
+      .slice(0, 12)
+      .map((r) => ({
+        id: r.id,
+        label: `${r.customer.name} · ${r.serviceItem}`,
+        from:
+          r.minimumCharge != null
+            ? money(r.minimumCharge)
+            : r.rateType || r.unit || 'PRIOR',
+        to: `${money(r.rate)}${r.unit ? ` / ${r.unit}` : ''}`,
+      }));
+
+    const scheduleChanges = scheduledRules.slice(0, 12).map((r) => {
+      const effective =
+        r.effectiveFrom?.toISOString().slice(0, 10) ??
+        r.effectiveTo?.toISOString().slice(0, 10) ??
+        '—';
+      return {
+        id: r.id,
+        customer: `${r.customer.name} · ${r.serviceItem}`,
+        effective,
+      };
+    });
+
+    const permissionGates = hardGates.map((r) => ({
+      id: r.id,
+      customer: `${r.customer.name} · ${r.name}`,
+      status: r.status,
+    }));
+
+    return {
+      data: {
+        rateChanges,
+        scheduleChanges,
+        permissionGates,
+      },
+    };
+  }
+
   async history(id: string) {
     const rule = await this.prisma.pricingRule.findUnique({ where: { id } });
     if (!rule) {

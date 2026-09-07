@@ -71,6 +71,18 @@ export class LocationsService {
         }),
         include: {
           customer: { select: { id: true, name: true, code: true } },
+          workOrders: {
+            where: { archivedAt: null },
+            take: 1,
+            orderBy: [{ serviceDate: 'desc' }, { createdAt: 'desc' }],
+            select: { serviceDate: true, createdAt: true },
+          },
+          routeRules: {
+            where: { archivedAt: null },
+            take: 1,
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, code: true, routeLabel: true },
+          },
         },
       }),
     ]);
@@ -105,6 +117,10 @@ export class LocationsService {
         longitude: true,
         status: true,
         customerId: true,
+        gpsRequired: true,
+        geofenceRadius: true,
+        openJobs: true,
+        customer: { select: { id: true, name: true } },
       },
       take: 5000,
     });
@@ -116,7 +132,30 @@ export class LocationsService {
       where: { id },
       include: {
         customer: { select: { id: true, name: true, code: true } },
-        routeRules: { where: { archivedAt: null }, take: 20 },
+        routeRules: {
+          where: { archivedAt: null },
+          take: 20,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            code: true,
+            routeLabel: true,
+            geofenceRadius: true,
+            status: true,
+          },
+        },
+        workOrders: {
+          where: { archivedAt: null },
+          take: 5,
+          orderBy: [{ serviceDate: 'desc' }, { createdAt: 'desc' }],
+          select: {
+            id: true,
+            code: true,
+            serviceDate: true,
+            createdAt: true,
+            status: true,
+          },
+        },
       },
     });
     if (!location) {

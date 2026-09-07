@@ -176,6 +176,8 @@ model Customer {
   coiExpiry            DateTime?
   w9OnFile             String?
   clockInRadius        String?
+  minBillableBlock     String?
+  autoFlagNoShow       String?
   requiresPo           Boolean         @default(false)
   defaultRequiredForms String?
   openJobs             Int             @default(0)

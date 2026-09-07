@@ -8,6 +8,7 @@ import {
   DashboardPanelTitle,
   DashboardToolbarButton,
 } from "@dark-horse-safety/ui";
+import { CrmSaveFailedState } from "@/features/crm/crm-states";
 
 export type CrmFormSection = {
   title: string;
@@ -27,6 +28,9 @@ export function CrmFormPageShell({
   onSave,
   onSaveAndAddAnother,
   submitting = false,
+  saveError = null,
+  onRetrySave,
+  onDiscardSave,
 }: {
   cancelHref: string;
   submitLabel?: string;
@@ -37,6 +41,10 @@ export function CrmFormPageShell({
   onSave?: () => void | Promise<void>;
   onSaveAndAddAnother?: () => void | Promise<void>;
   submitting?: boolean;
+  /** When set, shows the shared Save Failed state above the form. */
+  saveError?: string | null;
+  onRetrySave?: () => void;
+  onDiscardSave?: () => void;
 }) {
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:p-6">
@@ -49,6 +57,13 @@ export function CrmFormPageShell({
           </DashboardToolbarButton>
         </Link>
       </div>
+
+      {saveError ? (
+        <CrmSaveFailedState
+          onDiscard={onDiscardSave}
+          onRetry={onRetrySave ?? (() => void onSave?.())}
+        />
+      ) : null}
 
       {sections.map((section) => (
         <DashboardPanel key={section.title} className="overflow-hidden">

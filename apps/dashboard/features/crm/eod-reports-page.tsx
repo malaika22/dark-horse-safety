@@ -24,6 +24,7 @@ import {
   DashboardToolbarIcons,
   type DashboardDataTableColumn,
   type DashboardSortDirection,
+  useScrollLock,
 } from "@dark-horse-safety/ui";
 import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapEodReportRow } from "@/lib/crm-mappers";
@@ -33,6 +34,7 @@ import { useCrmLookups, lookupOptions, optionLabel } from "@/lib/use-crm-lookups
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
+import { CrmListEmptyState } from "@/features/crm/crm-states";
 import { EOD_KPI_SHELL, EOD_SORT_OPTIONS } from "./crm-constants";
 import type { BadgeCell, EodReportRow } from "./crm-types";
 
@@ -181,20 +183,18 @@ function EodFiltersDrawer({
   statusOptions: { value: string; label: string }[];
   repOptions: { value: string; label: string }[];
 }) {
+  useScrollLock(open);
   function patch(p: Partial<EodFilters>) {
     onChange({ ...value, ...p });
   }
 
   React.useEffect(() => {
     if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = previous;
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [open, onClose]);
@@ -236,7 +236,7 @@ function EodFiltersDrawer({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5 scrollbar-hidden">
           <FilterSelectRow
             label="Status"
             value={value.status}
@@ -350,7 +350,7 @@ export function EodReportsPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters, filtersApplied]);
 
-  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, error, reload } = useCrmList({
     list: (p) => crmApi.listEodReports(p),
     mapRow: mapEodReportRow,
     kpi: () => crmApi.eodReportsKpi(),
@@ -657,7 +657,13 @@ export function EodReportsPage() {
   );
 
   return (
-    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={5}>
+    <CrmListLoadGate
+      loading={loading}
+      hasData={!initialLoading}
+      error={error}
+      onRetry={reload}
+      kpiCount={5}
+    >
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={5}>
@@ -792,7 +798,19 @@ export function EodReportsPage() {
         columns={columns}
         rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage="No EOD reports found"
+        emptyMessage={
+          <CrmListEmptyState
+            query={query}
+            filtersActive={Boolean(filtersApplied)}
+            emptyDescription="No EOD reports yet for this view."
+            onClearFilters={() => {
+              setFiltersApplied(false);
+              setDraftFilters(DEFAULT_EOD_FILTERS);
+              setAppliedFilters(DEFAULT_EOD_FILTERS);
+            }}
+            onClearSearch={() => setQuery("")}
+          />
+        }
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}

@@ -156,6 +156,16 @@ export class CreateCustomerDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  minBillableBlock?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  autoFlagNoShow?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsBoolean()
   requiresPo?: boolean;
 

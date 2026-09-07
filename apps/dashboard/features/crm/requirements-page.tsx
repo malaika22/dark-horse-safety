@@ -25,6 +25,7 @@ import {
   DashboardToolbarIcons,
   type DashboardDataTableColumn,
   type DashboardSortDirection,
+  useScrollLock,
 } from "@dark-horse-safety/ui";
 import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapRequirementRow } from "@/lib/crm-mappers";
@@ -34,6 +35,8 @@ import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
+import { CrmListEmptyState } from "@/features/crm/crm-states";
+import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
 import { REQUIREMENTS_KPI_SHELL, REQUIREMENTS_SORT_OPTIONS } from "./crm-constants";
 import type { RequirementRow } from "./crm-types";
 
@@ -197,20 +200,18 @@ function RequirementsFiltersDrawer({
   enforcementOptions: { value: string; label: string }[];
   statusOptions: { value: string; label: string }[];
 }) {
+  useScrollLock(open);
   function patch(p: Partial<RequirementFilters>) {
     onChange({ ...value, ...p });
   }
 
   React.useEffect(() => {
     if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = previous;
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [open, onClose]);
@@ -252,7 +253,7 @@ function RequirementsFiltersDrawer({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5 scrollbar-hidden">
           <FilterSelectRow
             label="Customer"
             value={value.customer}
@@ -302,7 +303,6 @@ function RequirementsFiltersDrawer({
   );
 }
 
-
 function countTrailing(label: string) {
   return (
     <span className="font-sans text-[11px] font-normal uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
@@ -332,6 +332,7 @@ function WidgetRow({
 
 export function RequirementsPage() {
   const router = useRouter();
+  const { askConfirm, askPick, dialogs } = useCrmDialogs();
 
   const [query, setQuery] = React.useState("");
   const [sortField, setSortField] = React.useState("customer");
@@ -385,7 +386,7 @@ export function RequirementsPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters, filtersApplied]);
 
-  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, error, reload } = useCrmList({
     list: (p) => crmApi.listRequirements(p),
     mapRow: mapRequirementRow,
     kpi: () => crmApi.requirementsKpi(),
@@ -583,12 +584,13 @@ export function RequirementsPage() {
   }
 
   async function handleArchive(id: string) {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("Delete this requirement?")
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Delete requirement",
+      description: "Delete this requirement? This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.archiveRequirement(id);
       toastSuccess("Requirement deleted");
@@ -599,12 +601,13 @@ export function RequirementsPage() {
   }
 
   async function handleBulkDelete() {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(`Delete ${selectedIds.length} requirement(s)?`)
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Delete requirements",
+      description: `Delete ${selectedIds.length} requirement(s)? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.bulkDeleteRequirements(selectedIds);
       toastSuccess("Requirements deleted");
@@ -616,17 +619,24 @@ export function RequirementsPage() {
   }
 
   async function handleEnforcementLevel(id: string) {
-    const useSoft =
-      typeof window === "undefined" ||
-      window.confirm(
-        "Set enforcement to SOFT_GATE?\n\nOK = SOFT_GATE, Cancel = ACTIVE",
-      );
+    const level = await askPick({
+      title: "Set enforcement level",
+      label: "Enforcement",
+      confirmLabel: "Apply",
+      options: [
+        { value: "SOFT_GATE", label: "Soft gate" },
+        { value: "ACTIVE", label: "Active" },
+      ],
+    });
+    if (!level) return;
     try {
       await crmApi.updateRequirement(id, {
-        enforcementLevel: useSoft ? "SOFT_GATE" : "ACTIVE",
+        enforcementLevel: level,
       });
       toastSuccess(
-        useSoft ? "Enforcement set to SOFT_GATE" : "Enforcement set to ACTIVE",
+        level === "SOFT_GATE"
+          ? "Enforcement set to SOFT_GATE"
+          : "Enforcement set to ACTIVE",
       );
       reload();
     } catch (err) {
@@ -794,7 +804,13 @@ export function RequirementsPage() {
   );
 
   return (
-    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
+    <CrmListLoadGate
+      loading={loading}
+      hasData={!initialLoading}
+      error={error}
+      onRetry={reload}
+      kpiCount={4}
+    >
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
@@ -927,7 +943,21 @@ export function RequirementsPage() {
         columns={columns}
         rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage="No requirements found"
+        emptyMessage={
+          <CrmListEmptyState
+            query={query}
+            filtersActive={Boolean(filtersApplied)}
+            emptyDescription="Create your first requirement to get started."
+            createLabel="+ New Requirement"
+            createHref="/crm/requirements/new"
+            onClearFilters={() => {
+              setFiltersApplied(false);
+              setDraftFilters(DEFAULT_FILTERS);
+              setAppliedFilters(DEFAULT_FILTERS);
+            }}
+            onClearSearch={() => setQuery("")}
+          />
+        }
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -1166,6 +1196,7 @@ export function RequirementsPage() {
           void createView(name, currentViewPayload());
         }}
       />
+      {dialogs}
     </div>
     </CrmListLoadGate>
   );

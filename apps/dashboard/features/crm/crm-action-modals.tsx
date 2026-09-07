@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { DashboardToolbarButton } from "@dark-horse-safety/ui";
+import { DashboardToolbarButton, useScrollLock } from "@dark-horse-safety/ui";
 
 export type CrmPickOption = { value: string; label: string; hint?: string };
 
@@ -28,19 +28,17 @@ export function CrmPickModal({
 }) {
   const [value, setValue] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  useScrollLock(open);
 
   React.useEffect(() => {
     if (!open) return;
     setValue("");
     setBusy(false);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKey);
     return () => {
-      document.body.style.overflow = previous;
       document.removeEventListener("keydown", onKey);
     };
   }, [open, options, onClose]);
@@ -88,7 +86,6 @@ export function CrmPickModal({
           <DashboardToolbarButton
             variant="primary"
             disabled={!value || busy}
-            className="!text-[#0D0D0D]"
             onClick={() => {
               if (!value) return;
               void (async () => {
@@ -122,16 +119,14 @@ export function CrmHistoryModal({
   events: { id: string; at: string; label: string; detail?: string }[];
   onClose: () => void;
 }) {
+  useScrollLock(open);
   React.useEffect(() => {
     if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKey);
     return () => {
-      document.body.style.overflow = previous;
       document.removeEventListener("keydown", onKey);
     };
   }, [open, onClose]);
@@ -139,7 +134,7 @@ export function CrmHistoryModal({
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[95]">
+    <div className="fixed inset-0 z-[95] overflow-hidden">
       <button
         type="button"
         aria-label="Close backdrop"
@@ -189,6 +184,118 @@ export function CrmHistoryModal({
   );
 }
 
+/**
+ * Confirm / cancel dialog matching CRM dark shell (replaces window.confirm).
+ */
+export function CrmConfirmModal({
+  open,
+  title,
+  description,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  destructive = false,
+  busy = false,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  title: string;
+  description?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  destructive?: boolean;
+  busy?: boolean;
+  onClose: () => void;
+  onConfirm: () => void | Promise<void>;
+}) {
+  const [pending, setPending] = React.useState(false);
+  useScrollLock(open);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setPending(false);
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  if (!open || typeof document === "undefined") return null;
+
+  const loading = busy || pending;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[95]">
+      <button
+        type="button"
+        aria-label="Close backdrop"
+        className="absolute inset-0 bg-black/60"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="absolute left-1/2 top-1/2 w-[min(92vw,400px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[#2D2D30] bg-[#0D0D0D] p-5 shadow-2xl"
+      >
+        <h2 className="font-sans text-[13px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+          {title}
+        </h2>
+        {description ? (
+          <p className="mt-3 font-sans text-[12px] leading-relaxed tracking-[-0.01em] text-[#959597]">
+            {description}
+          </p>
+        ) : null}
+        <div className="mt-5 flex justify-end gap-2">
+          <DashboardToolbarButton onClick={onClose} disabled={loading}>
+            {cancelLabel}
+          </DashboardToolbarButton>
+          {destructive ? (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                void (async () => {
+                  setPending(true);
+                  try {
+                    await onConfirm();
+                  } finally {
+                    setPending(false);
+                  }
+                })();
+              }}
+              className="btn-base inline-flex shrink-0 items-center justify-center rounded-lg bg-[#B42318] px-3 font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-[#912018] disabled:opacity-50"
+            >
+              {confirmLabel}
+            </button>
+          ) : (
+            <DashboardToolbarButton
+              variant="primary"
+              disabled={loading}
+              onClick={() => {
+                void (async () => {
+                  setPending(true);
+                  try {
+                    await onConfirm();
+                  } finally {
+                    setPending(false);
+                  }
+                })();
+              }}
+            >
+              {confirmLabel}
+            </DashboardToolbarButton>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function CrmPromptFieldsModal({
   open,
   title,
@@ -211,6 +318,7 @@ export function CrmPromptFieldsModal({
 }) {
   const [values, setValues] = React.useState<Record<string, string>>({});
   const [busy, setBusy] = React.useState(false);
+  useScrollLock(open);
 
   React.useEffect(() => {
     if (!open) return;
@@ -260,7 +368,6 @@ export function CrmPromptFieldsModal({
           <DashboardToolbarButton
             variant="primary"
             disabled={busy}
-            className="!text-[#0D0D0D]"
             onClick={() => {
               void (async () => {
                 setBusy(true);

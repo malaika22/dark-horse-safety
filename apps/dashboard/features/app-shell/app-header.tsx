@@ -1,10 +1,16 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Fragment } from "react";
 import { cn } from "@dark-horse-safety/ui";
 
 function PageTitle({ title }: { title: string }) {
-  const parts = title.split(/\s*>\s*/);
+  // Support both "CRM / Sales" and "CRM > Sales" breadcrumb styles.
+  const parts = title
+    .split(/\s*(?:>|\/)\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
   if (parts.length < 2) {
     return (
       <h1 className="min-w-0 flex-1 truncate font-sans text-[13px] font-[510] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[16px]">
@@ -13,13 +19,17 @@ function PageTitle({ title }: { title: string }) {
     );
   }
 
-  const trail = parts.slice(0, -1).join(" > ");
+  const trail = parts.slice(0, -1);
   const current = parts[parts.length - 1]!;
 
   return (
     <h1 className="min-w-0 flex-1 truncate font-sans text-[13px] font-[510] uppercase leading-none tracking-[-0.02em] md:text-[16px]">
-      <span className="text-[#959597]">{trail}</span>
-      <span className="text-[#959597]"> &gt; </span>
+      {trail.map((part, i) => (
+        <Fragment key={`${part}-${i}`}>
+          <span className="text-[#959597]">{part}</span>
+          <span className="text-[#959597]"> / </span>
+        </Fragment>
+      ))}
       <span className="text-[#FDFDFF]">{current}</span>
     </h1>
   );

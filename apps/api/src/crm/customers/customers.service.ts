@@ -80,6 +80,41 @@ export class CustomersService {
           assignedRep: {
             select: { id: true, firstName: true, lastName: true, email: true },
           },
+          contacts: {
+            where: { archivedAt: null },
+            orderBy: [{ isPrimary: 'desc' }, { fullName: 'asc' }],
+            take: 1,
+            select: { id: true, fullName: true, isPrimary: true },
+          },
+          locations: {
+            where: { archivedAt: null },
+            orderBy: [{ updatedAt: 'desc' }],
+            take: 1,
+            select: { id: true, name: true, code: true },
+          },
+          requirements: {
+            where: { archivedAt: null },
+            orderBy: { updatedAt: 'desc' },
+            take: 4,
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              enforcementLevel: true,
+            },
+          },
+          routeRules: {
+            where: { archivedAt: null },
+            orderBy: { updatedAt: 'desc' },
+            take: 3,
+            select: {
+              id: true,
+              gpsRequired: true,
+              geofenceRadius: true,
+              status: true,
+              routeLabel: true,
+            },
+          },
           _count: {
             select: { contacts: true, locations: true },
           },
@@ -160,6 +195,8 @@ export class CustomersService {
         coiExpiry: dto.coiExpiry ? new Date(dto.coiExpiry) : undefined,
         w9OnFile: dto.w9OnFile,
         clockInRadius: dto.clockInRadius,
+        minBillableBlock: dto.minBillableBlock,
+        autoFlagNoShow: dto.autoFlagNoShow,
         requiresPo: dto.requiresPo ?? false,
         defaultRequiredForms: dto.defaultRequiredForms,
       },
@@ -218,6 +255,12 @@ export class CustomersService {
         ...(dto.w9OnFile !== undefined ? { w9OnFile: dto.w9OnFile } : {}),
         ...(dto.clockInRadius !== undefined
           ? { clockInRadius: dto.clockInRadius }
+          : {}),
+        ...(dto.minBillableBlock !== undefined
+          ? { minBillableBlock: dto.minBillableBlock }
+          : {}),
+        ...(dto.autoFlagNoShow !== undefined
+          ? { autoFlagNoShow: dto.autoFlagNoShow }
           : {}),
         ...(dto.requiresPo !== undefined ? { requiresPo: dto.requiresPo } : {}),
         ...(dto.defaultRequiredForms !== undefined
@@ -346,6 +389,8 @@ export class CustomersService {
         coiExpiry: existing.coiExpiry,
         w9OnFile: existing.w9OnFile,
         clockInRadius: existing.clockInRadius,
+        minBillableBlock: existing.minBillableBlock,
+        autoFlagNoShow: existing.autoFlagNoShow,
         requiresPo: existing.requiresPo,
         defaultRequiredForms: existing.defaultRequiredForms,
         assignedRepId: existing.assignedRepId,

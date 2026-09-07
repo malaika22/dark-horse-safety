@@ -37,6 +37,8 @@ import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
+import { CrmListEmptyState } from "@/features/crm/crm-states";
+import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
 import {
   CUSTOMERS_KPI_SHELL,
   CUSTOMERS_SORT_OPTIONS,
@@ -81,6 +83,7 @@ function chipsFromFilters(filters: DashboardListFiltersState) {
 
 export function CustomersPage() {
   const router = useRouter();
+  const { askConfirm, askPick, dialogs } = useCrmDialogs();
   const [query, setQuery] = React.useState("");
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [draftFilters, setDraftFilters] =
@@ -118,7 +121,7 @@ export function CustomersPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters.status, appliedFilters.assignedReps, filtersApplied]);
 
-  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, error, reload } = useCrmList({
     list: (p) => crmApi.listCustomers(p),
     mapRow: mapCustomerRow,
     kpi: () => crmApi.customersKpi(),
@@ -136,6 +139,13 @@ export function CustomersPage() {
   );
 
   const bulkOpen = selectedIds.length > 0;
+
+  function clearListFilters() {
+    setChips([]);
+    setFiltersApplied(false);
+    setAppliedFilters(CUSTOMERS_DEFAULT_FILTERS);
+    setDraftFilters(CUSTOMERS_DEFAULT_FILTERS);
+  }
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, pageCount);
@@ -234,29 +244,23 @@ export function CustomersPage() {
 
   async function handleBulkSetStatus() {
     if (selectedIds.length === 0) return;
-    const choice =
-      typeof window !== "undefined"
-        ? window.prompt(
-            "Set status to ACTIVE, INACTIVE, or NEEDS_REVIEW:",
-            "ACTIVE",
-          )
-        : null;
-    if (!choice) return;
-    const status = choice.trim().toUpperCase().replace(/\s+/g, "_");
-    if (!["ACTIVE", "INACTIVE", "NEEDS_REVIEW"].includes(status)) {
-      toastApiError(
-        new Error("Status must be ACTIVE, INACTIVE, or NEEDS_REVIEW"),
-      );
-      return;
-    }
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(
-        `Set ${selectedIds.length} customer(s) to ${status}?`,
-      )
-    ) {
-      return;
-    }
+    const status = await askPick({
+      title: "Set customer status",
+      label: "Status",
+      confirmLabel: "Continue",
+      options: [
+        { value: "ACTIVE", label: "Active" },
+        { value: "INACTIVE", label: "Inactive" },
+        { value: "NEEDS_REVIEW", label: "Needs review" },
+      ],
+    });
+    if (!status) return;
+    const ok = await askConfirm({
+      title: "Update status",
+      description: `Set ${selectedIds.length} customer(s) to ${status.replace(/_/g, " ").toLowerCase()}?`,
+      confirmLabel: "Update",
+    });
+    if (!ok) return;
     try {
       await crmApi.bulkUpdateCustomers({ ids: selectedIds, status });
       toastSuccess("Status updated");
@@ -273,28 +277,19 @@ export function CustomersPage() {
       toastApiError(new Error("No reps available"));
       return;
     }
-    const hint = reps
-      .slice(0, 8)
-      .map((r) => `${r.label} (${r.value})`)
-      .join("\n");
-    const choice =
-      typeof window !== "undefined"
-        ? window.prompt(
-            `Enter assigned rep id:\n${hint}`,
-            reps[0]?.value ?? "",
-          )
-        : null;
-    if (!choice) return;
-    const assignedRepId = choice.trim();
+    const assignedRepId = await askPick({
+      title: "Assign sales rep",
+      label: "Rep",
+      confirmLabel: "Continue",
+      options: reps.map((r) => ({ value: r.value, label: r.label })),
+    });
     if (!assignedRepId) return;
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(
-        `Assign ${selectedIds.length} customer(s) to this rep?`,
-      )
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Assign rep",
+      description: `Assign ${selectedIds.length} customer(s) to this rep?`,
+      confirmLabel: "Assign",
+    });
+    if (!ok) return;
     try {
       await crmApi.bulkUpdateCustomers({ ids: selectedIds, assignedRepId });
       toastSuccess("Rep assigned");
@@ -306,12 +301,13 @@ export function CustomersPage() {
   }
 
   async function handleArchive(id: string, name: string) {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(`Archive ${name}?`)
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Archive customer",
+      description: `Archive ${name}? This can be restored later from archived records.`,
+      confirmLabel: "Archive",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.archiveCustomer(id);
       toastSuccess("Customer archived");
@@ -323,12 +319,13 @@ export function CustomersPage() {
 
   async function handleBulkArchive() {
     if (selectedIds.length === 0) return;
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(`Archive ${selectedIds.length} customer(s)?`)
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Archive customers",
+      description: `Archive ${selectedIds.length} customer(s)?`,
+      confirmLabel: "Archive",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.bulkArchiveCustomers(selectedIds);
       toastSuccess("Customers archived");
@@ -404,7 +401,10 @@ export function CustomersPage() {
         id: "route",
         header: "Route / GPS",
         className: "hidden min-w-[140px] max-w-[180px] xl:table-cell",
-        cell: (row) => (
+        cell: (row) =>
+          row.routeGps.length === 0 ? (
+            "—"
+          ) : (
           <DashboardTableBadgeStack>
             {row.routeGps.map((item) => (
               <DashboardBadge key={item.label} variant={item.variant} pill className="max-w-full">
@@ -412,13 +412,16 @@ export function CustomersPage() {
               </DashboardBadge>
             ))}
           </DashboardTableBadgeStack>
-        ),
+          ),
       },
       {
         id: "requirements",
         header: "Requirements",
         className: "hidden min-w-[140px] max-w-[180px] xl:table-cell",
-        cell: (row) => (
+        cell: (row) =>
+          row.requirements.length === 0 ? (
+            "—"
+          ) : (
           <DashboardTableBadgeStack>
             {row.requirements.map((item) => (
               <DashboardBadge key={item.label} variant={item.variant} pill className="max-w-full">
@@ -426,7 +429,7 @@ export function CustomersPage() {
               </DashboardBadge>
             ))}
           </DashboardTableBadgeStack>
-        ),
+          ),
       },
       {
         id: "actions",
@@ -492,7 +495,13 @@ export function CustomersPage() {
   );
 
   return (
-    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
+    <CrmListLoadGate
+      loading={loading}
+      hasData={!initialLoading}
+      error={error}
+      onRetry={reload}
+      kpiCount={4}
+    >
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
@@ -621,10 +630,7 @@ export function CustomersPage() {
                   });
                 }}
                 onClearAll={() => {
-                  setChips([]);
-                  setFiltersApplied(false);
-                  setAppliedFilters(DEFAULT_LIST_FILTERS);
-                  setDraftFilters(DEFAULT_LIST_FILTERS);
+                  clearListFilters();
                 }}
               />
             ) : null
@@ -636,7 +642,17 @@ export function CustomersPage() {
         columns={columns}
         rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage="No customers found"
+        emptyMessage={
+          <CrmListEmptyState
+            query={query}
+            filtersActive={filtersApplied || chips.length > 0}
+            emptyDescription="Create your first customer to get started."
+            createLabel="+ New Customer"
+            createHref="/crm/accounts/new"
+            onClearFilters={clearListFilters}
+            onClearSearch={() => setQuery("")}
+          />
+        }
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -705,6 +721,7 @@ export function CustomersPage() {
           void createView(name, currentViewPayload());
         }}
       />
+      {dialogs}
     </div>
     </CrmListLoadGate>
   );

@@ -34,6 +34,8 @@ import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { logContactChannel } from "@/lib/crm-activity-log";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
+import { CrmListEmptyState } from "@/features/crm/crm-states";
+import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
 import {
   CONTACTS_KPI_SHELL,
   CONTACTS_SORT_OPTIONS,
@@ -288,6 +290,7 @@ function FilterToggleRow({
 /* ── page ── */
 export function ContactsPage() {
   const router = useRouter();
+  const { askConfirm, dialogs } = useCrmDialogs();
 
   const [query,          setQuery]          = React.useState("");
   const [filtersOpen,    setFiltersOpen]    = React.useState(false);
@@ -320,7 +323,7 @@ export function ContactsPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters.customer, appliedFilters.assignedRep]);
 
-  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, error, reload } = useCrmList({
     list: (p) => crmApi.listContacts(p),
     mapRow: mapContactRow,
     kpi: () => crmApi.contactsKpi(),
@@ -416,9 +419,13 @@ export function ContactsPage() {
   }
 
   async function handleArchive(id: string) {
-    if (typeof window !== "undefined" && !window.confirm("Archive this contact?")) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Archive contact",
+      description: "Archive this contact? They will be removed from active lists.",
+      confirmLabel: "Archive",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.archiveContact(id);
       toastSuccess("Contact archived");
@@ -429,12 +436,13 @@ export function ContactsPage() {
   }
 
   async function handleBulkArchive() {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(`Remove ${selectedIds.length} contact(s)?`)
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Remove contacts",
+      description: `Remove ${selectedIds.length} contact(s) from active lists?`,
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.bulkArchiveContacts(selectedIds);
       toastSuccess("Contacts removed");
@@ -576,7 +584,13 @@ export function ContactsPage() {
   const bulkOpen = selectedIds.length > 0;
 
   return (
-    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
+    <CrmListLoadGate
+      loading={loading}
+      hasData={!initialLoading}
+      error={error}
+      onRetry={reload}
+      kpiCount={4}
+    >
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       {/* KPI strip */}
       <DashboardStatGrid>
@@ -716,7 +730,21 @@ export function ContactsPage() {
         columns={columns}
         rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage="No contacts found"
+        emptyMessage={
+          <CrmListEmptyState
+            query={query}
+            filtersActive={chips.length > 0}
+            emptyDescription="Create your first contact to get started."
+            createLabel="+ New Contact"
+            createHref="/crm/contacts/new"
+            onClearFilters={() => {
+              setChips([]);
+              setAppliedFilters(DEFAULT_FILTERS);
+              setDraftFilters(DEFAULT_FILTERS);
+            }}
+            onClearSearch={() => setQuery("")}
+          />
+        }
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -791,6 +819,7 @@ export function ContactsPage() {
           void createView(name, currentViewPayload());
         }}
       />
+      {dialogs}
     </div>
     </CrmListLoadGate>
   );

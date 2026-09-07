@@ -44,9 +44,22 @@ export type LocationCard = {
   id: string;
   name: string;
   customer: string;
+  customerId?: string;
   city: string;
   openJobs: number;
   gpsStatus: string;
+  gpsSet: boolean;
+  geofenceRadius?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  lastVisited?: string | null;
+  reqMet: "MET" | "PARTIAL" | "MISSING";
+  apiNumber?: string | null;
+  siteContact?: string | null;
+  notes?: string | null;
+  county?: string | null;
+  state?: string | null;
+  routeLabel?: string | null;
   status: StatusBadge;
 };
 

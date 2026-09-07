@@ -17,6 +17,7 @@ import {
   DashboardToolbarButton,
   DashboardToolbarIcons,
   type DashboardSortDirection,
+  useScrollLock,
 } from "@dark-horse-safety/ui";
 import {
   CrmLocationsListPanel,
@@ -32,6 +33,8 @@ import { useCrmLookups } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
+import { CrmListEmptyState } from "@/features/crm/crm-states";
+import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
 import {
   CrmHistoryModal,
   CrmPickModal,
@@ -253,20 +256,18 @@ function RouteRulesFiltersDrawer({
   siteOptions: { value: string; label: string }[];
   onCustomerChange?: (customerId: string) => void;
 }) {
+  useScrollLock(open);
   function patch(p: Partial<RouteFilters>) {
     onChange({ ...value, ...p });
   }
 
   React.useEffect(() => {
     if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = previous;
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [open, onClose]);
@@ -308,7 +309,7 @@ function RouteRulesFiltersDrawer({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5 scrollbar-hidden">
           <FilterSelectRow
             label="Customer"
             value={value.customer}
@@ -368,6 +369,7 @@ function RouteRulesFiltersDrawer({
 
 export function RouteRulesPage() {
   const router = useRouter();
+  const { askConfirm, dialogs } = useCrmDialogs();
   const [query, setQuery] = React.useState("");
   const [sortField, setSortField] = React.useState("name");
   const [sortDirection, setSortDirection] =
@@ -416,7 +418,7 @@ export function RouteRulesPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters, filtersApplied]);
 
-  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, error, reload } = useCrmList({
     list: (p) => crmApi.listRouteRules(p),
     mapRow: mapRouteLocationCard,
     kpi: () => crmApi.routeRulesKpi(),
@@ -456,7 +458,11 @@ export function RouteRulesPage() {
                 label: mapped.label,
                 x: pin.x ?? mapped.x,
                 y: pin.y ?? mapped.y,
-                highlighted: mapped.active,
+                status:
+                  pin.status === "INACTIVE"
+                    ? ("inactive" as const)
+                    : ("active" as const),
+                geofenced: Boolean(pin.geofenceRadius),
               },
             ];
           }),
@@ -475,9 +481,10 @@ export function RouteRulesPage() {
     () =>
       mapPinsBase.map((pin) => ({
         ...pin,
-        highlighted: highlightedLocationId
-          ? pin.id === highlightedLocationId
-          : pin.highlighted,
+        geofenced:
+          highlightedLocationId != null
+            ? pin.id === highlightedLocationId || Boolean(pin.geofenced)
+            : Boolean(pin.geofenced),
       })),
     [mapPinsBase, highlightedLocationId],
   );
@@ -572,12 +579,13 @@ export function RouteRulesPage() {
   }
 
   async function handleArchive(id: string) {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("Delete this route rule?")
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Delete route rule",
+      description: "Delete this route rule? This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.archiveRouteRule(id);
       toastSuccess("Route rule deleted");
@@ -707,7 +715,13 @@ export function RouteRulesPage() {
   const listCards: CrmLocationCard[] = rows;
 
   return (
-    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
+    <CrmListLoadGate
+      loading={loading}
+      hasData={!initialLoading}
+      error={error}
+      onRetry={reload}
+      kpiCount={4}
+    >
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
@@ -780,55 +794,72 @@ export function RouteRulesPage() {
           title="Map View"
           subtitle="Geofenced Sites and Route Rules"
           pins={mapPins}
-          pinMode="geofenced"
+          selectedId={highlightedLocationId}
+          onPinClick={(id) => setHighlightedLocationId(id)}
           legend={[
-            { label: "Geofenced", variant: "primary" },
-            { label: "No Geofence", variant: "muted" },
+            { label: "Geofenced", tone: "active" },
+            { label: "No Geofence", tone: "inactive" },
           ]}
         />
-        <CrmLocationsListPanel
-          cards={listCards}
-          countLabel={`Locations · ${listCards.length} Wells`}
-          renderCardActions={(card) => (
-            <DashboardRowActionMenu
-              items={[
-                {
-                  id: "edit",
-                  label: "Edit Rule",
-                  onSelect: () =>
-                    router.push(`/crm/route-rules/${card.id}/edit`),
-                },
-                {
-                  id: "geofence",
-                  label: "Adjust Geofence on Map",
-                  onSelect: () => openGeofence(card),
-                },
-                {
-                  id: "test",
-                  label: "Test with a Sample Coordinate",
-                  onSelect: () => openTestCoord(card.id),
-                },
-                {
-                  id: "copy",
-                  label: "Copy to Another Site",
-                  onSelect: () =>
-                    openCopyPicker(card.id, card.customerId),
-                },
-                {
-                  id: "flags",
-                  label: "View GPS Flags Raised Here",
-                  onSelect: () => void handleViewGpsFlags(card.id, card.name),
-                },
-                {
-                  id: "delete",
-                  label: "Delete Rule",
-                  destructive: true,
-                  onSelect: () => void handleArchive(card.id),
-                },
-              ]}
-            />
-          )}
-        />
+        {listCards.length === 0 ? (
+          <CrmListEmptyState
+            query={query}
+            filtersActive={filtersApplied}
+            emptyDescription="Create your first route rule to get started."
+            createLabel="+ New Route Rule"
+            createHref="/crm/route-rules/new"
+            onClearFilters={() => {
+              setDraftFilters(DEFAULT_FILTERS);
+              setAppliedFilters(DEFAULT_FILTERS);
+              setFiltersApplied(false);
+            }}
+            onClearSearch={() => setQuery("")}
+          />
+        ) : (
+          <CrmLocationsListPanel
+            cards={listCards}
+            countLabel={`Locations · ${listCards.length} Wells`}
+            renderCardActions={(card) => (
+              <DashboardRowActionMenu
+                items={[
+                  {
+                    id: "edit",
+                    label: "Edit Rule",
+                    onSelect: () =>
+                      router.push(`/crm/route-rules/${card.id}/edit`),
+                  },
+                  {
+                    id: "geofence",
+                    label: "Adjust Geofence on Map",
+                    onSelect: () => openGeofence(card),
+                  },
+                  {
+                    id: "test",
+                    label: "Test with a Sample Coordinate",
+                    onSelect: () => openTestCoord(card.id),
+                  },
+                  {
+                    id: "copy",
+                    label: "Copy to Another Site",
+                    onSelect: () =>
+                      openCopyPicker(card.id, card.customerId),
+                  },
+                  {
+                    id: "flags",
+                    label: "View GPS Flags Raised Here",
+                    onSelect: () => void handleViewGpsFlags(card.id, card.name),
+                  },
+                  {
+                    id: "delete",
+                    label: "Delete Rule",
+                    destructive: true,
+                    onSelect: () => void handleArchive(card.id),
+                  },
+                ]}
+              />
+            )}
+          />
+        )}
       </div>
 
       <RouteRulesFiltersDrawer
@@ -932,6 +963,7 @@ export function RouteRulesPage() {
         events={historyEvents}
         onClose={() => setHistoryOpen(false)}
       />
+      {dialogs}
     </div>
     </CrmListLoadGate>
   );

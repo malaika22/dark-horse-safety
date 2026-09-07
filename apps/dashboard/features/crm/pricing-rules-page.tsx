@@ -25,6 +25,7 @@ import {
   DashboardToolbarIcons,
   type DashboardDataTableColumn,
   type DashboardSortDirection,
+  useScrollLock,
 } from "@dark-horse-safety/ui";
 import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapPricingRuleRow } from "@/lib/crm-mappers";
@@ -34,6 +35,8 @@ import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
+import { CrmListEmptyState } from "@/features/crm/crm-states";
+import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
 import { CrmHistoryModal } from "./crm-action-modals";
 import { PRICING_KPI_SHELL, PRICING_SORT_OPTIONS } from "./crm-constants";
 import type { PricingRuleRow } from "./crm-types";
@@ -228,20 +231,18 @@ function PricingFiltersDrawer({
   rateTypeOptions: { value: string; label: string }[];
   statusOptions: { value: string; label: string }[];
 }) {
+  useScrollLock(open);
   function patch(p: Partial<PricingFilters>) {
     onChange({ ...value, ...p });
   }
 
   React.useEffect(() => {
     if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = previous;
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [open, onClose]);
@@ -283,7 +284,7 @@ function PricingFiltersDrawer({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5 scrollbar-hidden">
           <FilterSelectRow
             label="Customer"
             value={value.customer}
@@ -344,6 +345,7 @@ function PricingFiltersDrawer({
 
 export function PricingRulesPage() {
   const router = useRouter();
+  const { askConfirm, dialogs } = useCrmDialogs();
 
   const [query, setQuery] = React.useState("");
   const [sortField, setSortField] = React.useState("serviceItem");
@@ -366,6 +368,15 @@ export function PricingRulesPage() {
   const [historyEvents, setHistoryEvents] = React.useState<
     { id: string; at: string; label: string; detail?: string }[]
   >([]);
+  const [sidePanels, setSidePanels] = React.useState<{
+    rateChanges: { id: string; label: string; from: string; to: string }[];
+    scheduleChanges: { id: string; customer: string; effective: string }[];
+    permissionGates: {
+      id: string;
+      customer: string;
+      status: { label: string; variant: "success" | "warning" | "offline" | "error" | "neutral" };
+    }[];
+  }>({ rateChanges: [], scheduleChanges: [], permissionGates: [] });
   const {
     savedViews,
     activeViewId,
@@ -389,7 +400,7 @@ export function PricingRulesPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters, filtersApplied]);
 
-  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, error, reload } = useCrmList({
     list: (p) => crmApi.listPricingRules(p),
     mapRow: mapPricingRuleRow,
     kpi: () => crmApi.pricingRulesKpi(),
@@ -405,6 +416,50 @@ export function PricingRulesPage() {
     () => kpiCellsFromApi(PRICING_KPI_SHELL, kpiData),
     [kpiData],
   );
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.pricingRulesSidePanels();
+        if (cancelled) return;
+        setSidePanels({
+          rateChanges: res.data.rateChanges ?? [],
+          scheduleChanges: res.data.scheduleChanges ?? [],
+          permissionGates: (res.data.permissionGates ?? []).map((g) => {
+            const s = (g.status ?? "").toUpperCase();
+            const variant =
+              s === "ACTIVE"
+                ? ("success" as const)
+                : s === "NEEDS_REVIEW" || s === "PENDING"
+                  ? ("warning" as const)
+                  : s === "INACTIVE" || s === "ARCHIVED"
+                    ? ("error" as const)
+                    : ("offline" as const);
+            return {
+              id: g.id,
+              customer: g.customer,
+              status: {
+                label: s.replaceAll("_", " ") || "ACTIVE",
+                variant,
+              },
+            };
+          }),
+        });
+      } catch {
+        if (!cancelled) {
+          setSidePanels({
+            rateChanges: [],
+            scheduleChanges: [],
+            permissionGates: [],
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reload]);
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, pageCount);
@@ -500,9 +555,13 @@ export function PricingRulesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (typeof window !== "undefined" && !window.confirm("Delete this pricing rule?")) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Delete pricing rule",
+      description: "Delete this pricing rule? This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.deletePricingRule(id);
       toastSuccess("Pricing rule deleted");
@@ -523,12 +582,13 @@ export function PricingRulesPage() {
   }
 
   async function handleBulkDelete() {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(`Delete ${selectedIds.length} pricing rule(s)?`)
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Delete pricing rules",
+      description: `Delete ${selectedIds.length} pricing rule(s)? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.bulkDeletePricingRules(selectedIds);
       toastSuccess("Pricing rules deleted");
@@ -638,7 +698,13 @@ export function PricingRulesPage() {
   const bulkOpen = selectedIds.length > 0;
 
   return (
-    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
+    <CrmListLoadGate
+      loading={loading}
+      hasData={!initialLoading}
+      error={error}
+      onRetry={reload}
+      kpiCount={4}
+    >
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
@@ -771,7 +837,21 @@ export function PricingRulesPage() {
         columns={columns}
         rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage="No pricing rules found"
+        emptyMessage={
+          <CrmListEmptyState
+            query={query}
+            filtersActive={Boolean(filtersApplied)}
+            emptyDescription="Create your first pricing rule to get started."
+            createLabel="+ New Pricing Rule"
+            createHref="/crm/pricing-rules/new"
+            onClearFilters={() => {
+              setFiltersApplied(false);
+              setDraftFilters(DEFAULT_PRICING_FILTERS);
+              setAppliedFilters(DEFAULT_PRICING_FILTERS);
+            }}
+            onClearSearch={() => setQuery("")}
+          />
+        }
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -792,11 +872,18 @@ export function PricingRulesPage() {
             <DashboardPanelTitle
               icon="lightning"
               title="Rate Change History"
-              trailing={countTrailing("0 Rate Changes")}
+              trailing={countTrailing(
+                `${sidePanels.rateChanges.length} Rate Change${sidePanels.rateChanges.length === 1 ? "" : "s"}`,
+              )}
             />
           </div>
           <div className="pb-2">
-            {([] as { id: string; label: string; from: string; to: string }[]).map((item) => (
+            {sidePanels.rateChanges.length === 0 ? (
+              <p className="px-4 py-3 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] sm:px-5">
+                No rate changes yet
+              </p>
+            ) : (
+              sidePanels.rateChanges.map((item) => (
               <div
                 key={item.id}
                 className="flex items-center gap-3 px-4 py-2.5 sm:px-5"
@@ -810,7 +897,8 @@ export function PricingRulesPage() {
                   <span className="font-[510] text-[#FDFDFF]">{item.to}</span>
                 </span>
               </div>
-            ))}
+              ))
+            )}
           </div>
         </DashboardPanel>
 
@@ -819,11 +907,18 @@ export function PricingRulesPage() {
             <DashboardPanelTitle
               icon="lightning"
               title="Schedule Changes"
-              trailing={countTrailing("0 Changes")}
+              trailing={countTrailing(
+                `${sidePanels.scheduleChanges.length} Change${sidePanels.scheduleChanges.length === 1 ? "" : "s"}`,
+              )}
             />
           </div>
           <div className="pb-2">
-            {([] as { id: string; customer: string; effective: string }[]).map((item) => (
+            {sidePanels.scheduleChanges.length === 0 ? (
+              <p className="px-4 py-3 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] sm:px-5">
+                No scheduled changes
+              </p>
+            ) : (
+              sidePanels.scheduleChanges.map((item) => (
               <div
                 key={item.id}
                 className="flex items-center gap-3 px-4 py-2.5 sm:px-5"
@@ -835,7 +930,8 @@ export function PricingRulesPage() {
                   Effective {item.effective}
                 </span>
               </div>
-            ))}
+              ))
+            )}
           </div>
         </DashboardPanel>
       </div>
@@ -845,11 +941,18 @@ export function PricingRulesPage() {
           <DashboardPanelTitle
             icon="lightning"
             title="Permission Gate"
-            trailing={countTrailing("0 Permission Gates")}
+            trailing={countTrailing(
+              `${sidePanels.permissionGates.length} Permission Gate${sidePanels.permissionGates.length === 1 ? "" : "s"}`,
+            )}
           />
         </div>
         <div className="pb-2">
-          {([] as { id: string; customer: string; status: { label: string; variant: "success" | "warning" | "offline" } }[]).map((item) => (
+          {sidePanels.permissionGates.length === 0 ? (
+            <p className="px-4 py-3 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] sm:px-5">
+              No hard permission gates
+            </p>
+          ) : (
+            sidePanels.permissionGates.map((item) => (
             <div
               key={item.id}
               className="flex items-center gap-3 px-4 py-2.5 sm:px-5"
@@ -865,7 +968,8 @@ export function PricingRulesPage() {
                 {item.status.label}
               </DashboardBadge>
             </div>
-          ))}
+            ))
+          )}
         </div>
       </DashboardPanel>
 
@@ -928,6 +1032,7 @@ export function PricingRulesPage() {
         events={historyEvents}
         onClose={() => setHistoryOpen(false)}
       />
+      {dialogs}
     </div>
     </CrmListLoadGate>
   );

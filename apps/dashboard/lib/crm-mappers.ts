@@ -84,18 +84,49 @@ function money(value?: string | number | null) {
 }
 
 export function mapCustomerRow(c: CrmCustomer): CustomerRow {
+  const primaryContact =
+    c.contacts?.find((x) => x.isPrimary)?.fullName ??
+    c.contacts?.[0]?.fullName ??
+    "—";
+  const locationWell = c.locations?.[0]?.name ?? "—";
+  const requirements = (c.requirements ?? []).map((r) => ({
+    label: r.name.toUpperCase(),
+    variant:
+      r.enforcementLevel === "HARD_GATE"
+        ? ("error" as const)
+        : statusBadge(r.status).variant,
+  }));
+  const routeGps = (c.routeRules ?? []).map((r) => {
+    if (r.gpsRequired) {
+      return {
+        label: (r.routeLabel?.trim() || "GPS REQUIRED").toUpperCase(),
+        variant: "success" as const,
+      };
+    }
+    if (r.geofenceRadius) {
+      return {
+        label: `GEOFENCE ${r.geofenceRadius}`.toUpperCase(),
+        variant: "offline" as const,
+      };
+    }
+    return {
+      label: (r.routeLabel?.trim() || statusBadge(r.status ?? "ACTIVE").label).toUpperCase(),
+      variant: statusBadge(r.status ?? "ACTIVE").variant,
+    };
+  });
+
   return {
     id: c.id,
     name: c.name,
     code: c.code,
     accountOwner: userName(c.assignedRep),
     status: statusBadge(c.status),
-    primaryContact: "—",
+    primaryContact,
     openJobs: c.openJobs ?? 0,
-    locations: c._count?.locations ?? 0,
-    locationWell: "—",
-    requirements: [],
-    routeGps: [],
+    locations: c._count?.locations ?? c.locations?.length ?? 0,
+    locationWell,
+    requirements,
+    routeGps,
     createdAt: fmtDate(c.createdAt),
     lastActivity: fmtDate(c.lastActivityAt),
     msaExpiry: fmtDate(c.msaExpiry),
@@ -123,13 +154,41 @@ export function mapContactRow(c: CrmContact): ContactRow {
 }
 
 export function mapLocationCard(l: CrmLocation): LocationCard {
+  const hasCoords = l.latitude != null && l.longitude != null;
+  const gpsSet =
+    Boolean(l.gpsRequired) ||
+    (hasCoords && !/missing|not set|unset/i.test(l.gpsStatus ?? ""));
+  const gpsMissing = !gpsSet;
+  const hasGeo = Boolean(l.geofenceRadius?.trim());
+  const hasApi = Boolean(l.apiNumber?.trim());
+  const score = [gpsSet, hasGeo, hasApi].filter(Boolean).length;
+  const reqMet =
+    score === 3 ? "MET" : score === 0 ? "MISSING" : ("PARTIAL" as const);
+  const lastWo = l.workOrders?.[0];
+  const lastVisited =
+    lastWo?.serviceDate ?? lastWo?.createdAt ?? l.updatedAt ?? l.createdAt;
+  const route = l.routeRules?.[0];
+
   return {
     id: l.id,
     name: l.name,
     customer: l.customer?.name ?? "—",
+    customerId: l.customerId ?? l.customer?.id,
     city: l.city ?? ([l.county, l.state].filter(Boolean).join(", ") || "—"),
     openJobs: l.openJobs ?? 0,
-    gpsStatus: l.gpsRequired ? "GPS Set" : l.gpsStatus ?? "Not set",
+    gpsStatus: gpsMissing ? "GPS Missing" : "GPS Set",
+    gpsSet: !gpsMissing,
+    geofenceRadius: l.geofenceRadius ?? undefined,
+    latitude: l.latitude,
+    longitude: l.longitude,
+    lastVisited,
+    reqMet,
+    apiNumber: l.apiNumber,
+    siteContact: l.siteContact,
+    notes: l.accessNotes,
+    county: l.county,
+    state: l.state,
+    routeLabel: route?.routeLabel ?? route?.code ?? null,
     status: statusBadge(l.status),
   };
 }

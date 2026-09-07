@@ -15,6 +15,7 @@ import {
   DashboardToolbarButton,
   DashboardToolbarIcons,
   type DashboardSortDirection,
+  useScrollLock,
 } from "@dark-horse-safety/ui";
 import {
   CrmLocationsListPanel,
@@ -23,6 +24,8 @@ import {
   type CrmLocationCard,
   type CrmMapPin,
 } from "./crm-map-split-view";
+import { CustomerSitesTable } from "./location-sites-table";
+import { LocationWellDetailsDrawer } from "./location-well-details-drawer";
 import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapLocationCard } from "@/lib/crm-mappers";
 import { kpiCellsFromApi, latLngToMapPin } from "@/lib/crm-ui";
@@ -31,6 +34,8 @@ import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
+import { CrmListEmptyState } from "@/features/crm/crm-states";
+import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
 import { LOCATIONS_KPI_SHELL, LOCATIONS_SORT_OPTIONS } from "./crm-constants";
 
 type LocationFilters = {
@@ -73,35 +78,6 @@ function FilterCheckMarkIcon({ className }: { className?: string }) {
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ClipboardIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-      className={className}
-    >
-      <path
-        d="M9 5h6l1 2h3v13a1 1 0 01-1 1H6a1 1 0 01-1-1V7h3l1-2z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
-      <rect
-        x="9"
-        y="3"
-        width="6"
-        height="3.5"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.75"
       />
     </svg>
   );
@@ -253,6 +229,7 @@ function LocationsFiltersDrawer({
   countyOptions: { value: string; label: string }[];
   statusOptions: { value: string; label: string }[];
 }) {
+  useScrollLock(open);
   function patch(p: Partial<LocationFilters>) {
     onChange({ ...value, ...p });
   }
@@ -294,7 +271,7 @@ function LocationsFiltersDrawer({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5 scrollbar-hidden">
           <FilterSelectRow
             label="Customer"
             value={value.customer}
@@ -369,10 +346,13 @@ function LocationsFiltersDrawer({
 }
 
 export function LocationsPage() {
+  const { askConfirm, dialogs } = useCrmDialogs();
   const [query, setQuery] = React.useState("");
   const [viewMode, setViewMode] = React.useState<"list" | "map" | "split">(
-    "list",
+    "split",
   );
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [detailsId, setDetailsId] = React.useState<string | null>(null);
   const [sortField, setSortField] = React.useState("name");
   const [sortDirection, setSortDirection] =
     React.useState<DashboardSortDirection>("asc");
@@ -408,7 +388,7 @@ export function LocationsPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters, filtersApplied]);
 
-  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, error, reload } = useCrmList({
     list: (p) => crmApi.listLocations(p),
     mapRow: mapLocationCard,
     kpi: () => crmApi.locationsKpi(),
@@ -481,13 +461,28 @@ export function LocationsPage() {
               pin.active ?? pin.status !== "INACTIVE",
             );
             if (!mapped) return [];
+            const gpsMissing =
+              pin.latitude == null ||
+              pin.longitude == null ||
+              pin.gpsRequired === false;
+            const status =
+              pin.status === "INACTIVE"
+                ? ("inactive" as const)
+                : gpsMissing
+                  ? ("gps-missing" as const)
+                  : ("active" as const);
             return [
               {
                 id: mapped.id,
                 label: mapped.label,
                 x: pin.x ?? mapped.x,
                 y: pin.y ?? mapped.y,
-                highlighted: mapped.active,
+                status,
+                geofenced: Boolean(pin.geofenceRadius),
+                customer: pin.customer?.name ?? "",
+                openJobs: pin.openJobs ?? 0,
+                gpsSet: !gpsMissing,
+                geofenceRadius: pin.geofenceRadius ?? null,
               },
             ];
           }),
@@ -501,6 +496,36 @@ export function LocationsPage() {
       cancelled = true;
     };
   }, []);
+
+  const displayPins = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const enriched =
+      rows.length === 0
+        ? mapPins
+        : mapPins.map((pin) => {
+            const row = rows.find((r) => r.id === pin.id);
+            if (!row) return pin;
+            const gpsMissing = !row.gpsSet;
+            const status =
+              row.status.label.toUpperCase() === "INACTIVE"
+                ? ("inactive" as const)
+                : gpsMissing
+                  ? ("gps-missing" as const)
+                  : ("active" as const);
+            return {
+              ...pin,
+              status,
+              geofenced: Boolean(row.geofenceRadius) || pin.geofenced,
+              label: row.name || pin.label,
+              customer: row.customer,
+              openJobs: row.openJobs,
+              gpsSet: row.gpsSet,
+              geofenceRadius: row.geofenceRadius ?? null,
+            };
+          });
+    if (!q) return enriched;
+    return enriched.filter((p) => p.label.toLowerCase().includes(q));
+  }, [mapPins, rows, query]);
 
   async function handleExport() {
     try {
@@ -553,12 +578,13 @@ export function LocationsPage() {
   }
 
   async function handleArchive(id: string) {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("Archive this location?")
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Archive location",
+      description: "Archive this location? It will be removed from active lists.",
+      confirmLabel: "Archive",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.archiveLocation(id);
       toastSuccess("Location archived");
@@ -569,20 +595,49 @@ export function LocationsPage() {
   }
 
   void total;
-  const listCards: CrmLocationCard[] = rows;
+  const listCards: CrmLocationCard[] = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    customer: r.customer,
+    customerId: r.customerId,
+    city: r.city,
+    openJobs: r.openJobs,
+    gpsStatus: r.gpsStatus,
+    geofenceRadius: r.geofenceRadius,
+    status: r.status,
+  }));
   const showMap = viewMode === "map" || viewMode === "split";
   const showList = viewMode === "list" || viewMode === "split";
 
+  function openDetails(id: string) {
+    setSelectedId(id);
+    setDetailsId(id);
+  }
+
+  function viewOnMap(id: string) {
+    setDetailsId(null);
+    setSelectedId(id);
+    setViewMode("map");
+  }
+
   return (
-    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
+    <CrmListLoadGate
+      loading={loading}
+      hasData={!initialLoading}
+      error={error}
+      onRetry={reload}
+      kpiCount={4}
+    >
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
-      <DashboardStatGrid>
-        <DashboardStatRow columns={4}>
-          {kpiCells.map((cell) => (
-            <DashboardStatCell key={cell.title} {...cell} />
-          ))}
-        </DashboardStatRow>
-      </DashboardStatGrid>
+      {viewMode !== "map" ? (
+        <DashboardStatGrid>
+          <DashboardStatRow columns={4}>
+            {kpiCells.map((cell) => (
+              <DashboardStatCell key={cell.title} {...cell} />
+            ))}
+          </DashboardStatRow>
+        </DashboardStatGrid>
+      ) : null}
 
       <div className="space-y-3">
         <CrmViewModeToggle value={viewMode} onChange={setViewMode} />
@@ -619,12 +674,6 @@ export function LocationsPage() {
                 onDirectionChange={setSortDirection}
                 showDirectionInTrigger={false}
               />
-              <DashboardToolbarButton
-                leftIcon={<ClipboardIcon className="shrink-0" />}
-                onClick={() => setSavedViewsOpen(true)}
-              >
-                Payroll Review
-              </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
                   { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
@@ -638,6 +687,11 @@ export function LocationsPage() {
                     id: "pdf",
                     label: "Export as PDF",
                     onSelect: () => void handleExportPdf(),
+                  },
+                  {
+                    id: "views",
+                    label: "Saved views…",
+                    onSelect: () => setSavedViewsOpen(true),
                   },
                 ]}
               />
@@ -657,33 +711,84 @@ export function LocationsPage() {
           <CrmMapPanel
             title="Map View"
             subtitle="Well Locations Across the Permian Basin"
-            pins={mapPins}
-            pinMode="active"
-            legend={[
-              { label: "Active", variant: "primary" },
-              { label: "Inactive", variant: "muted" },
-            ]}
+            pins={displayPins}
+            selectedId={selectedId}
+            onPinClick={(id) => setSelectedId(id || null)}
+            onOpenSite={(id) => openDetails(id)}
+            size={viewMode === "map" ? "full" : "default"}
+            ringActive
           />
         ) : null}
         {showList ? (
-          <CrmLocationsListPanel
-            cards={listCards}
-            countLabel={`Locations · ${listCards.length} Wells`}
-            renderCardActions={(card) => (
-              <DashboardRowActionMenu
-                items={[
-                  {
-                    id: "archive",
-                    label: "Archive / Deactivate",
-                    destructive: true,
-                    onSelect: () => void handleArchive(card.id),
-                  },
-                ]}
-              />
-            )}
-          />
+          (viewMode === "list" ? rows : listCards).length === 0 ? (
+            <CrmListEmptyState
+              query={query}
+              filtersActive={filtersApplied}
+              emptyDescription="Create your first location to get started."
+              createLabel="+ New Location"
+              createHref="/crm/locations/new"
+              onClearFilters={() => {
+                setDraftFilters(DEFAULT_LOCATION_FILTERS);
+                setAppliedFilters(DEFAULT_LOCATION_FILTERS);
+                setFiltersApplied(false);
+              }}
+              onClearSearch={() => setQuery("")}
+            />
+          ) : viewMode === "list" ? (
+            <CustomerSitesTable
+              rows={rows.filter((r) => {
+                const q = query.trim().toLowerCase();
+                if (!q) return true;
+                return (
+                  r.name.toLowerCase().includes(q) ||
+                  r.customer.toLowerCase().includes(q) ||
+                  r.city.toLowerCase().includes(q)
+                );
+              })}
+              onRowClick={openDetails}
+            />
+          ) : (
+            <CrmLocationsListPanel
+              cards={listCards.filter((c) => {
+                const q = query.trim().toLowerCase();
+                if (!q) return true;
+                return (
+                  c.name.toLowerCase().includes(q) ||
+                  c.customer.toLowerCase().includes(q) ||
+                  c.city.toLowerCase().includes(q)
+                );
+              })}
+              countLabel={`Locations · ${listCards.length} Wells`}
+              selectedId={selectedId}
+              onCardClick={(id) => openDetails(id)}
+              renderCardActions={(card) => (
+                <DashboardRowActionMenu
+                  items={[
+                    {
+                      id: "details",
+                      label: "View Details",
+                      onSelect: () => openDetails(card.id),
+                    },
+                    {
+                      id: "archive",
+                      label: "Archive / Deactivate",
+                      destructive: true,
+                      onSelect: () => void handleArchive(card.id),
+                    },
+                  ]}
+                />
+              )}
+            />
+          )
         ) : null}
       </div>
+
+      <LocationWellDetailsDrawer
+        open={Boolean(detailsId)}
+        locationId={detailsId}
+        onClose={() => setDetailsId(null)}
+        onViewOnMap={viewOnMap}
+      />
 
       <LocationsFiltersDrawer
         open={filtersOpen}
@@ -737,6 +842,7 @@ export function LocationsPage() {
           void createView(name, currentViewPayload());
         }}
       />
+      {dialogs}
     </div>
     </CrmListLoadGate>
   );

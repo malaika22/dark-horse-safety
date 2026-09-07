@@ -17,7 +17,12 @@ import { crmApi, type CrmCustomerDetail } from "@/lib/crm-api";
 import { logContactChannel } from "@/lib/crm-activity-log";
 import { formatKpiValue } from "@/lib/crm-ui";
 import { toastApiError, toastSuccess } from "@/lib/toast";
-import { BrandLoader } from "@/features/loading/brand-loader";
+import {
+  CrmDetailStateGate,
+  CrmEmptyTabState,
+} from "@/features/crm/crm-states";
+import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
+import { CustomerSiteLocationPanel } from "@/features/crm/customer-site-location";
 import type { CustomerDetail, KpiCell } from "./crm-types";
 
 const EMPTY_DETAIL: CustomerDetail = {
@@ -351,15 +356,6 @@ function ToggleSwitch({ checked }: { checked: boolean }) {
   );
 }
 
-function MetricBox({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3 py-2.5">
-      <p className="mb-1 font-sans text-[10px] uppercase tracking-[-0.01em] text-[#959597]">{label}</p>
-      <p className="truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]" title={value}>{value}</p>
-    </div>
-  );
-}
-
 /* ═══════════════════════════════════════════════════════════════════
    ROW DOT MENU WRAPPER
 ═══════════════════════════════════════════════════════════════════ */
@@ -383,16 +379,20 @@ function RowMenu({
 
 export function CustomerDetailPage({ customerId }: { customerId: string }) {
   const router = useRouter();
+  const { askConfirm, askPrompt, dialogs } = useCrmDialogs();
   const [detail, setDetail] = React.useState<CustomerDetail>(EMPTY_DETAIL);
   const [apiDetail, setApiDetail] = React.useState<CrmCustomerDetail | null>(null);
   const [woPage, setWoPage] = React.useState(1);
   const [woPageSize, setWoPageSize] = React.useState(25);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [reloadKey, setReloadKey] = React.useState(0);
 
   React.useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
+      setLoadError(null);
       try {
         const res = await crmApi.getCustomer(customerId);
         if (cancelled) return;
@@ -435,6 +435,10 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
         });
       } catch (err) {
         toastApiError(err);
+        if (!cancelled) {
+          setApiDetail(null);
+          setLoadError(err instanceof Error ? err.message : "Couldn't load customer");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -443,7 +447,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [customerId]);
+  }, [customerId, reloadKey]);
 
   async function reloadCustomer() {
     try {
@@ -477,12 +481,13 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
   }
 
   async function handleArchiveCustomer() {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("Archive this customer?")
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Archive customer",
+      description: "Archive this customer? They will be removed from active lists.",
+      confirmLabel: "Archive",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.archiveCustomer(customerId);
       toastSuccess("Customer archived");
@@ -513,12 +518,13 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
   }
 
   async function handleRemoveContact(contactId: string, name: string) {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(`Remove ${name} from this customer?`)
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Remove contact",
+      description: `Remove ${name} from this customer?`,
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.archiveContact(contactId);
       toastSuccess("Contact removed");
@@ -529,12 +535,13 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
   }
 
   async function handleDeactivateLocation(locationId: string) {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("Deactivate this location?")
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Deactivate location",
+      description: "Deactivate this location? It will be removed from active lists.",
+      confirmLabel: "Deactivate",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.archiveLocation(locationId);
       toastSuccess("Location deactivated");
@@ -545,12 +552,13 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
   }
 
   async function handleDeletePricingRule(ruleId: string) {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("Delete this pricing rule?")
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Delete pricing rule",
+      description: "Delete this pricing rule? This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.deletePricingRule(ruleId);
       toastSuccess("Pricing rule deleted");
@@ -621,6 +629,195 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
     detail: [loc.county, loc.state].filter(Boolean).join(", ") || "—",
     status: loc.status,
   }));
+  const siteLocation =
+    (apiDetail?.locations ?? []).find(
+      (loc) => loc.latitude != null && loc.longitude != null,
+    ) ?? apiDetail?.locations?.[0] ?? null;
+
+  async function persistSiteCoords(lat: number, lng: number) {
+    try {
+      if (!siteLocation?.id) {
+        const created = await crmApi.createLocation({
+          customerId,
+          name: `${apiDetail?.name ?? "Customer"} Site`,
+          latitude: lat,
+          longitude: lng,
+          gpsRequired: true,
+          geofenceRadius: apiDetail?.clockInRadius ?? undefined,
+          status: "ACTIVE",
+        });
+        setApiDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                locations: [...(prev.locations ?? []), created.data],
+              }
+            : prev,
+        );
+        toastSuccess("Site location created");
+        return;
+      }
+      await crmApi.updateLocation(siteLocation.id, {
+        latitude: lat,
+        longitude: lng,
+      });
+      setApiDetail((prev) => {
+        if (!prev?.locations) return prev;
+        return {
+          ...prev,
+          locations: prev.locations.map((loc) =>
+            loc.id === siteLocation.id
+              ? { ...loc, latitude: lat, longitude: lng }
+              : loc,
+          ),
+        };
+      });
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function persistSitePlace(place: {
+    county?: string | null;
+    state?: string | null;
+  }) {
+    try {
+      if (!siteLocation?.id) {
+        if (place.county == null && place.state == null) return;
+        const created = await crmApi.createLocation({
+          customerId,
+          name: `${apiDetail?.name ?? "Customer"} Site`,
+          county: place.county ?? undefined,
+          state: place.state ?? undefined,
+          gpsRequired: true,
+          geofenceRadius: apiDetail?.clockInRadius ?? undefined,
+          status: "ACTIVE",
+        });
+        setApiDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                locations: [...(prev.locations ?? []), created.data],
+              }
+            : prev,
+        );
+        return;
+      }
+      await crmApi.updateLocation(siteLocation.id, {
+        ...(place.county != null ? { county: place.county } : {}),
+        ...(place.state != null ? { state: place.state } : {}),
+      });
+      setApiDetail((prev) => {
+        if (!prev?.locations) return prev;
+        return {
+          ...prev,
+          locations: prev.locations.map((loc) =>
+            loc.id === siteLocation.id
+              ? {
+                  ...loc,
+                  county: place.county ?? loc.county,
+                  state: place.state ?? loc.state,
+                }
+              : loc,
+          ),
+        };
+      });
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function persistSiteRadius(miles: number, label?: string) {
+    const nextLabel =
+      label ?? `${miles % 1 === 0 ? miles.toFixed(0) : miles.toFixed(1)} MI`;
+    try {
+      await crmApi.updateCustomer(customerId, { clockInRadius: nextLabel });
+      if (siteLocation?.id) {
+        await crmApi.updateLocation(siteLocation.id, {
+          geofenceRadius: nextLabel,
+        });
+      } else {
+        const created = await crmApi.createLocation({
+          customerId,
+          name: `${apiDetail?.name ?? "Customer"} Site`,
+          geofenceRadius: nextLabel,
+          gpsRequired: true,
+          status: "ACTIVE",
+        });
+        setApiDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                clockInRadius: nextLabel,
+                locations: [...(prev.locations ?? []), created.data],
+              }
+            : prev,
+        );
+        setDetail((prev) => ({
+          ...prev,
+          maxClockInRadius: true,
+          radiusMiles: nextLabel,
+        }));
+        return;
+      }
+      setApiDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              clockInRadius: nextLabel,
+              locations: prev.locations?.map((loc) =>
+                siteLocation && loc.id === siteLocation.id
+                  ? { ...loc, geofenceRadius: nextLabel }
+                  : loc,
+              ),
+            }
+          : prev,
+      );
+      setDetail((prev) => ({
+        ...prev,
+        maxClockInRadius: true,
+        radiusMiles: nextLabel,
+      }));
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function persistOpsMetrics(patch: {
+    clockInRadius?: string;
+    minBillableBlock?: string;
+    autoFlagNoShow?: string;
+  }) {
+    try {
+      await crmApi.updateCustomer(customerId, patch);
+      setApiDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              ...(patch.clockInRadius !== undefined
+                ? { clockInRadius: patch.clockInRadius }
+                : {}),
+              ...(patch.minBillableBlock !== undefined
+                ? { minBillableBlock: patch.minBillableBlock }
+                : {}),
+              ...(patch.autoFlagNoShow !== undefined
+                ? { autoFlagNoShow: patch.autoFlagNoShow }
+                : {}),
+            }
+          : prev,
+      );
+      if (patch.clockInRadius) {
+        setDetail((prev) => ({
+          ...prev,
+          maxClockInRadius: true,
+          radiusMiles: patch.clockInRadius!,
+        }));
+      }
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
   const pricingRows = (apiDetail?.pricingRules ?? []).map((rule) => ({
     id: rule.id,
     title: rule.serviceItem,
@@ -706,11 +903,18 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
     },
   ];
 
-  if (loading) {
+  if (loading || loadError || !apiDetail) {
     return (
-      <div className="flex min-h-[320px] items-center justify-center bg-shell p-6">
-        <BrandLoader label="Loading customer" />
-      </div>
+      <CrmDetailStateGate
+        loading={loading}
+        error={loadError}
+        missing={!loading && !apiDetail && !loadError}
+        missingTitle="Customer Not Found"
+        missingDescription="This customer could not be found or is no longer available."
+        onRetry={() => setReloadKey((k) => k + 1)}
+      >
+        {null}
+      </CrmDetailStateGate>
     );
   }
 
@@ -797,15 +1001,19 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
       </DashboardStatGrid>
 
       {/* ── Company Details ── */}
-      <SectionPanel icon={<LightningIcon />} title="Company Details" action={
-        <button
-          type="button"
-          onClick={() => router.push(`/crm/accounts/${customerId || c.id}/edit`)}
-          className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] transition-opacity hover:opacity-70"
-        >
-          Edit Details
-        </button>
-      }>
+      <SectionPanel
+        icon={<LightningIcon />}
+        title="Company Details"
+        action={
+          <button
+            type="button"
+            onClick={() => router.push(`/crm/accounts/${customerId || c.id}/edit`)}
+            className="inline-flex h-8 items-center rounded-full border border-[#2D2D30] bg-[#1A1A1A] px-3.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-white/5"
+          >
+            Edit Details
+          </button>
+        }
+      >
         <div className="space-y-4 px-4 py-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div><FieldLabel>Company Name</FieldLabel><DisplayInput value={c.name} /></div>
@@ -831,33 +1039,21 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
               </span>
             </div>
           </div>
-          <div>
-            <FieldLabel>Metrics</FieldLabel>
-            <div className="mt-1 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <MetricBox
-                label="Max Clock-In Radius"
-                value={
-                  apiDetail?.clockInRadius
-                    ? `${apiDetail.clockInRadius}${/mi|ft|m/i.test(apiDetail.clockInRadius) ? "" : " MI"}`
-                    : "—"
-                }
-              />
-              <MetricBox
-                label="Payment Terms"
-                value={apiDetail?.paymentTerms ?? "—"}
-              />
-              <div className="rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3 py-2.5">
-                <p className="mb-1 font-sans text-[10px] uppercase tracking-[-0.01em] text-[#959597]">
-                  Requires PO
-                </p>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                    {apiDetail?.requiresPo ? "Yes" : "No"}
-                  </p>
-                  <ChevronDownIcon className="shrink-0 text-[#959597]" />
-                </div>
-              </div>
-            </div>
+
+          <div className="border-t border-divider pt-4">
+            <CustomerSiteLocationPanel
+              latitude={siteLocation?.latitude}
+              longitude={siteLocation?.longitude}
+              radiusRaw={apiDetail?.clockInRadius ?? siteLocation?.geofenceRadius}
+              county={siteLocation?.county}
+              state={siteLocation?.state}
+              minBillableBlock={apiDetail?.minBillableBlock}
+              autoFlagNoShow={apiDetail?.autoFlagNoShow}
+              onCoordsChange={(coords) => persistSiteCoords(coords.lat, coords.lng)}
+              onRadiusChange={(miles, label) => persistSiteRadius(miles, label)}
+              onPlaceChange={(place) => persistSitePlace(place)}
+              onMetricsChange={(patch) => persistOpsMetrics(patch)}
+            />
           </div>
         </div>
       </SectionPanel>
@@ -867,7 +1063,14 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
         <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-2">
 
         <SectionPanel icon={<LightningIcon />} title="Documents" meta={`${docRows.length} Documents`}>
-          {docRows.map((doc) => (
+          {docRows.length === 0 ? (
+            <CrmEmptyTabState
+              description="This tab has no documents for this customer."
+              addLabel="Add Document"
+              onAdd={() => router.push(`/crm/accounts/${customerId || c.id}/edit`)}
+            />
+          ) : (
+            docRows.map((doc) => (
             <DetailRow
               key={doc.id}
               title={doc.title}
@@ -895,12 +1098,15 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                     id: "replace",
                     label: "Replace URL",
                     onSelect: () => {
-                      const next = window.prompt(
-                        "New document URL",
-                        doc.url ?? "",
-                      );
-                      if (next == null) return;
                       void (async () => {
+                        const next = await askPrompt({
+                          title: "Replace document URL",
+                          label: "Document URL",
+                          defaultValue: doc.url ?? "",
+                          placeholder: "https://…",
+                          confirmLabel: "Save",
+                        });
+                        if (next == null) return;
                         try {
                           await crmApi.updateCustomerDocument(customerId, doc.id, {
                             url: next.trim() || null,
@@ -917,12 +1123,15 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                     id: "expiry",
                     label: "Set Expiry Reminder",
                     onSelect: () => {
-                      const next = window.prompt(
-                        "Expiry date (YYYY-MM-DD)",
-                        doc.expiresAt?.slice(0, 10) ?? "",
-                      );
-                      if (next == null) return;
                       void (async () => {
+                        const next = await askPrompt({
+                          title: "Set expiry reminder",
+                          label: "Expiry date (YYYY-MM-DD)",
+                          defaultValue: doc.expiresAt?.slice(0, 10) ?? "",
+                          placeholder: "YYYY-MM-DD",
+                          confirmLabel: "Save",
+                        });
+                        if (next == null) return;
                         try {
                           await crmApi.updateCustomerDocument(customerId, doc.id, {
                             expiresAt: next.trim()
@@ -942,13 +1151,14 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                     label: "Delete",
                     destructive: true,
                     onSelect: () => {
-                      if (
-                        typeof window !== "undefined" &&
-                        !window.confirm("Delete this document?")
-                      ) {
-                        return;
-                      }
                       void (async () => {
+                        const ok = await askConfirm({
+                          title: "Delete document",
+                          description: "Delete this document? This cannot be undone.",
+                          confirmLabel: "Delete",
+                          destructive: true,
+                        });
+                        if (!ok) return;
                         try {
                           await crmApi.deleteCustomerDocument(
                             customerId,
@@ -965,11 +1175,23 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                 ]} />
               }
             />
-          ))}
+          ))
+          )}
         </SectionPanel>
 
         <SectionPanel icon={<LightningIcon />} title="Contacts" meta={`${contactRows.length} Contacts`}>
-          {contactRows.map((contact) => (
+          {contactRows.length === 0 ? (
+            <CrmEmptyTabState
+              description="This tab has no contacts for this customer."
+              addLabel="Add Contact"
+              onAdd={() =>
+                router.push(
+                  `/crm/contacts/new?customerId=${encodeURIComponent(customerId || c.id)}`,
+                )
+              }
+            />
+          ) : (
+            contactRows.map((contact) => (
             <DetailRow
               key={contact.id}
               title={
@@ -1019,11 +1241,23 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                 ]} />
               }
             />
-          ))}
+          ))
+          )}
         </SectionPanel>
 
         <SectionPanel icon={<LightningIcon />} title="Locations / Wells" meta={`${locationRows.length} Locations`}>
-          {locationRows.map((loc) => (
+          {locationRows.length === 0 ? (
+            <CrmEmptyTabState
+              description="This tab has no locations for this customer."
+              addLabel="Add Location"
+              onAdd={() =>
+                router.push(
+                  `/crm/locations/new?customerId=${encodeURIComponent(customerId || c.id)}`,
+                )
+              }
+            />
+          ) : (
+            locationRows.map((loc) => (
             <DetailRow
               key={loc.id}
               title={
@@ -1048,7 +1282,8 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                 ]} />
               }
             />
-          ))}
+          ))
+          )}
         </SectionPanel>
 
         <SectionPanel
@@ -1056,27 +1291,39 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
           title="Pricing"
           meta={`${pricingRows.length} Active Rules`}
         >
-          {pricingRows.map((rule) => (
-            <DetailRow
-              key={rule.id}
-              title={rule.title}
-              trailing={rule.trailing}
-              trailingTone="strong"
-              menu={
-                <RowMenu items={[
-                  { id: "edit", label: "Edit Rate", onSelect: () => router.push(`/crm/pricing-rules/${rule.id}/edit`) },
-                  { id: "duplicate", label: "Duplicate Rule", onSelect: () => router.push("/crm/pricing-rules/new") },
-                  { id: "history", label: "View History", onSelect: () => router.push("/crm/pricing-rules") },
-                  {
-                    id: "delete",
-                    label: "Delete Rule",
-                    destructive: true,
-                    onSelect: () => void handleDeletePricingRule(rule.id),
-                  },
-                ]} />
+          {pricingRows.length === 0 ? (
+            <CrmEmptyTabState
+              description="This tab has no pricing rules for this customer."
+              addLabel="Add Pricing Rule"
+              onAdd={() =>
+                router.push(
+                  `/crm/pricing-rules/new?customerId=${encodeURIComponent(customerId || c.id)}`,
+                )
               }
             />
-          ))}
+          ) : (
+            pricingRows.map((rule) => (
+              <DetailRow
+                key={rule.id}
+                title={rule.title}
+                trailing={rule.trailing}
+                trailingTone="strong"
+                menu={
+                  <RowMenu items={[
+                    { id: "edit", label: "Edit Rate", onSelect: () => router.push(`/crm/pricing-rules/${rule.id}/edit`) },
+                    { id: "duplicate", label: "Duplicate Rule", onSelect: () => router.push("/crm/pricing-rules/new") },
+                    { id: "history", label: "View History", onSelect: () => router.push("/crm/pricing-rules") },
+                    {
+                      id: "delete",
+                      label: "Delete Rule",
+                      destructive: true,
+                      onSelect: () => void handleDeletePricingRule(rule.id),
+                    },
+                  ]} />
+                }
+              />
+            ))
+          )}
         </SectionPanel>
 
         <SectionPanel
@@ -1084,9 +1331,21 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
           title="Required Forms"
           meta={`${formRows.length} Rules`}
         >
-          {formRows.map((form) => (
-            <DetailRow key={form.id} title={form.title} trailing={form.detail} />
-          ))}
+          {formRows.length === 0 ? (
+            <CrmEmptyTabState
+              description="This tab has no form rules for this customer."
+              addLabel="Add Form Rule"
+              onAdd={() =>
+                router.push(
+                  `/crm/form-rules/new?customerId=${encodeURIComponent(customerId || c.id)}`,
+                )
+              }
+            />
+          ) : (
+            formRows.map((form) => (
+              <DetailRow key={form.id} title={form.title} trailing={form.detail} />
+            ))
+          )}
         </SectionPanel>
 
         <SectionPanel
@@ -1094,9 +1353,21 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
           title="Route / GPS"
           meta={`${routeRows.length} Rules`}
         >
-          {routeRows.map((route) => (
-            <DetailRow key={route.id} title={route.name} trailing={route.detail} />
-          ))}
+          {routeRows.length === 0 ? (
+            <CrmEmptyTabState
+              description="This tab has no route / GPS rules for this customer."
+              addLabel="Add Route Rule"
+              onAdd={() =>
+                router.push(
+                  `/crm/route-rules/new?customerId=${encodeURIComponent(customerId || c.id)}`,
+                )
+              }
+            />
+          ) : (
+            routeRows.map((route) => (
+              <DetailRow key={route.id} title={route.name} trailing={route.detail} />
+            ))
+          )}
         </SectionPanel>
 
         </div>
@@ -1106,27 +1377,39 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
           title="Quotes"
           meta={`${ticketRows.length} Recent`}
         >
-          {ticketRows.map((t) => (
-            <DetailRow
-              key={t.id}
-              title={
-                <>
-                  {t.title}
-                  <span> · {t.subtitle}</span>
-                </>
-              }
-              trailing={
-                <span className="inline-flex items-center gap-3">
-                  <span className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                    {t.amount}
-                  </span>
-                  <DashboardBadge variant={t.status.variant} pill>
-                    {t.status.label}
-                  </DashboardBadge>
-                </span>
+          {ticketRows.length === 0 ? (
+            <CrmEmptyTabState
+              description="This tab has no quotes for this customer."
+              addLabel="Create Quote"
+              onAdd={() =>
+                router.push(
+                  `/crm/quotes/new?customer=${encodeURIComponent(c.name)}`,
+                )
               }
             />
-          ))}
+          ) : (
+            ticketRows.map((t) => (
+              <DetailRow
+                key={t.id}
+                title={
+                  <>
+                    {t.title}
+                    <span> · {t.subtitle}</span>
+                  </>
+                }
+                trailing={
+                  <span className="inline-flex items-center gap-3">
+                    <span className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                      {t.amount}
+                    </span>
+                    <DashboardBadge variant={t.status.variant} pill>
+                      {t.status.label}
+                    </DashboardBadge>
+                  </span>
+                }
+              />
+            ))
+          )}
         </SectionPanel>
       </div>
 
@@ -1135,6 +1418,14 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
         title="Activities"
         meta={`${woTotal} Recent`}
       >
+        {activityPageRows.length === 0 ? (
+          <CrmEmptyTabState
+            description="This tab has no sales activities for this customer."
+            addLabel="Log Activity"
+            onAdd={() => router.push("/crm/sales/new")}
+          />
+        ) : (
+        <>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] border-collapse">
             <thead>
@@ -1239,8 +1530,11 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
             onPageSizeChange={setWoPageSize}
           />
         </div>
+        </>
+        )}
       </SectionPanel>
 
+      {dialogs}
     </div>
   );
 }

@@ -138,7 +138,7 @@ export function CrmListPageShell<T>({
   columns: DashboardDataTableColumn<T>[];
   rows: T[];
   getRowId: (row: T) => string;
-  emptyMessage?: string;
+  emptyMessage?: React.ReactNode;
   searchFilter: (row: T, query: string) => boolean;
   defaultChips?: DashboardFilterChip[];
 }) {

@@ -35,6 +35,16 @@ export class SalesActivityListQueryDto extends ListQueryDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({ description: 'ISO date YYYY-MM-DD' })
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @ApiPropertyOptional({ description: 'ISO date YYYY-MM-DD' })
+  @IsOptional()
+  @IsDateString()
+  to?: string;
 }
 
 export class CreateSalesActivityDto {

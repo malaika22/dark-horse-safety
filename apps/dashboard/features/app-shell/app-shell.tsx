@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
+import { useScrollLock } from "@dark-horse-safety/ui";
 import { APP_NAV } from "./nav";
 import { AppHeader } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
@@ -32,7 +33,7 @@ const HEADER_TITLES: { path: string; title: string }[] = [
   { path: "/crm/quotes", title: "CRM / Customer / Quotes" },
   { path: "/crm/sales/new", title: "Log Activity" },
   { path: "/crm/sales", title: "CRM / Sales" },
-  { path: "/crm", title: "CRM/Customer > CRM Dashboard" },
+  { path: "/crm", title: "CRM / CRM Dashboard" },
   { path: "/hr/pay-cycle", title: "Employees & HR / Pay Cycle Setting" },
   { path: "/hr/payroll-export", title: "Employees & HR / Payroll Export" },
   { path: "/hr/payroll-review", title: "Employees & HR / Payroll Review" },
@@ -103,7 +104,7 @@ function titleForPath(pathname: string) {
     return "CRM / Customer / Quote";
   }
   if (/^\/crm\/sales\/[^/]+$/.test(pathname)) {
-    return "CRM / Customer";
+    return "CRM / Sales / Activity";
   }
   if (/^\/crm\/contacts\/[^/]+$/.test(pathname) && pathname !== "/crm/contacts/new") {
     return "CRM / Contacts / Detail";
@@ -158,21 +159,15 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     setMobileMenuPath(null);
   }, [pathname]);
 
+  useScrollLock(mobileOpen);
+
   React.useEffect(() => {
     if (!mobileOpen) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") setMobileMenuPath(null);
     }
-
     document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", onKeyDown);
-    };
+    return () => document.removeEventListener("keydown", onKeyDown);
   }, [mobileOpen]);
 
   if (loading) {
@@ -203,7 +198,10 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           className={pathname === "/dashboard" ? "lg:hidden" : undefined}
           trailing={headerTrailing(pathname)}
         />
-        <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto scrollbar-hidden">
+        <main
+          data-scroll-lock-root
+          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto scrollbar-hidden"
+        >
           {children}
         </main>
       </div>

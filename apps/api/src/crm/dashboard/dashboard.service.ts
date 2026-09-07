@@ -1,10 +1,50 @@
 import { Injectable } from '@nestjs/common';
 import {
+  AccountStatus,
   CrmRecordStatus,
   QuoteApprovalStatus,
   SalesActivityType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+
+function startOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function endOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
+
+function parseDay(value: string | undefined, fallback: Date) {
+  if (!value) return fallback;
+  const d = new Date(`${value}T12:00:00`);
+  return Number.isNaN(d.getTime()) ? fallback : d;
+}
+
+function shortRepName(firstName?: string | null, lastName?: string | null) {
+  const first = (firstName ?? '').trim();
+  const last = (lastName ?? '').trim();
+  if (first && last) return `${first.charAt(0)}. ${last}`.toUpperCase();
+  if (last) return last.toUpperCase();
+  if (first) return first.toUpperCase();
+  return 'UNKNOWN';
+}
+
+function countWeekdays(from: Date, to: Date) {
+  let n = 0;
+  const cur = startOfDay(from);
+  const end = startOfDay(to);
+  while (cur <= end) {
+    const day = cur.getDay();
+    if (day !== 0 && day !== 6) n += 1;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return Math.max(1, n);
+}
 
 @Injectable()
 export class DashboardService {
@@ -187,6 +227,421 @@ export class DashboardService {
           status: a.status,
         })),
         syncedAt,
+      },
+    };
+  }
+
+  async managerSalesSummary(params?: { from?: string; to?: string }) {
+    const today = startOfDay(new Date());
+    const defaultFrom = new Date(today);
+    defaultFrom.setDate(defaultFrom.getDate() - 13);
+
+    const from = startOfDay(parseDay(params?.from, defaultFrom));
+    const to = endOfDay(parseDay(params?.to, today));
+    const weekdayCount = countWeekdays(from, to);
+
+    const openQuoteStatuses: CrmRecordStatus[] = [
+      CrmRecordStatus.DRAFT,
+      CrmRecordStatus.SENT,
+      CrmRecordStatus.OPEN,
+      CrmRecordStatus.PENDING,
+    ];
+
+    const reps = await this.prisma.user.findMany({
+      where: {
+        status: AccountStatus.ACTIVE,
+        OR: [
+          {
+            salesActivities: {
+              some: {
+                archivedAt: null,
+                activityAt: { gte: from, lte: to },
+              },
+            },
+          },
+          {
+            eodReports: {
+              some: { reportDate: { gte: from, lte: to } },
+            },
+          },
+          {
+            quotesOwned: {
+              some: {
+                archivedAt: null,
+                createdAt: { gte: from, lte: to },
+              },
+            },
+          },
+          {
+            customersOwned: {
+              some: { archivedAt: null },
+            },
+          },
+        ],
+      },
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    });
+
+    const repRows = await Promise.all(
+      reps.map(async (rep) => {
+        const [
+          activities,
+          calls,
+          visits,
+          quotes,
+          pipelineAgg,
+          eodSubmitted,
+        ] = await Promise.all([
+          this.prisma.salesActivity.count({
+            where: {
+              repId: rep.id,
+              archivedAt: null,
+              activityAt: { gte: from, lte: to },
+            },
+          }),
+          this.prisma.salesActivity.count({
+            where: {
+              repId: rep.id,
+              archivedAt: null,
+              activityAt: { gte: from, lte: to },
+              type: SalesActivityType.CALL,
+            },
+          }),
+          this.prisma.salesActivity.count({
+            where: {
+              repId: rep.id,
+              archivedAt: null,
+              activityAt: { gte: from, lte: to },
+              type: SalesActivityType.VISIT,
+            },
+          }),
+          this.prisma.quote.count({
+            where: {
+              ownerId: rep.id,
+              archivedAt: null,
+              createdAt: { gte: from, lte: to },
+            },
+          }),
+          this.prisma.quote.aggregate({
+            where: {
+              ownerId: rep.id,
+              archivedAt: null,
+              status: { in: openQuoteStatuses },
+            },
+            _sum: { amount: true },
+          }),
+          this.prisma.eodReport.count({
+            where: {
+              repId: rep.id,
+              reportDate: { gte: from, lte: to },
+              status: {
+                in: [
+                  CrmRecordStatus.SUBMITTED,
+                  CrmRecordStatus.COMPLETE,
+                ],
+              },
+            },
+          }),
+        ]);
+
+        const pipeline =
+          pipelineAgg._sum.amount == null
+            ? 0
+            : Number(pipelineAgg._sum.amount.toString());
+        const eodPct = Math.round(
+          (Math.min(eodSubmitted, weekdayCount) / weekdayCount) * 100,
+        );
+
+        return {
+          id: rep.id,
+          name: shortRepName(rep.firstName, rep.lastName),
+          activities,
+          calls,
+          visits,
+          quotes,
+          pipeline,
+          eodPct,
+        };
+      }),
+    );
+
+    const totals = repRows.reduce(
+      (acc, row) => {
+        acc.activities += row.activities;
+        acc.calls += row.calls;
+        acc.visits += row.visits;
+        acc.quotes += row.quotes;
+        acc.pipeline += row.pipeline;
+        acc.eodPctSum += row.eodPct;
+        return acc;
+      },
+      {
+        activities: 0,
+        calls: 0,
+        visits: 0,
+        quotes: 0,
+        pipeline: 0,
+        eodPctSum: 0,
+      },
+    );
+
+    const repCount = repRows.length;
+    const teamEodAvg =
+      repCount === 0 ? 0 : Math.round(totals.eodPctSum / repCount);
+
+    return {
+      data: {
+        from: from.toISOString().slice(0, 10),
+        to: to.toISOString().slice(0, 10),
+        repCount,
+        kpis: {
+          activities: totals.activities,
+          calls: totals.calls,
+          visits: totals.visits,
+          quotes: totals.quotes,
+          pipeline: totals.pipeline,
+          eodPct: teamEodAvg,
+        },
+        teamAvg: {
+          activities: repCount ? totals.activities / repCount : 0,
+          calls: repCount ? totals.calls / repCount : 0,
+          visits: repCount ? totals.visits / repCount : 0,
+          quotes: repCount ? totals.quotes / repCount : 0,
+          pipeline: repCount ? totals.pipeline / repCount : 0,
+          eodPct: teamEodAvg,
+        },
+        reps: repRows,
+      },
+    };
+  }
+
+  async repDashboard(
+    userId: string,
+    params?: { from?: string; to?: string },
+  ) {
+    const summary = await this.managerSalesSummary(params);
+    const from = startOfDay(parseDay(params?.from, new Date(summary.data.from)));
+    const to = endOfDay(parseDay(params?.to, new Date(summary.data.to)));
+
+    const todayStart = startOfDay(new Date());
+    const todayEnd = endOfDay(new Date());
+
+    const openQuoteStatuses: CrmRecordStatus[] = [
+      CrmRecordStatus.DRAFT,
+      CrmRecordStatus.SENT,
+      CrmRecordStatus.OPEN,
+      CrmRecordStatus.PENDING,
+    ];
+
+    const me = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, firstName: true, lastName: true },
+    });
+
+    const [
+      quotesSent,
+      quotesWon,
+      quotesTotal,
+      pipelineAgg,
+      eodToday,
+      tasksDueToday,
+      tasksOverdue,
+      calendarToday,
+      accounts,
+    ] = await Promise.all([
+      this.prisma.quote.count({
+        where: {
+          ownerId: userId,
+          archivedAt: null,
+          createdAt: { gte: from, lte: to },
+          status: {
+            in: [
+              CrmRecordStatus.SENT,
+              CrmRecordStatus.OPEN,
+              CrmRecordStatus.WON,
+            ],
+          },
+        },
+      }),
+      this.prisma.quote.count({
+        where: {
+          ownerId: userId,
+          archivedAt: null,
+          createdAt: { gte: from, lte: to },
+          OR: [
+            { status: CrmRecordStatus.WON },
+            { approvalStatus: QuoteApprovalStatus.APPROVED },
+          ],
+        },
+      }),
+      this.prisma.quote.count({
+        where: {
+          ownerId: userId,
+          archivedAt: null,
+          createdAt: { gte: from, lte: to },
+        },
+      }),
+      this.prisma.quote.aggregate({
+        where: {
+          ownerId: userId,
+          archivedAt: null,
+          status: { in: openQuoteStatuses },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.eodReport.findFirst({
+        where: {
+          repId: userId,
+          reportDate: { gte: todayStart, lte: todayEnd },
+        },
+        orderBy: { submittedAt: 'desc' },
+        select: {
+          status: true,
+          submittedAt: true,
+        },
+      }),
+      this.prisma.salesActivity.findMany({
+        where: {
+          repId: userId,
+          archivedAt: null,
+          followUpAt: { gte: todayStart, lte: todayEnd },
+        },
+        include: {
+          customer: { select: { name: true } },
+        },
+        orderBy: { followUpAt: 'asc' },
+        take: 20,
+      }),
+      this.prisma.salesActivity.findMany({
+        where: {
+          repId: userId,
+          archivedAt: null,
+          followUpAt: { lt: todayStart, not: null },
+          status: { not: CrmRecordStatus.COMPLETE },
+        },
+        include: {
+          customer: { select: { name: true } },
+        },
+        orderBy: { followUpAt: 'asc' },
+        take: 20,
+      }),
+      this.prisma.salesActivity.findMany({
+        where: {
+          repId: userId,
+          archivedAt: null,
+          activityAt: { gte: todayStart, lte: todayEnd },
+        },
+        include: {
+          customer: { select: { name: true } },
+        },
+        orderBy: { activityAt: 'asc' },
+        take: 30,
+      }),
+      this.prisma.customer.findMany({
+        where: {
+          assignedRepId: userId,
+          archivedAt: null,
+        },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          updatedAt: true,
+          quotes: {
+            where: {
+              archivedAt: null,
+              status: { in: openQuoteStatuses },
+            },
+            select: { amount: true },
+          },
+          activities: {
+            where: { archivedAt: null },
+            orderBy: { activityAt: 'desc' },
+            take: 1,
+            select: { activityAt: true },
+          },
+        },
+        orderBy: { name: 'asc' },
+        take: 25,
+      }),
+    ]);
+
+    const pipeline =
+      pipelineAgg._sum.amount == null
+        ? 0
+        : Number(pipelineAgg._sum.amount.toString());
+    const winRate =
+      quotesTotal === 0 ? 0 : Math.round((quotesWon / quotesTotal) * 100);
+
+    const eodDone =
+      eodToday?.status === CrmRecordStatus.SUBMITTED ||
+      eodToday?.status === CrmRecordStatus.COMPLETE;
+
+    const leaderboard = [...summary.data.reps].sort(
+      (a, b) => b.activities - a.activities || b.pipeline - a.pipeline,
+    );
+
+    const myRankIdx = leaderboard.findIndex((r) => r.id === userId);
+    const myRank = myRankIdx >= 0 ? myRankIdx + 1 : null;
+
+    const mapTask = (
+      a: (typeof tasksDueToday)[number],
+      kind: 'today' | 'overdue',
+    ) => ({
+      id: a.id,
+      kind,
+      title: (a.subject ?? a.type ?? 'Follow-up').toUpperCase(),
+      customer: a.customer?.name ?? null,
+      dueAt: a.followUpAt?.toISOString() ?? null,
+    });
+
+    return {
+      data: {
+        from: summary.data.from,
+        to: summary.data.to,
+        me: {
+          id: userId,
+          name: shortRepName(me?.firstName, me?.lastName),
+        },
+        rank: myRank,
+        kpis: {
+          pipeline,
+          quotesSent,
+          winRate,
+          eodStatus: eodDone ? 'DONE' : eodToday ? 'PENDING' : 'MISSING',
+          eodSubmittedAt: eodToday?.submittedAt?.toISOString() ?? null,
+          tasksToday: tasksDueToday.length,
+          overdue: tasksOverdue.length,
+        },
+        leaderboard,
+        tasks: {
+          today: tasksDueToday.map((a) => mapTask(a, 'today')),
+          overdue: tasksOverdue.map((a) => mapTask(a, 'overdue')),
+        },
+        calendar: calendarToday.map((a) => ({
+          id: a.id,
+          activityAt: a.activityAt.toISOString(),
+          type: a.type,
+          subject: a.subject,
+          customer: a.customer?.name ?? null,
+          hasFollowUp: Boolean(a.followUpAt),
+        })),
+        accounts: accounts.map((c) => {
+          const accountPipeline = c.quotes.reduce(
+            (sum, q) =>
+              sum + (q.amount == null ? 0 : Number(q.amount.toString())),
+            0,
+          );
+          return {
+            id: c.id,
+            name: c.name,
+            status: c.status,
+            pipeline: accountPipeline,
+            lastActivityAt:
+              c.activities[0]?.activityAt?.toISOString() ?? null,
+          };
+        }),
       },
     };
   }

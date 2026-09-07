@@ -23,6 +23,14 @@ export const crmApi = {
   // ── Dashboard overview ───────────────────────────────────────────────────
   dashboardOverview: () =>
     api.get<ApiData<CrmDashboardOverview>>("/crm/dashboard"),
+  managerSalesSummary: (params?: { from?: string; to?: string }) =>
+    api.get<ApiData<CrmManagerSalesSummary>>(
+      `/crm/dashboard/manager-sales-summary${q(params)}`,
+    ),
+  repDashboard: (params?: { from?: string; to?: string }) =>
+    api.get<ApiData<CrmRepDashboard>>(
+      `/crm/dashboard/rep-dashboard${q(params)}`,
+    ),
 
   // ── Customers ────────────────────────────────────────────────────────────
   listCustomers: (params?: CrmListParams) =>
@@ -73,6 +81,21 @@ export const crmApi = {
   contactsKpi: () => api.get<ApiData<Record<string, number>>>("/crm/contacts/kpi"),
   getContact: (id: string) =>
     api.get<ApiData<CrmContact>>(`/crm/contacts/${id}`),
+  getContactActivities: (
+    id: string,
+    params?: { type?: string; from?: string; to?: string; pageSize?: number },
+  ) =>
+    api.get<ApiData<{ items: CrmSalesActivity[]; total: number }>>(
+      `/crm/contacts/${id}/activities${q(params)}`,
+    ),
+  getContactQuotes: (id: string) =>
+    api.get<ApiData<{ items: CrmQuote[]; total: number }>>(
+      `/crm/contacts/${id}/quotes`,
+    ),
+  getContactWorkOrders: (id: string) =>
+    api.get<ApiData<{ items: CrmWorkOrder[]; total: number }>>(
+      `/crm/contacts/${id}/work-orders`,
+    ),
   createContact: (body: Record<string, unknown>) =>
     api.post<ApiData<CrmContact>>("/crm/contacts", body),
   updateContact: (id: string, body: Record<string, unknown>) =>
@@ -121,6 +144,14 @@ export const crmApi = {
     api.get<ApiList<CrmPricingRule>>(`/crm/pricing-rules${q(params)}`),
   pricingRulesKpi: () =>
     api.get<ApiData<Record<string, number>>>("/crm/pricing-rules/kpi"),
+  pricingRulesSidePanels: () =>
+    api.get<
+      ApiData<{
+        rateChanges: { id: string; label: string; from: string; to: string }[];
+        scheduleChanges: { id: string; customer: string; effective: string }[];
+        permissionGates: { id: string; customer: string; status: string }[];
+      }>
+    >("/crm/pricing-rules/side-panels"),
   getPricingRule: (id: string) =>
     api.get<ApiData<CrmPricingRule>>(`/crm/pricing-rules/${id}`),
   createPricingRule: (body: Record<string, unknown>) =>
@@ -458,6 +489,21 @@ export type CrmCustomer = {
   lastActivityAt?: string | null;
   createdAt: string;
   assignedRep?: CrmUserRef | null;
+  contacts?: { id: string; fullName: string; isPrimary?: boolean }[];
+  locations?: { id: string; name: string; code?: string }[];
+  requirements?: {
+    id: string;
+    name: string;
+    status: string;
+    enforcementLevel?: string;
+  }[];
+  routeRules?: {
+    id: string;
+    gpsRequired?: boolean;
+    geofenceRadius?: string | null;
+    status?: string;
+    routeLabel?: string | null;
+  }[];
   _count?: { contacts?: number; locations?: number };
 };
 
@@ -486,6 +532,8 @@ export type CrmCustomerDetail = CrmCustomer & {
   coiExpiry?: string | null;
   w9OnFile?: string | null;
   clockInRadius?: string | null;
+  minBillableBlock?: string | null;
+  autoFlagNoShow?: string | null;
   requiresPo?: boolean;
   defaultRequiredForms?: string | null;
   contacts?: CrmContact[];
@@ -556,6 +604,21 @@ export type CrmLocation = {
   customerId: string;
   customer?: { id: string; name: string; code?: string } | null;
   createdAt: string;
+  updatedAt?: string;
+  workOrders?: {
+    id: string;
+    code?: string;
+    serviceDate?: string | null;
+    createdAt?: string;
+    status?: string;
+  }[];
+  routeRules?: {
+    id: string;
+    code?: string;
+    routeLabel?: string | null;
+    geofenceRadius?: string | null;
+    status?: string;
+  }[];
 };
 
 export type CrmMapPin = {
@@ -566,6 +629,10 @@ export type CrmMapPin = {
   longitude?: number | null;
   status?: string;
   customerId?: string;
+  customer?: { id: string; name: string } | null;
+  gpsRequired?: boolean;
+  geofenceRadius?: string | null;
+  openJobs?: number;
   x?: number;
   y?: number;
   active?: boolean;
@@ -688,6 +755,14 @@ export type CrmSalesActivity = {
   customer?: { id: string; name: string } | null;
   contact?: { id: string; fullName: string } | null;
   rep?: CrmUserRef | null;
+  linkedQuote?: {
+    id: string;
+    quoteNumber: string;
+    amount?: string | number | null;
+    status?: string | null;
+    notes?: string | null;
+    terms?: string | null;
+  } | null;
   createdAt: string;
 };
 
@@ -731,6 +806,8 @@ export type CrmWorkOrder = {
   scheduledStart?: string | null;
   scheduledEnd?: string | null;
   createdAt?: string;
+  customer?: { id: string; name: string; code?: string } | null;
+  location?: { id: string; name: string; code?: string } | null;
 };
 
 export type CrmQuoteAttachment = {
@@ -793,6 +870,95 @@ export type CrmDashboardOverview = {
     status: string;
   }[];
   syncedAt: string;
+};
+
+export type CrmManagerSalesSummary = {
+  from: string;
+  to: string;
+  repCount: number;
+  kpis: {
+    activities: number;
+    calls: number;
+    visits: number;
+    quotes: number;
+    pipeline: number;
+    eodPct: number;
+  };
+  teamAvg: {
+    activities: number;
+    calls: number;
+    visits: number;
+    quotes: number;
+    pipeline: number;
+    eodPct: number;
+  };
+  reps: {
+    id: string;
+    name: string;
+    activities: number;
+    calls: number;
+    visits: number;
+    quotes: number;
+    pipeline: number;
+    eodPct: number;
+  }[];
+};
+
+export type CrmRepDashboard = {
+  from: string;
+  to: string;
+  me: { id: string; name: string };
+  rank: number | null;
+  kpis: {
+    pipeline: number;
+    quotesSent: number;
+    winRate: number;
+    eodStatus: string;
+    eodSubmittedAt: string | null;
+    tasksToday: number;
+    overdue: number;
+  };
+  leaderboard: {
+    id: string;
+    name: string;
+    activities: number;
+    calls: number;
+    visits: number;
+    quotes: number;
+    pipeline: number;
+    eodPct: number;
+  }[];
+  tasks: {
+    today: {
+      id: string;
+      kind: "today" | "overdue";
+      title: string;
+      customer: string | null;
+      dueAt: string | null;
+    }[];
+    overdue: {
+      id: string;
+      kind: "today" | "overdue";
+      title: string;
+      customer: string | null;
+      dueAt: string | null;
+    }[];
+  };
+  calendar: {
+    id: string;
+    activityAt: string;
+    type: string;
+    subject: string | null;
+    customer: string | null;
+    hasFollowUp: boolean;
+  }[];
+  accounts: {
+    id: string;
+    name: string;
+    status: string;
+    pipeline: number;
+    lastActivityAt: string | null;
+  }[];
 };
 
 /** Trigger browser download for CSV export payloads. */

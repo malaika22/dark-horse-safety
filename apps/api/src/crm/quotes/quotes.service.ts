@@ -198,24 +198,56 @@ export class QuotesService {
 
   async update(id: string, dto: UpdateQuoteDto) {
     await this.ensureExists(id);
-    const quote = await this.prisma.quote.update({
-      where: { id },
-      data: {
-        ...(dto.customerId !== undefined
-          ? { customerId: dto.customerId }
-          : {}),
-        ...(dto.contactId !== undefined ? { contactId: dto.contactId } : {}),
-        ...(dto.ownerId !== undefined ? { ownerId: dto.ownerId } : {}),
-        ...(dto.expiresAt !== undefined
-          ? { expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null }
-          : {}),
-        ...(dto.terms !== undefined ? { terms: dto.terms } : {}),
-        ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
-        ...(dto.status !== undefined
-          ? { status: dto.status as CrmRecordStatus }
-          : {}),
-      },
+
+    const lineItems = (dto.lineItems ?? []).map((line, index) => {
+      const quantity = line.quantity ?? 1;
+      const amount = this.lineAmount(quantity, line.rate);
+      return {
+        item: line.item,
+        quantity,
+        rate: line.rate,
+        amount,
+        sortOrder: index,
+      };
     });
+    const hasLines = dto.lineItems !== undefined;
+
+    const quote = await this.prisma.$transaction(async (tx) => {
+      if (hasLines) {
+        await tx.quoteLineItem.deleteMany({ where: { quoteId: id } });
+        if (lineItems.length) {
+          await tx.quoteLineItem.createMany({
+            data: lineItems.map((line) => ({ ...line, quoteId: id })),
+          });
+        }
+      }
+
+      const amount = hasLines
+        ? lineItems.reduce((sum, line) => sum + line.amount, 0)
+        : undefined;
+
+      return tx.quote.update({
+        where: { id },
+        data: {
+          ...(dto.customerId !== undefined
+            ? { customerId: dto.customerId }
+            : {}),
+          ...(dto.contactId !== undefined ? { contactId: dto.contactId } : {}),
+          ...(dto.ownerId !== undefined ? { ownerId: dto.ownerId } : {}),
+          ...(dto.expiresAt !== undefined
+            ? { expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null }
+            : {}),
+          ...(dto.terms !== undefined ? { terms: dto.terms } : {}),
+          ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+          ...(dto.status !== undefined
+            ? { status: dto.status as CrmRecordStatus }
+            : {}),
+          ...(amount !== undefined ? { amount } : {}),
+        },
+        include: { lineItems: { orderBy: { sortOrder: 'asc' } } },
+      });
+    });
+
     return { data: quote };
   }
 

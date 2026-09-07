@@ -118,6 +118,13 @@ export class UpdateQuoteDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({ type: [QuoteLineItemInputDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => QuoteLineItemInputDto)
+  lineItems?: QuoteLineItemInputDto[];
 }
 
 export class UpdateQuoteLineItemDto {

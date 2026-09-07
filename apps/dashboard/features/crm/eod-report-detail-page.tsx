@@ -8,7 +8,7 @@ import {
 } from "@dark-horse-safety/ui";
 import { crmApi, downloadCsv, type CrmEodReport } from "@/lib/crm-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
-import { BrandLoader } from "@/features/loading/brand-loader";
+import { CrmDetailStateGate } from "@/features/crm/crm-states";
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
@@ -27,24 +27,30 @@ function userLabel(rep?: { firstName?: string | null; lastName?: string | null; 
 export function EodReportDetailPage({ reportId }: { reportId: string }) {
   const [detail, setDetail] = React.useState<CrmEodReport | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [reloadKey, setReloadKey] = React.useState(0);
   const [exporting, setExporting] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      setLoadError(null);
       try {
         const res = await crmApi.getEodReport(reportId);
         if (!cancelled) setDetail(res.data);
       } catch (err) {
         toastApiError(err);
-        if (!cancelled) setDetail(null);
+        if (!cancelled) {
+          setDetail(null);
+          setLoadError(err instanceof Error ? err.message : "Couldn't load report");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [reportId]);
+  }, [reportId, reloadKey]);
 
   async function handleExport() {
     setExporting(true);
@@ -63,14 +69,20 @@ export function EodReportDetailPage({ reportId }: { reportId: string }) {
     }
   }
 
-  if (loading) {
+  if (loading || !detail || loadError) {
     return (
-      <div className="flex min-h-[320px] items-center justify-center bg-shell p-6">
-        <BrandLoader label="Loading report" />
-      </div>
+      <CrmDetailStateGate
+        loading={loading}
+        error={loadError}
+        missing={!loading && !detail && !loadError}
+        missingTitle="Report Not Found"
+        missingDescription="This EOD report could not be found or is no longer available."
+        onRetry={() => setReloadKey((k) => k + 1)}
+      >
+        {null}
+      </CrmDetailStateGate>
     );
   }
-  if (!detail) return <div className="bg-shell p-6 text-sm text-[#959597]">Report not found</div>;
 
   const meta = `${userLabel(detail.rep)} · ${detail.reportDate.slice(0, 10)} · ${detail.submittedAt ? new Date(detail.submittedAt).toLocaleTimeString() : "—"}`;
 

@@ -131,6 +131,113 @@ export class ContactsService {
     return { data: contact };
   }
 
+  private async ensureContact(id: string) {
+    const contact = await this.prisma.contact.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        primaryCustomerId: true,
+        customers: { select: { customerId: true } },
+      },
+    });
+    if (!contact) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Contact not found',
+      });
+    }
+    return contact;
+  }
+
+  private linkedCustomerIds(contact: {
+    primaryCustomerId: string | null;
+    customers: { customerId: string }[];
+  }) {
+    const ids = new Set<string>();
+    if (contact.primaryCustomerId) ids.add(contact.primaryCustomerId);
+    for (const link of contact.customers) ids.add(link.customerId);
+    return [...ids];
+  }
+
+  /** Full activity history for a contact (named recipient / linked contact). */
+  async listActivities(
+    id: string,
+    query: { type?: string; from?: string; to?: string; pageSize?: number },
+  ) {
+    await this.ensureContact(id);
+    const and: Prisma.SalesActivityWhereInput[] = [
+      { archivedAt: null },
+      { contactId: id },
+    ];
+    if (query.type && query.type !== 'ALL') {
+      and.push({ type: query.type as never });
+    }
+    if (query.from || query.to) {
+      const activityAt: Prisma.DateTimeFilter = {};
+      if (query.from) {
+        const from = new Date(`${query.from}T00:00:00`);
+        if (!Number.isNaN(from.getTime())) activityAt.gte = from;
+      }
+      if (query.to) {
+        const to = new Date(`${query.to}T23:59:59.999`);
+        if (!Number.isNaN(to.getTime())) activityAt.lte = to;
+      }
+      if (Object.keys(activityAt).length > 0) and.push({ activityAt });
+    }
+    const take = Math.min(Math.max(query.pageSize ?? 100, 1), 200);
+    const items = await this.prisma.salesActivity.findMany({
+      where: { AND: and },
+      take,
+      orderBy: { activityAt: 'desc' },
+      include: {
+        rep: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+        linkedQuote: {
+          select: { id: true, quoteNumber: true, amount: true, status: true },
+        },
+      },
+    });
+    return { data: { items, total: items.length } };
+  }
+
+  /** Quotes where this contact is the named recipient. */
+  async listQuotes(id: string) {
+    await this.ensureContact(id);
+    const items = await this.prisma.quote.findMany({
+      where: { archivedAt: null, contactId: id },
+      take: 100,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: { select: { id: true, name: true, code: true } },
+        contact: { select: { id: true, fullName: true } },
+        owner: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
+    });
+    return { data: { items, total: items.length } };
+  }
+
+  /** Work orders at sites for customers linked to this contact. */
+  async listWorkOrders(id: string) {
+    const contact = await this.ensureContact(id);
+    const customerIds = this.linkedCustomerIds(contact);
+    if (customerIds.length === 0) {
+      return { data: { items: [], total: 0 } };
+    }
+    const items = await this.prisma.workOrder.findMany({
+      where: { archivedAt: null, customerId: { in: customerIds } },
+      take: 100,
+      orderBy: [{ serviceDate: 'desc' }, { createdAt: 'desc' }],
+      include: {
+        customer: { select: { id: true, name: true, code: true } },
+        location: { select: { id: true, name: true, code: true } },
+      },
+    });
+    return { data: { items, total: items.length } };
+  }
+
   async create(dto: CreateContactDto) {
     const code = await this.codes.next('contact');
     const contact = await this.prisma.contact.create({

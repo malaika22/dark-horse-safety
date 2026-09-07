@@ -24,6 +24,7 @@ import {
   DashboardToolbarIcons,
   type DashboardDataTableColumn,
   type DashboardSortDirection,
+  useScrollLock,
 } from "@dark-horse-safety/ui";
 import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapFormRuleRow } from "@/lib/crm-mappers";
@@ -33,6 +34,8 @@ import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
+import { CrmListEmptyState } from "@/features/crm/crm-states";
+import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
 import { CrmHistoryModal, CrmPickModal } from "./crm-action-modals";
 import { FORM_RULES_KPI_SHELL, FORM_RULES_SORT_OPTIONS } from "./crm-constants";
 import type { FormRuleRow } from "./crm-types";
@@ -210,20 +213,18 @@ function FormRulesFiltersDrawer({
   formOptions: { value: string; label: string }[];
   jobTypeOptions: { value: string; label: string }[];
 }) {
+  useScrollLock(open);
   function patch(p: Partial<FormRuleFilters>) {
     onChange({ ...value, ...p });
   }
 
   React.useEffect(() => {
     if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = previous;
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [open, onClose]);
@@ -265,7 +266,7 @@ function FormRulesFiltersDrawer({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5 scrollbar-hidden">
           <FilterSelectRow
             label="Customer"
             value={value.customer}
@@ -319,9 +320,9 @@ function FormRulesFiltersDrawer({
   );
 }
 
-
 export function FormRulesPage() {
   const router = useRouter();
+  const { askConfirm, dialogs } = useCrmDialogs();
   const [query, setQuery] = React.useState("");
   const [sortField, setSortField] = React.useState("customer");
   const [sortDirection, setSortDirection] =
@@ -375,7 +376,7 @@ export function FormRulesPage() {
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters, filtersApplied]);
 
-  const { rows, total, kpiData, loading, initialLoading, reload } = useCrmList({
+  const { rows, total, kpiData, loading, initialLoading, error, reload } = useCrmList({
     list: (p) => crmApi.listFormRules(p),
     mapRow: mapFormRuleRow,
     kpi: () => crmApi.formRulesKpi(),
@@ -476,12 +477,13 @@ export function FormRulesPage() {
   }
 
   async function handleArchive(id: string) {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("Delete this form rule?")
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Delete form rule",
+      description: "Delete this form rule? This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.archiveFormRule(id);
       toastSuccess("Form rule deleted");
@@ -492,12 +494,13 @@ export function FormRulesPage() {
   }
 
   async function handleBulkDelete() {
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm(`Delete ${selectedIds.length} form rule(s)?`)
-    ) {
-      return;
-    }
+    const ok = await askConfirm({
+      title: "Delete form rules",
+      description: `Delete ${selectedIds.length} form rule(s)? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await crmApi.bulkDeleteFormRules(selectedIds);
       toastSuccess("Form rules deleted");
@@ -703,7 +706,13 @@ export function FormRulesPage() {
   );
 
   return (
-    <CrmListLoadGate loading={loading} hasData={!initialLoading} kpiCount={4}>
+    <CrmListLoadGate
+      loading={loading}
+      hasData={!initialLoading}
+      error={error}
+      onRetry={reload}
+      kpiCount={4}
+    >
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
@@ -808,7 +817,21 @@ export function FormRulesPage() {
         columns={columns}
         rows={rows}
         getRowId={(row) => row.id}
-        emptyMessage="No form rules found"
+        emptyMessage={
+          <CrmListEmptyState
+            query={query}
+            filtersActive={Boolean(filtersApplied)}
+            emptyDescription="Create your first form rule to get started."
+            createLabel="+ New Form Rule"
+            createHref="/crm/form-rules/new"
+            onClearFilters={() => {
+              setFiltersApplied(false);
+              setDraftFilters(DEFAULT_FILTERS);
+              setAppliedFilters(DEFAULT_FILTERS);
+            }}
+            onClearSearch={() => setQuery("")}
+          />
+        }
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
@@ -935,6 +958,7 @@ export function FormRulesPage() {
           </div>
         </div>
       </DashboardModal>
+      {dialogs}
     </div>
     </CrmListLoadGate>
   );

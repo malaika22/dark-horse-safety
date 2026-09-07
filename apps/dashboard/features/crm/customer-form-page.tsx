@@ -44,6 +44,7 @@ export function CustomerFormPage({
   const router = useRouter();
   const isEdit = mode === "edit";
   const [submitting, setSubmitting] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [ready, setReady] = React.useState(!isEdit);
   const [repOptions, setRepOptions] = React.useState<DashboardSelectOption[]>([]);
   const [industryOptions, setIndustryOptions] = React.useState<DashboardSelectOption[]>([]);
@@ -70,6 +71,8 @@ export function CustomerFormPage({
   const [coiExpiry, setCoiExpiry] = React.useState("");
   const [w9OnFile, setW9OnFile] = React.useState("");
   const [clockInRadius, setClockInRadius] = React.useState("");
+  const [minBillableBlock, setMinBillableBlock] = React.useState("");
+  const [autoFlagNoShow, setAutoFlagNoShow] = React.useState("");
   const [requiresPo, setRequiresPo] = React.useState<boolean>(false);
   const [requiredForms, setRequiredForms] = React.useState("");
 
@@ -104,6 +107,8 @@ export function CustomerFormPage({
         setCoiExpiry(c.coiExpiry ? c.coiExpiry.slice(0, 10) : "");
         setW9OnFile(c.w9OnFile ?? "");
         setClockInRadius(c.clockInRadius ?? "");
+        setMinBillableBlock(c.minBillableBlock ?? "");
+        setAutoFlagNoShow(c.autoFlagNoShow ?? "");
         setRequiresPo(Boolean(c.requiresPo));
         setRequiredForms(c.defaultRequiredForms ?? "");
         setAssignedRep(c.assignedRep?.id ?? "");
@@ -179,6 +184,8 @@ export function CustomerFormPage({
       coiExpiry: toIsoDate(coiExpiry),
       w9OnFile: w9OnFile.trim() || undefined,
       clockInRadius: clockInRadius.trim() || undefined,
+      minBillableBlock: minBillableBlock.trim() || undefined,
+      autoFlagNoShow: autoFlagNoShow.trim() || undefined,
       requiresPo,
       defaultRequiredForms: requiredForms.trim() || undefined,
     };
@@ -190,6 +197,7 @@ export function CustomerFormPage({
       return;
     }
     setSubmitting(true);
+    setSaveError(null);
     try {
       const body = buildBody();
       if (isEdit && customerId) {
@@ -206,6 +214,7 @@ export function CustomerFormPage({
       }
     } catch (err) {
       toastApiError(err);
+      setSaveError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSubmitting(false);
     }
@@ -224,6 +233,9 @@ export function CustomerFormPage({
       cancelHref="/crm/accounts"
       submitLabel="Save"
       submitting={submitting}
+      saveError={saveError}
+      onDiscardSave={() => setSaveError(null)}
+      onRetrySave={() => void handleSave(false)}
       onSave={() => handleSave(false)}
       onSaveAndAddAnother={() => handleSave(true)}
       sections={[
@@ -395,7 +407,24 @@ export function CustomerFormPage({
                 label="Default Clock In Radius"
                 value={clockInRadius}
                 onChange={(e) => setClockInRadius(e.target.value)}
-                placeholder="Radius"
+                placeholder="e.g. 5 MI"
+              />
+              <DashboardTextField
+                label="Min Billable Block"
+                value={minBillableBlock}
+                onChange={(e) => setMinBillableBlock(e.target.value)}
+                placeholder="e.g. 15 MIN"
+              />
+              <DashboardSelectField
+                label="Auto-Flag No-Show"
+                value={autoFlagNoShow}
+                onChange={(e) => setAutoFlagNoShow(e.target.value)}
+                options={[
+                  { value: "", label: "Select…" },
+                  { value: "AFTER 15MINS", label: "After 15 mins" },
+                  { value: "AFTER 30MINS", label: "After 30 mins" },
+                  { value: "AFTER 60MINS", label: "After 60 mins" },
+                ]}
               />
               <DashboardToggle
                 label="Requires PO Before Invoice?"

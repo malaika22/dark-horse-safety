@@ -47,6 +47,20 @@ export class SalesActivitiesService {
     if (query.repId) and.push({ repId: query.repId });
     if (query.type) and.push({ type: query.type });
     if (query.status) and.push({ status: query.status as CrmRecordStatus });
+    if (query.from || query.to) {
+      const activityAt: Prisma.DateTimeFilter = {};
+      if (query.from) {
+        const from = new Date(`${query.from}T00:00:00`);
+        if (!Number.isNaN(from.getTime())) activityAt.gte = from;
+      }
+      if (query.to) {
+        const to = new Date(`${query.to}T23:59:59.999`);
+        if (!Number.isNaN(to.getTime())) activityAt.lte = to;
+      }
+      if (Object.keys(activityAt).length > 0) {
+        and.push({ activityAt });
+      }
+    }
     if (query.q?.trim()) {
       const q = query.q.trim();
       and.push({
@@ -78,6 +92,9 @@ export class SalesActivitiesService {
           contact: { select: { id: true, fullName: true, code: true } },
           rep: {
             select: { id: true, firstName: true, lastName: true, email: true },
+          },
+          linkedQuote: {
+            select: { id: true, quoteNumber: true, amount: true, status: true },
           },
         },
       }),
@@ -114,7 +131,14 @@ export class SalesActivitiesService {
           select: { id: true, firstName: true, lastName: true, email: true },
         },
         linkedQuote: {
-          select: { id: true, quoteNumber: true, amount: true, status: true },
+          select: {
+            id: true,
+            quoteNumber: true,
+            amount: true,
+            status: true,
+            notes: true,
+            terms: true,
+          },
         },
       },
     });

@@ -9,7 +9,7 @@ import {
 } from "@dark-horse-safety/ui";
 import { crmApi, type CrmQuote } from "@/lib/crm-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
-import { BrandLoader } from "@/features/loading/brand-loader";
+import { CrmDetailStateGate } from "@/features/crm/crm-states";
 import { SendQuoteModal, type SendQuotePayload } from "./send-quote-modal";
 
 function DetailPair({ label, value }: { label: string; value: React.ReactNode }) {
@@ -45,18 +45,24 @@ async function fileToBase64(file: File): Promise<string> {
 export function QuoteDetailPage({ quoteId }: { quoteId: string }) {
   const [quote, setQuote] = React.useState<CrmQuote | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [reloadKey, setReloadKey] = React.useState(0);
   const [sendOpen, setSendOpen] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      setLoadError(null);
       try {
         const res = await crmApi.getQuote(quoteId);
         if (!cancelled) setQuote(res.data);
       } catch (err) {
         toastApiError(err);
-        if (!cancelled) setQuote(null);
+        if (!cancelled) {
+          setQuote(null);
+          setLoadError(err instanceof Error ? err.message : "Couldn't load quote");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -64,7 +70,7 @@ export function QuoteDetailPage({ quoteId }: { quoteId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [quoteId]);
+  }, [quoteId, reloadKey]);
 
   async function handleSend(payload: SendQuotePayload) {
     try {
@@ -94,15 +100,19 @@ export function QuoteDetailPage({ quoteId }: { quoteId: string }) {
     }
   }
 
-  if (loading) {
+  if (loading || !quote || loadError) {
     return (
-      <div className="flex min-h-[320px] items-center justify-center bg-shell p-6">
-        <BrandLoader label="Loading quote" />
-      </div>
+      <CrmDetailStateGate
+        loading={loading}
+        error={loadError}
+        missing={!loading && !quote && !loadError}
+        missingTitle="Quote Not Found"
+        missingDescription="This quote could not be found or is no longer available."
+        onRetry={() => setReloadKey((k) => k + 1)}
+      >
+        {null}
+      </CrmDetailStateGate>
     );
-  }
-  if (!quote) {
-    return <div className="bg-shell p-6 text-sm text-[#959597]">Quote not found</div>;
   }
 
   const lines = quote.lineItems ?? [];

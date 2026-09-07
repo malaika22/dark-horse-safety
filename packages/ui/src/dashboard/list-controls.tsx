@@ -466,6 +466,7 @@ export function DashboardRowActionMenu({
         onClose={() => setOpen(false)}
         anchorRef={anchorRef}
         items={items}
+        placement="auto"
         className="min-w-[180px]"
       />
     </div>

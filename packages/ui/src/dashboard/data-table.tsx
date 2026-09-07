@@ -16,7 +16,8 @@ export interface DashboardDataTableProps<T> {
   columns: DashboardDataTableColumn<T>[];
   rows: T[];
   getRowId: (row: T) => string;
-  emptyMessage?: string;
+  /** Plain text or rich empty-state content (e.g. CRM state panels). */
+  emptyMessage?: React.ReactNode;
   className?: string;
   /** Optional click handler for entire row */
   onRowClick?: (row: T) => void;
@@ -159,7 +160,10 @@ export function DashboardDataTable<T>({
               <tr>
                 <td
                   colSpan={colSpan}
-                  className="px-4 py-10 text-center font-sans text-[12px] font-normal uppercase tracking-[-0.02em] text-[#959597]"
+                  className={cn(
+                    "px-4 text-center font-sans text-[12px] font-normal uppercase tracking-[-0.02em] text-[#959597]",
+                    typeof emptyMessage === "string" ? "py-10" : "py-4",
+                  )}
                 >
                   {emptyMessage}
                 </td>
