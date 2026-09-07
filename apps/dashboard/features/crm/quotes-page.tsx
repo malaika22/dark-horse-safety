@@ -38,8 +38,6 @@ import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
 import { QUOTES_KPI_SHELL, QUOTES_SORT_OPTIONS } from "./crm-constants";
 import type { QuoteRow } from "./crm-types";
 import { SendQuoteModal, type SendQuotePayload } from "./send-quote-modal";
-import { DocumentPlusIcon } from "./crm-list-page-shell";
-import Link from "next/link";
 
 async function fileToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
@@ -684,21 +682,6 @@ export function QuotesPage() {
       kpiCount={5}
     >
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="font-sans text-[18px] font-normal uppercase leading-none tracking-[-0.02em] text-foreground md:text-[24px]">
-          Quotes
-        </h1>
-        <Link href="/crm/quotes/new" className="inline-flex shrink-0">
-          <DashboardToolbarButton
-            variant="primary"
-            leftIcon={<DocumentPlusIcon className="shrink-0" />}
-            showChevron
-          >
-            Create Quote
-          </DashboardToolbarButton>
-        </Link>
-      </div>
-
       <DashboardStatGrid>
         <DashboardStatRow columns={5}>
           {kpiCells.map((cell) => (

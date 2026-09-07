@@ -83,17 +83,26 @@ export interface DashboardSelectFieldProps
   label: string;
   options: DashboardSelectOption[];
   containerClassName?: string;
+  /** Shown as the first empty value option when records exist. */
+  placeholder?: string;
+  /** Shown inside the open list when `options` is empty (and not loading). */
+  emptyMessage?: string;
+  loading?: boolean;
 }
 
 export function DashboardSelectField({
   label,
   id,
   options,
+  placeholder = "Select…",
+  emptyMessage = "No record found",
+  loading = false,
   containerClassName,
   className,
   ...props
 }: DashboardSelectFieldProps) {
   const fieldId = id ?? React.useId();
+  const hasOptions = options.length > 0;
   return (
     <DashboardField label={label} htmlFor={fieldId} className={containerClassName}>
       <div className="relative">
@@ -102,11 +111,22 @@ export function DashboardSelectField({
           className={cn(controlClass, "appearance-none pr-9", className)}
           {...props}
         >
-          {options.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
+          {loading && !hasOptions ? (
+            <option value="">Loading…</option>
+          ) : !hasOptions ? (
+            <option value="" disabled>
+              {emptyMessage}
             </option>
-          ))}
+          ) : (
+            <>
+              <option value="">{placeholder}</option>
+              {options.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </>
+          )}
         </select>
         <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-white" />
       </div>

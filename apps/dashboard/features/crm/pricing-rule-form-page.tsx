@@ -12,6 +12,7 @@ import { crmApi } from "@/lib/crm-api";
 import { parseMoney, toIsoDate } from "@/lib/crm-ui";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmFormPageShell } from "./crm-form-page-shell";
+import { useCustomerOptions } from "./use-customer-options";
 
 const PRICING_FORM = {
   services: [
@@ -42,9 +43,9 @@ export function PricingRuleFormPage({
 }) {
   const router = useRouter();
   const isEdit = mode === "edit";
+  const { options: customers, loading: customersLoading } = useCustomerOptions();
   const [submitting, setSubmitting] = React.useState(false);
   const [ready, setReady] = React.useState(!isEdit);
-  const [customers, setCustomers] = React.useState<DashboardSelectOption[]>([]);
   const [customerId, setCustomerId] = React.useState("");
   const [service, setService] = React.useState("");
   const [rateType, setRateType] = React.useState("");
@@ -55,22 +56,6 @@ export function PricingRuleFormPage({
   const [effectiveFrom, setEffectiveFrom] = React.useState("");
   const [effectiveTo, setEffectiveTo] = React.useState("");
   const [notes, setNotes] = React.useState("");
-
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await crmApi.lookupCustomers();
-        if (cancelled) return;
-        setCustomers(res.data.map((c) => ({ value: c.id, label: c.name })));
-      } catch (err) {
-        toastApiError(err);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   React.useEffect(() => {
     if (!isEdit || !ruleId) return;
@@ -158,6 +143,9 @@ export function PricingRuleFormPage({
                 value={customerId}
                 onChange={(e) => setCustomerId(e.target.value)}
                 options={customers}
+                loading={customersLoading}
+                placeholder="Select customer"
+                emptyMessage="No record found"
               />
               <DashboardSelectField
                 label="Service / Item *"

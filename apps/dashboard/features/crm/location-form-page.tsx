@@ -14,6 +14,7 @@ import { crmApi } from "@/lib/crm-api";
 import { toApiStatus } from "@/lib/crm-ui";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmFormPageShell } from "./crm-form-page-shell";
+import { useCustomerOptions } from "./use-customer-options";
 
 function MapPinIcon({ className }: { className?: string }) {
   return (
@@ -71,9 +72,10 @@ export function LocationFormPage({
   const router = useRouter();
   const searchParams = useSearchParams();
   const isEdit = mode === "edit";
+  const { options: customerOptions, loading: customersLoading } =
+    useCustomerOptions();
   const [submitting, setSubmitting] = React.useState(false);
   const [ready, setReady] = React.useState(!isEdit);
-  const [customers, setCustomers] = React.useState<DashboardSelectOption[]>([]);
   const [customerId, setCustomerId] = React.useState(
     searchParams.get("customerId") ?? "",
   );
@@ -91,27 +93,15 @@ export function LocationFormPage({
   const [geofenceRadius, setGeofenceRadius] = React.useState("");
   const [nearestHospital, setNearestHospital] = React.useState("");
 
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await crmApi.lookupCustomers();
-        if (cancelled) return;
-        const opts = res.data.map((c) => ({ value: c.id, label: c.name }));
-        const qName = searchParams.get("customer");
-        const qId = searchParams.get("customerId");
-        if (qId && qName && !opts.some((o) => o.value === qId)) {
-          opts.unshift({ value: qId, label: qName });
-        }
-        setCustomers(opts);
-      } catch (err) {
-        toastApiError(err);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [searchParams]);
+  const customers = React.useMemo(() => {
+    const opts = [...customerOptions];
+    const qName = searchParams.get("customer");
+    const qId = searchParams.get("customerId");
+    if (qId && qName && !opts.some((o) => o.value === qId)) {
+      opts.unshift({ value: qId, label: qName });
+    }
+    return opts;
+  }, [customerOptions, searchParams]);
 
   React.useEffect(() => {
     if (!isEdit || !locationId) return;
@@ -232,6 +222,9 @@ export function LocationFormPage({
                 value={customerId}
                 onChange={(e) => setCustomerId(e.target.value)}
                 options={customers}
+                loading={customersLoading}
+                placeholder="Select customer"
+                emptyMessage="No record found"
               />
               <DashboardSelectField
                 label="County *"

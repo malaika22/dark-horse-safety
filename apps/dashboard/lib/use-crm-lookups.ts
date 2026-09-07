@@ -64,9 +64,9 @@ export function useCrmLookups(options?: {
             : Promise.resolve({ data: [] as { id: string; name: string; code: string }[] }),
         ]);
         setCustomers(
-          custRes.data.map((c) => ({
+          (Array.isArray(custRes.data) ? custRes.data : []).map((c) => ({
             value: c.id,
-            label: c.name,
+            label: c.code ? `${c.name} (${c.code})` : c.name,
           })),
         );
         setReps(

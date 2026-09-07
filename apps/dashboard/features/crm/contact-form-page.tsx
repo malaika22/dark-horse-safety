@@ -14,6 +14,7 @@ import { crmApi } from "@/lib/crm-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmFormPageShell } from "./crm-form-page-shell";
 import { LinkToExistingContactModal } from "./link-to-existing-contact-modal";
+import { useCustomerOptions } from "./use-customer-options";
 
 const ROLE_OPTIONS: DashboardSelectOption[] = [
   { value: "Operations Manager", label: "Operations Manager" },
@@ -57,28 +58,12 @@ export function ContactFormPage({
   );
   const [notes, setNotes] = React.useState("");
   const [linkedFromScan, setLinkedFromScan] = React.useState("");
-  const [customers, setCustomers] = React.useState<DashboardSelectOption[]>([]);
+  const { options: customers, loading: customersLoading } = useCustomerOptions();
 
   React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await crmApi.lookupCustomers();
-        if (cancelled) return;
-        const opts = res.data.map((c) => ({
-          value: c.id,
-          label: c.name,
-        }));
-        setCustomers(opts);
-        if (!isEdit && !customerId && opts[0]) setCustomerId(opts[0].value);
-      } catch (err) {
-        toastApiError(err);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- load lookups once
+    if (isEdit || customerId || customersLoading || customers.length === 0) return;
+    setCustomerId(customers[0]!.value);
+  }, [isEdit, customerId, customers, customersLoading]);
 
   React.useEffect(() => {
     if (!isEdit || !contactId) return;
@@ -220,11 +205,10 @@ export function ContactFormPage({
                   label="Customers *"
                   value={customerId}
                   onChange={(e) => setCustomerId(e.target.value)}
-                  options={
-                    customers.length
-                      ? customers
-                      : [{ value: "", label: "Loading…" }]
-                  }
+                  options={customers}
+                  loading={customersLoading}
+                  placeholder="Select customer"
+                  emptyMessage="No record found"
                 />
                 <DashboardToggle
                   label="Primary Contact?"

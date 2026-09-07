@@ -14,6 +14,7 @@ import { toApiStatus, toIsoDate } from "@/lib/crm-ui";
 import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmFormPageShell } from "./crm-form-page-shell";
+import { useCustomerOptions } from "./use-customer-options";
 
 const FORM_RULE_FORM = {
   dueOptions: [
@@ -35,9 +36,9 @@ export function FormRuleFormPage({
   const { lookups } = useCrmLookups({ includeLocations: false });
   const templateOptions = lookupOptions(lookups, "formTemplates");
   const jobTypeOptions = lookupOptions(lookups, "jobTypes");
+  const { options: customers, loading: customersLoading } = useCustomerOptions();
   const [submitting, setSubmitting] = React.useState(false);
   const [ready, setReady] = React.useState(!isEdit);
-  const [customers, setCustomers] = React.useState<DashboardSelectOption[]>([]);
   const [customerId, setCustomerId] = React.useState("");
   const [jobType, setJobType] = React.useState("");
   const [formTemplate, setFormTemplate] = React.useState("");
@@ -46,22 +47,6 @@ export function FormRuleFormPage({
   const [blocksToggle, setBlocksToggle] = React.useState(false);
   const [due, setDue] = React.useState("");
   const [appliesFrom, setAppliesFrom] = React.useState("");
-
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await crmApi.lookupCustomers();
-        if (cancelled) return;
-        setCustomers(res.data.map((c) => ({ value: c.id, label: c.name })));
-      } catch (err) {
-        toastApiError(err);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   React.useEffect(() => {
     if (!isEdit || !ruleId) return;
@@ -146,26 +131,23 @@ export function FormRuleFormPage({
                   value={customerId}
                   onChange={(e) => setCustomerId(e.target.value)}
                   options={customers}
+                  loading={customersLoading}
+                  placeholder="Select customer"
+                  emptyMessage="No record found"
                 />
                 <DashboardSelectField
                   label="Job Type *"
                   value={jobType}
                   onChange={(e) => setJobType(e.target.value)}
-                  options={
-                    jobTypeOptions.length
-                      ? jobTypeOptions
-                      : [{ value: "", label: "Loading…" }]
-                  }
+                  options={jobTypeOptions}
+                  emptyMessage="No record found"
                 />
                 <DashboardSelectField
                   label="Form Template *"
                   value={formTemplate}
                   onChange={(e) => setFormTemplate(e.target.value)}
-                  options={
-                    templateOptions.length
-                      ? templateOptions
-                      : [{ value: "", label: "Loading…" }]
-                  }
+                  options={templateOptions}
+                  emptyMessage="No record found"
                   containerClassName="md:col-span-2"
                 />
               </DashboardFormGrid>

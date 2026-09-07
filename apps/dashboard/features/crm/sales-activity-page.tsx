@@ -3,7 +3,6 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   DashboardBadge,
   DashboardBulkSelectBar,
@@ -595,17 +594,6 @@ export function SalesActivityPage() {
       kpiCount={5}
     >
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="font-sans text-[18px] font-normal uppercase leading-none tracking-[-0.02em] text-foreground md:text-[24px]">
-          Sales Activity
-        </h1>
-        <Link href="/crm/sales/new" className="inline-flex shrink-0">
-          <DashboardToolbarButton variant="primary" showChevron>
-            Log Activity
-          </DashboardToolbarButton>
-        </Link>
-      </div>
-
       <DashboardStatGrid>
         <DashboardStatRow columns={5}>
           {kpiCells.map((cell) => (

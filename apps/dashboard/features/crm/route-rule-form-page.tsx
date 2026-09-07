@@ -13,6 +13,7 @@ import { crmApi } from "@/lib/crm-api";
 import { toApiStatus } from "@/lib/crm-ui";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmFormPageShell } from "./crm-form-page-shell";
+import { useCustomerOptions } from "./use-customer-options";
 
 export function RouteRuleFormPage({
   mode = "create",
@@ -23,10 +24,11 @@ export function RouteRuleFormPage({
 }) {
   const router = useRouter();
   const isEdit = mode === "edit";
+  const { options: customers, loading: customersLoading } = useCustomerOptions();
   const [submitting, setSubmitting] = React.useState(false);
   const [ready, setReady] = React.useState(!isEdit);
-  const [customers, setCustomers] = React.useState<DashboardSelectOption[]>([]);
   const [locations, setLocations] = React.useState<DashboardSelectOption[]>([]);
+  const [locationsLoading, setLocationsLoading] = React.useState(false);
   const [customerId, setCustomerId] = React.useState("");
   const [locationId, setLocationId] = React.useState("");
   const [geofenceRadius, setGeofenceRadius] = React.useState("");
@@ -39,24 +41,32 @@ export function RouteRuleFormPage({
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (!customerId) {
+        setLocations([]);
+        setLocationsLoading(false);
+        return;
+      }
+      setLocationsLoading(true);
       try {
-        const [cust, locs] = await Promise.all([
-          crmApi.lookupCustomers(),
-          crmApi.listLocations({ pageSize: 100 }),
-        ]);
+        const locs = await crmApi.lookupLocations(undefined, customerId);
         if (cancelled) return;
-        setCustomers(cust.data.map((c) => ({ value: c.id, label: c.name })));
         setLocations(
-          locs.data.items.map((l) => ({ value: l.id, label: l.name })),
+          (locs.data ?? []).map((l) => ({
+            value: l.id,
+            label: [l.name, l.county].filter(Boolean).join(" · "),
+          })),
         );
       } catch (err) {
         toastApiError(err);
+        if (!cancelled) setLocations([]);
+      } finally {
+        if (!cancelled) setLocationsLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [customerId]);
 
   React.useEffect(() => {
     if (!isEdit || !ruleId) return;
@@ -138,14 +148,23 @@ export function RouteRuleFormPage({
               <DashboardSelectField
                 label="Customer *"
                 value={customerId}
-                onChange={(e) => setCustomerId(e.target.value)}
+                onChange={(e) => {
+                  setCustomerId(e.target.value);
+                  setLocationId("");
+                }}
                 options={customers}
+                loading={customersLoading}
+                placeholder="Select customer"
+                emptyMessage="No record found"
               />
               <DashboardSelectField
                 label="Site *"
                 value={locationId}
                 onChange={(e) => setLocationId(e.target.value)}
                 options={locations}
+                loading={locationsLoading}
+                placeholder={customerId ? "Select site" : "Select customer first"}
+                emptyMessage="No record found"
               />
               <DashboardTextField
                 label="Geofence Radius *"

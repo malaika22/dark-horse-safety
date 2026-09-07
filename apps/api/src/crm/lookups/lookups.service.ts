@@ -219,7 +219,7 @@ export class LookupsService {
       where,
       select: { id: true, name: true, code: true },
       orderBy: { name: 'asc' },
-      take: 50,
+      take: 500,
     });
     return { data: items };
   }

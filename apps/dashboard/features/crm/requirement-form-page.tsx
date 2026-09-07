@@ -12,6 +12,7 @@ import {
 import { crmApi } from "@/lib/crm-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmFormPageShell } from "./crm-form-page-shell";
+import { useCustomerOptions } from "./use-customer-options";
 
 const TYPE_OPTIONS: DashboardSelectOption[] = [
   { value: "certification", label: "Certification" },
@@ -45,10 +46,10 @@ export function RequirementFormPage({
 }) {
   const router = useRouter();
   const isEdit = mode === "edit";
+  const { options: customers, loading: customersLoading } = useCustomerOptions();
 
   const [submitting, setSubmitting] = React.useState(false);
   const [customerId, setCustomerId] = React.useState("");
-  const [customers, setCustomers] = React.useState<DashboardSelectOption[]>([]);
   const [requirementType, setRequirementType] = React.useState<string>("");
   const [name, setName] = React.useState<string>("");
   const [appliesTo, setAppliesTo] = React.useState<string>("");
@@ -58,34 +59,23 @@ export function RequirementFormPage({
   const [notes, setNotes] = React.useState<string>("");
 
   React.useEffect(() => {
+    if (!isEdit || !requirementId) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await crmApi.lookupCustomers();
+        const req = await crmApi.getRequirement(requirementId);
         if (cancelled) return;
-        const opts = res.data.map((c) => ({ value: c.id, label: c.name }));
-        setCustomers(opts);
-        if (!customerId && opts[0]) setCustomerId(opts[0].value);
-
-        if (isEdit && requirementId) {
-          const req = await crmApi.getRequirement(requirementId);
-          if (cancelled) return;
-          const r = req.data;
-          setCustomerId(r.customerId);
-          setName(r.name ?? "");
-          setRequirementType(
-            (r.requirementType ?? "certification").toLowerCase(),
-          );
-          setAppliesTo((r.appliesTo ?? "all").toLowerCase());
-          setEnforcementLevel(
-            (r.enforcementLevel ?? "HARD_GATE")
-              .toLowerCase()
-              .replace(/_/g, "-"),
-          );
-          setEvidenceRequired(Boolean(r.evidenceRequired));
-          setRenewalPeriod(r.renewalPeriod ?? "");
-          setNotes(r.notes ?? "");
-        }
+        const r = req.data;
+        setCustomerId(r.customerId);
+        setName(r.name ?? "");
+        setRequirementType((r.requirementType ?? "certification").toLowerCase());
+        setAppliesTo((r.appliesTo ?? "all").toLowerCase());
+        setEnforcementLevel(
+          (r.enforcementLevel ?? "HARD_GATE").toLowerCase().replace(/_/g, "-"),
+        );
+        setEvidenceRequired(Boolean(r.evidenceRequired));
+        setRenewalPeriod(r.renewalPeriod ?? "");
+        setNotes(r.notes ?? "");
       } catch (err) {
         toastApiError(err);
       }
@@ -93,7 +83,7 @@ export function RequirementFormPage({
     return () => {
       cancelled = true;
     };
-  }, [customerId, isEdit, requirementId]);
+  }, [isEdit, requirementId]);
 
   async function handleSave(addAnother = false) {
     if (!customerId || !name.trim()) {
@@ -106,11 +96,10 @@ export function RequirementFormPage({
         customerId,
         name: name.trim(),
         requirementType:
-          TYPE_OPTIONS.find((o) => o.value === requirementType)
-            ?.label ?? requirementType,
+          TYPE_OPTIONS.find((o) => o.value === requirementType)?.label ??
+          requirementType,
         appliesTo:
-          APPLIES_OPTIONS.find((o) => o.value === appliesTo)
-            ?.label ?? appliesTo,
+          APPLIES_OPTIONS.find((o) => o.value === appliesTo)?.label ?? appliesTo,
         enforcementLevel: enforcementLevel
           .replace(/-/g, "_")
           .toUpperCase() as "HARD_GATE" | "SOFT_GATE" | "ADVISORY",
@@ -154,11 +143,10 @@ export function RequirementFormPage({
                 label="Customer *"
                 value={customerId}
                 onChange={(e) => setCustomerId(e.target.value)}
-                options={
-                  customers.length
-                    ? customers
-                    : [{ value: "", label: "Loading…" }]
-                }
+                options={customers}
+                loading={customersLoading}
+                placeholder="Select customer"
+                emptyMessage="No record found"
               />
               <DashboardSelectField
                 label="Requirement Type *"
@@ -189,11 +177,12 @@ export function RequirementFormPage({
                 checked={evidenceRequired}
                 onCheckedChange={setEvidenceRequired}
               />
-              <DashboardTextField
+              <DashboardSelectField
                 label="Renewal Period"
                 value={renewalPeriod}
                 onChange={(e) => setRenewalPeriod(e.target.value)}
-                placeholder="Renewal period"
+                options={CYCLE_OPTIONS}
+                emptyMessage="No record found"
               />
               <DashboardTextField
                 label="Notes"
