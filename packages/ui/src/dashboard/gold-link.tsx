@@ -16,13 +16,38 @@ export function DashboardGoldLink({
     <button
       type="button"
       className={cn(
-        "inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.08em] text-gold transition-colors hover:text-gold-hover",
+        "inline-flex items-center gap-1 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] transition-colors hover:text-[#FDFDFF] md:text-[13px]",
         className,
       )}
       {...props}
     >
       {children}
       <ChevronRightIcon className="opacity-80" />
+    </button>
+  );
+}
+
+export interface DashboardMutedLinkProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  children: React.ReactNode;
+}
+
+export function DashboardMutedLink({
+  children,
+  className,
+  ...props
+}: DashboardMutedLinkProps) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "inline-flex items-center gap-1 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] transition-colors hover:text-[#FDFDFF] md:text-[13px]",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <span aria-hidden className="text-[12px]">↗</span>
     </button>
   );
 }

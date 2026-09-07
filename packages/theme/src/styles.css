@@ -188,6 +188,12 @@ input:disabled {
   background-origin: border-box;
   background-clip: padding-box, border-box;
   box-shadow: var(--dhs-btn-primary-shadow);
+  font-weight: 510;
+  font-size: 12px;
+  line-height: 100%;
+  letter-spacing: -0.2px;
+  text-transform: uppercase;
+  vertical-align: middle;
 
   &:hover:not(:disabled) {
     filter: brightness(0.97);
@@ -449,6 +455,7 @@ input:disabled {
 /* List row bottom divider — #2D2D30 + hairline shadow */
 .divider-row {
   position: relative;
+  isolation: isolate;
 }
 
 .divider-row:not(:last-child)::after {
@@ -457,6 +464,7 @@ input:disabled {
   right: 0;
   bottom: 0;
   left: 0;
+  z-index: 0;
   height: 0;
   border-top: 1px solid var(--dhs-divider);
   box-shadow: var(--dhs-divider-shadow);
@@ -513,6 +521,47 @@ input:disabled {
   background-color: var(--dhs-divider);
   box-shadow: 1px 0 0 0 #000000;
   pointer-events: none;
+}
+
+/* Data table — same hairline H/V dividers as KPI stat rows */
+.dashboard-data-table th,
+.dashboard-data-table td {
+  position: relative;
+  border: none !important;
+}
+
+.dashboard-data-table tbody {
+  background: transparent;
+}
+
+/* Vertical — every cell except last column (KPI divider-edge-right) */
+.dashboard-data-table th:not(:last-child)::after,
+.dashboard-data-table td:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: var(--dhs-divider);
+  box-shadow: 1px 0 0 0 #000000;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Horizontal — header + every body row except last (KPI divider hairline) */
+.dashboard-data-table thead th::before,
+.dashboard-data-table tbody tr:not(:last-child) td::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 0;
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Payroll progress — filled segment (Figma green + inset shine) */

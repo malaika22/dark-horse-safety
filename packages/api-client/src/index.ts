@@ -111,8 +111,28 @@ export class ApiClient {
     });
   }
 
+  patch<T>(path: string, body?: unknown, init?: RequestInit) {
+    return this.request<T>(path, {
+      ...init,
+      method: "PATCH",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  }
+
   delete<T>(path: string, init?: RequestInit) {
     return this.request<T>(path, { ...init, method: "DELETE" });
+  }
+
+  /** Build `?a=1&b=2` from a plain object (skips empty values). */
+  static query(params?: Record<string, string | number | boolean | undefined | null>) {
+    if (!params) return "";
+    const sp = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value === undefined || value === null || value === "") continue;
+      sp.set(key, String(value));
+    }
+    const q = sp.toString();
+    return q ? `?${q}` : "";
   }
 
   login(payload: LoginWithEmailPayload | LoginPayload) {

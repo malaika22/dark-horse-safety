@@ -1,5 +1,5 @@
-﻿import { CrmDashboardOverview } from "@/features/crm/crm-dashboard-overview";
+﻿import { CrmRepDashboardPage } from "@/features/crm/crm-rep-dashboard-page";
 
 export default function Page() {
-  return <CrmDashboardOverview />;
+  return <CrmRepDashboardPage />;
 }

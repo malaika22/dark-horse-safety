@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AppToaster } from "@/components/app-toaster";
+import { GlobalApiLoader } from "@/features/loading/global-api-loader";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className="h-dvh antialiased">
       <body className="h-dvh bg-background font-sans text-foreground">
         {children}
+        <GlobalApiLoader />
         <AppToaster />
       </body>
     </html>

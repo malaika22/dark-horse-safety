@@ -44,6 +44,9 @@ lerna-debug.log*
 .env.test.local
 .env.production.local
 
+# Uploaded CRM files
+/uploads
+
 # temp directory
 .temp
 .tmp

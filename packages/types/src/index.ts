@@ -47,6 +47,15 @@ export type {
   SessionUser,
 } from "./user";
 
+export type {
+  CrmSortDirection,
+  CrmListQuery,
+  CrmExportQuery,
+  CrmExportResult,
+  CrmSavedViewScope,
+  CrmLookupOption,
+} from "./crm";
+
 export {
   AUTH_LIMITS,
   EMAIL_REGEX,

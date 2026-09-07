@@ -1,205 +1,155 @@
 import {
-  DashboardActivityRow,
-  DashboardBadge,
-  DashboardBillingChart,
   DashboardChartLegend,
   DashboardControlHeader,
-  DashboardDropdownFilter,
+  DashboardCycleKpiCard,
+  DashboardCycleKpiStrip,
   DashboardExceptionRow,
-  DashboardFilterTabs,
-  DashboardFooterButton,
-  DashboardGaugeChart,
-  DashboardKeyValueList,
-  DashboardPanel,
-  DashboardPanelTitle,
-  DashboardRecordSparkline,
-  DashboardSegmentedProgress,
-  DashboardStatCell,
-  DashboardStatGrid,
-  DashboardStatRow,
-  DashboardStatList,
-  DashboardSyncTable,
+  DashboardHorizontalBarChart,
+  DashboardMutedLink,
+  DashboardUnbilledHoursChart,
+  DashboardWorkloadBar,
 } from "@dark-horse-safety/ui";
 import {
-  ACTIVITY,
-  ACTIVITY_TABS,
-  BILLING,
-  BILLING_LEGEND,
+  DashboardCrewAvatars,
+  DashboardCrewLegend,
+  DashboardFleetStatList,
+  DashboardFleetVehicleRow,
+  DashboardMobileSyncList,
+  DashboardMobileSyncStatus,
+  DashboardReportDueRow,
+  DashboardSafetyRecordList,
+  DashboardSectionLabel,
+  DashboardWidgetSection,
+} from "./dashboard-widgets";
+import {
   EXCEPTIONS,
-  EXCEPTION_TABS,
-  GOCANVAS_SYNC,
-  KPI_EQUIPMENT,
-  KPI_MID,
-  KPI_TOP,
-  PAYROLL_CYCLE,
-  UNMATCHED_RECORDS,
+  FLEET_STATS,
+  FLEET_VEHICLES,
+  JOB_FLOW,
+  LIVE_CREW,
+  LIVE_CREW_MORE,
+  MOBILE_SYNC_ROWS,
+  MOBILE_SYNC_SUMMARY,
+  PAYROLL,
+  QUOTE_PIPELINE,
+  REPORTS_DUE,
+  SAFETY_RECORD,
+  SYNC_LABEL,
+  THIS_CYCLE,
+  UNBILLED_LEGEND,
 } from "./data/overview.mock";
+
+const LIVE_CREW_VISIBLE = LIVE_CREW.slice(0, 8);
 
 export function DashboardOverview() {
   return (
-    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:p-6">
-      <DashboardControlHeader />
+    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
+      <DashboardControlHeader
+        title="Dashboard"
+        syncLabel={SYNC_LABEL}
+        showNotificationBell
+        className="divider-edge-bottom -mx-3 px-3 pb-3 sm:-mx-5 sm:px-5 sm:pb-4"
+      />
 
-      {/* Top KPI cards */}
-      <DashboardStatGrid>
-        <DashboardStatRow columns={5}>
-          {KPI_TOP.map((cell) => (
-            <DashboardStatCell key={cell.title} {...cell} />
+      <div className="space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <DashboardSectionLabel>This cycle</DashboardSectionLabel>
+          <DashboardMutedLink>View full financials</DashboardMutedLink>
+        </div>
+        <DashboardCycleKpiStrip>
+          {THIS_CYCLE.map((cell) => (
+            <DashboardCycleKpiCard key={cell.title} {...cell} />
           ))}
-        </DashboardStatRow>
-      </DashboardStatGrid>
-
-      {/* Bottom KPI cards — 4 in one line */}
-      <DashboardStatGrid>
-        <DashboardStatRow columns={4}>
-          {KPI_MID.map((cell) => (
-            <DashboardStatCell key={cell.title} {...cell} />
-          ))}
-          <DashboardStatCell {...KPI_EQUIPMENT} />
-        </DashboardStatRow>
-      </DashboardStatGrid>
-
-      {/* Row 3 — exception queue + payroll cycle */}
-      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[1.4fr_1fr]">
-        <DashboardPanel className="flex h-full min-w-0 flex-col p-3 sm:p-4">
-          <DashboardPanelTitle
-            icon="lightning"
-            title="Exception queue"
-            trailing={<DashboardFilterTabs tabs={EXCEPTION_TABS} />}
-          />
-          <ul className="mt-2 flex-1">
-            {EXCEPTIONS.map((row) => (
-              <DashboardExceptionRow
-                key={row.text}
-                tag={row.tag}
-                tagVariant={row.tagVariant}
-                title={row.text}
-                action={row.action}
-              />
-            ))}
-          </ul>
-        </DashboardPanel>
-
-        <DashboardPanel className="flex h-full min-w-0 flex-col justify-between gap-4 p-3 sm:p-4">
-          <DashboardPanelTitle
-            icon="cycle"
-            title="Payroll cycle"
-            trailing={
-              <DashboardBadge variant="success" pill>
-                Open
-              </DashboardBadge>
-            }
-          />
-
-          <div className="min-w-0">
-            <p className="break-words font-sans text-[16px] font-[590] uppercase leading-snug tracking-[-0.02em] text-[#FDFDFF] md:text-[24px] md:leading-none">
-              {PAYROLL_CYCLE.dateRange}
-            </p>
-            <p className="mt-2 break-words font-sans text-[12px] font-normal uppercase leading-snug tracking-[-0.02em] text-[#959597] md:text-[14px] md:leading-none">
-              {PAYROLL_CYCLE.subtitle}
-            </p>
-          </div>
-
-          <DashboardSegmentedProgress
-            completed={PAYROLL_CYCLE.completed}
-            total={PAYROLL_CYCLE.total}
-            label={`${PAYROLL_CYCLE.completed} of ${PAYROLL_CYCLE.total}`}
-            sublabel={PAYROLL_CYCLE.lockLabel}
-            startLabel={PAYROLL_CYCLE.startLabel}
-            todayLabel={PAYROLL_CYCLE.todayLabel}
-            endLabel={PAYROLL_CYCLE.endLabel}
-          />
-
-          <DashboardStatList items={PAYROLL_CYCLE.stats} />
-
-          <DashboardFooterButton>Manage payroll</DashboardFooterButton>
-        </DashboardPanel>
+        </DashboardCycleKpiStrip>
       </div>
 
-      {/* Row 4 — billing + unmatched records */}
-      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[1.4fr_1fr]">
-        <DashboardPanel className="flex h-full min-w-0 flex-col justify-between gap-4 p-3 sm:p-4">
-          <DashboardPanelTitle
-            iconSrc="/icons/billing-icon.png"
-            title="Billing discrepancies"
-            titleClassName="font-[274]"
-            trailing={<DashboardDropdownFilter label="Weekly" />}
-          />
-
-          <div className="flex flex-col gap-3">
-            <div className="flex min-w-0 flex-wrap items-center gap-3">
-              <p className="font-sans text-[16px] font-normal uppercase leading-[130%] tracking-normal text-[#FDFDFF] md:text-[24px]">
-                {BILLING.amount}
-              </p>
-              <p className="font-sans text-[9.5px] font-normal uppercase leading-[150%] tracking-[0.02em] md:text-[10.6px]">
-                <span className="text-[#FF4D4D]">{BILLING.changePercent}</span>{" "}
-                <span className="text-[#666D80]">{BILLING.changeLabel}</span>
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(240px,1fr)] lg:gap-5">
+        <div className="flex min-w-0 flex-col gap-4 sm:gap-5">
+          <DashboardWidgetSection title="Payroll" actionLabel="Manage payroll">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+              <div className="min-w-0">
+                <p className="font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[13px]">
+                  {PAYROLL.lockPrefix}
+                </p>
+                <p className="mt-1.5 font-sans text-[22px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[28px]">
+                  {PAYROLL.lockValuePrimary}{" "}
+                  <span className="text-[#959597]">{PAYROLL.lockValueSecondary}</span>
+                </p>
+              </div>
+              <p className="shrink-0 font-sans text-[10px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[11px]">
+                Day 13/14
               </p>
             </div>
-            <DashboardChartLegend items={BILLING_LEGEND} className="justify-start md:justify-end" />
-          </div>
-          <DashboardBillingChart />
-
-          <DashboardFooterButton>View bill discrepancies</DashboardFooterButton>
-        </DashboardPanel>
-
-        <DashboardPanel className="flex h-full min-w-0 flex-col justify-between gap-4 p-3 sm:p-4">
-          <DashboardPanelTitle
-            iconSrc="/icons/unmatched-icon.png"
-            title="Unmatched & missing records"
-          />
-          <DashboardGaugeChart value={12} />
-          <ul className="min-w-0">
-            {UNMATCHED_RECORDS.map((row) => (
-              <DashboardRecordSparkline
-                key={row.label}
-                label={row.label}
-                value={row.value}
-                tone={row.tone}
-                iconSrc={row.iconSrc}
+            <div className="mt-4">
+              <DashboardWorkloadBar
+                segments={PAYROLL.segments}
+                total={PAYROLL.total}
               />
-            ))}
-          </ul>
-          <DashboardFooterButton>View bill</DashboardFooterButton>
-        </DashboardPanel>
-      </div>
+            </div>
+          </DashboardWidgetSection>
 
-      {/* Row 5 — recent activity + GoCanvas sync */}
-      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[1.4fr_1fr]">
-        <DashboardPanel className="flex h-full min-w-0 flex-col justify-between gap-4 p-3 sm:p-4">
-          <DashboardPanelTitle
-            icon="lightning"
-            title="Recent activity"
-            trailing={<DashboardFilterTabs tabs={ACTIVITY_TABS} />}
-          />
-          <ul className="min-w-0 flex-1">
-            {ACTIVITY.map((row) => (
-              <DashboardActivityRow
-                key={row.title}
-                title={row.title}
-                subtitle={row.subtitle}
-                status={row.status}
-                statusVariant={row.statusVariant}
-              />
-            ))}
-          </ul>
-          <DashboardFooterButton>View activity log</DashboardFooterButton>
-        </DashboardPanel>
+          <DashboardWidgetSection title="Unbilled hours" actionLabel="View billing">
+            <DashboardUnbilledHoursChart />
+            <DashboardChartLegend
+              items={UNBILLED_LEGEND}
+              className="mt-2.5 justify-start"
+            />
+          </DashboardWidgetSection>
 
-        <DashboardPanel className="flex h-full min-w-0 flex-col justify-between gap-4 p-3 sm:p-4">
-          <DashboardPanelTitle
-            iconSrc="/icons/go-canvas-image.png"
-            title="GoCanvas sync"
-            trailing={
-              <DashboardBadge variant="success" pill>
-                Live
-              </DashboardBadge>
-            }
-          />
-          <DashboardKeyValueList items={GOCANVAS_SYNC.stats} />
-          <DashboardSyncTable rows={GOCANVAS_SYNC.table} />
-          <DashboardFooterButton>View errors</DashboardFooterButton>
-        </DashboardPanel>
+          <DashboardWidgetSection title="Exception queue" actionLabel="View all">
+            <ul className="list-none space-y-0">
+              {EXCEPTIONS.map((row) => (
+                <DashboardExceptionRow
+                  key={row.title}
+                  tag={row.tag}
+                  tagVariant={row.tagVariant}
+                  title={row.title}
+                  tagPosition="end"
+                />
+              ))}
+            </ul>
+          </DashboardWidgetSection>
+
+          <DashboardWidgetSection
+            title="Live crew"
+            actionLabel={`View +${LIVE_CREW_MORE} more`}
+          >
+            <DashboardCrewAvatars crew={LIVE_CREW_VISIBLE} />
+            <DashboardCrewLegend />
+          </DashboardWidgetSection>
+
+          <DashboardWidgetSection title="Reports due" actionLabel="View reports">
+            <ul className="list-none space-y-0">
+              {REPORTS_DUE.map((row) => (
+                <DashboardReportDueRow key={row.title} {...row} />
+              ))}
+            </ul>
+          </DashboardWidgetSection>
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-4 sm:gap-5">
+          <DashboardWidgetSection title="Safety record" actionLabel="View safety">
+            <DashboardSafetyRecordList items={SAFETY_RECORD} />
+          </DashboardWidgetSection>
+
+          <DashboardWidgetSection title="Fleet" actionLabel="View fleet dash">
+            <DashboardFleetVehicleRow vehicles={FLEET_VEHICLES} />
+            <DashboardFleetStatList items={FLEET_STATS} />
+          </DashboardWidgetSection>
+
+          <DashboardWidgetSection title="Mobile sync" actionLabel="Sync details">
+            <DashboardMobileSyncStatus items={MOBILE_SYNC_SUMMARY} />
+            <DashboardMobileSyncList rows={MOBILE_SYNC_ROWS} />
+          </DashboardWidgetSection>
+
+          <DashboardWidgetSection title="Job flow" actionLabel="View operations">
+            <DashboardHorizontalBarChart items={JOB_FLOW} />
+          </DashboardWidgetSection>
+
+          <DashboardWidgetSection title="Quote pipeline" actionLabel="View crm">
+            <DashboardHorizontalBarChart items={QUOTE_PIPELINE} />
+          </DashboardWidgetSection>
+        </div>
       </div>
     </div>
   );
