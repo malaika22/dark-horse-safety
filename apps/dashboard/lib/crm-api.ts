@@ -34,7 +34,7 @@ export const crmApi = {
 
   // ── Customers ────────────────────────────────────────────────────────────
   listCustomers: (params?: CrmListParams) =>
-    api.get<ApiList<CrmCustomer>>(`/crm/customers${q(params)}`),
+    api.get<ApiList<CrmCustomerListItem>>(`/crm/customers${q(params)}`),
   customersKpi: () => api.get<ApiData<Record<string, number>>>("/crm/customers/kpi"),
   getCustomer: (id: string) =>
     api.get<ApiData<CrmCustomerDetail>>(`/crm/customers/${id}`),
@@ -489,6 +489,11 @@ export type CrmCustomer = {
   lastActivityAt?: string | null;
   createdAt: string;
   assignedRep?: CrmUserRef | null;
+  _count?: { contacts?: number; locations?: number };
+};
+
+/** List endpoint includes slim nested previews for table columns. */
+export type CrmCustomerListItem = CrmCustomer & {
   contacts?: { id: string; fullName: string; isPrimary?: boolean }[];
   locations?: { id: string; name: string; code?: string }[];
   requirements?: {
@@ -504,7 +509,6 @@ export type CrmCustomer = {
     status?: string;
     routeLabel?: string | null;
   }[];
-  _count?: { contacts?: number; locations?: number };
 };
 
 export type CrmCustomerDocument = {

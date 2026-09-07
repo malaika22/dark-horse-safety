@@ -1,7 +1,7 @@
 import type { DashboardBadgeVariant } from "@dark-horse-safety/ui";
 import type {
   CrmContact,
-  CrmCustomer,
+  CrmCustomerListItem,
   CrmEodReport,
   CrmFormRule,
   CrmLocation,
@@ -83,7 +83,7 @@ function money(value?: string | number | null) {
   }).format(n);
 }
 
-export function mapCustomerRow(c: CrmCustomer): CustomerRow {
+export function mapCustomerRow(c: CrmCustomerListItem): CustomerRow {
   const primaryContact =
     c.contacts?.find((x) => x.isPrimary)?.fullName ??
     c.contacts?.[0]?.fullName ??
