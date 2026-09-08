@@ -13,7 +13,7 @@ import {
   DashboardStatRow,
   DashboardToolbarButton,
 } from "@dark-horse-safety/ui";
-import { crmApi, type CrmCustomerDetail } from "@/lib/crm-api";
+import { crmApi, type CrmCustomerDetail, type CrmWorkOrder } from "@/lib/crm-api";
 import { logContactChannel } from "@/lib/crm-activity-log";
 import { formatKpiValue } from "@/lib/crm-ui";
 import { toastApiError, toastSuccess } from "@/lib/toast";
@@ -23,6 +23,10 @@ import {
 } from "@/features/crm/crm-states";
 import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
 import { CustomerSiteLocationPanel } from "@/features/crm/customer-site-location";
+import {
+  useSetHeaderActions,
+  useSetHeaderBreadcrumb,
+} from "@/features/app-shell/header-actions-context";
 import type { CustomerDetail, KpiCell } from "./crm-types";
 
 const EMPTY_DETAIL: CustomerDetail = {
@@ -46,18 +50,19 @@ const EMPTY_DETAIL: CustomerDetail = {
    ICONS
 ═══════════════════════════════════════════════════════════════════ */
 
-/** Figma entity header — filled document with dog-ear + text lines. */
-function FileTextIcon() {
+/** Building / company mark for entity identity. */
+function BuildingIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
-        d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z"
-        fill="currentColor"
+        d="M4 20V8.5L12 4l8 4.5V20H4z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
       />
-      <path d="M14 3v4h4" fill="#2A2A2A" />
       <path
-        d="M9 11h6M9 14.5h6M9 18h4"
-        stroke="#2A2A2A"
+        d="M9 20v-5h6v5M9 10h.01M12 10h.01M15 10h.01M9 13.5h.01M12 13.5h.01M15 13.5h.01"
+        stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
       />
@@ -348,11 +353,29 @@ function DisplaySelectField({ value }: { value: string }) {
   );
 }
 
-function ToggleSwitch({ checked }: { checked: boolean }) {
+function ToggleSwitch({
+  checked,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  onCheckedChange?: (next: boolean) => void;
+}) {
   return (
-    <div className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full ${checked ? "bg-[#FDFDFF]" : "bg-[#3E3E3E]"}`}>
-      <span className={`absolute h-3.5 w-3.5 rounded-full shadow transition-transform ${checked ? "translate-x-[18px] bg-[#1A1A1A]" : "translate-x-1 bg-[#959597]"}`} />
-    </div>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onCheckedChange?.(!checked)}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+        checked ? "bg-[#FDFDFF]" : "bg-[#3E3E3E]"
+      }`}
+    >
+      <span
+        className={`absolute h-3.5 w-3.5 rounded-full shadow transition-transform ${
+          checked ? "translate-x-[18px] bg-[#1A1A1A]" : "translate-x-1 bg-[#959597]"
+        }`}
+      />
+    </button>
   );
 }
 
@@ -382,8 +405,14 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
   const { askConfirm, askPrompt, dialogs } = useCrmDialogs();
   const [detail, setDetail] = React.useState<CustomerDetail>(EMPTY_DETAIL);
   const [apiDetail, setApiDetail] = React.useState<CrmCustomerDetail | null>(null);
+  const [workOrders, setWorkOrders] = React.useState<CrmWorkOrder[]>([]);
+  const [woTotal, setWoTotal] = React.useState(0);
+  const [woStats, setWoStats] = React.useState({ open: 0, scheduled: 0, inProgress: 0 });
   const [woPage, setWoPage] = React.useState(1);
   const [woPageSize, setWoPageSize] = React.useState(25);
+  const [neighborIds, setNeighborIds] = React.useState<string[]>([]);
+  const [quoteMenuOpen, setQuoteMenuOpen] = React.useState(false);
+  const quoteBtnRef = React.useRef<HTMLButtonElement>(null);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [reloadKey, setReloadKey] = React.useState(0);
@@ -448,6 +477,94 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
       cancelled = true;
     };
   }, [customerId, reloadKey]);
+
+  React.useEffect(() => {
+    setWoPage(1);
+  }, [customerId]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.listWorkOrders({
+          customerId,
+          page: woPage,
+          pageSize: woPageSize,
+          sort: "serviceDate",
+          direction: "desc",
+        });
+        if (cancelled) return;
+        setWorkOrders(res.data.items ?? []);
+        setWoTotal(res.data.total ?? 0);
+      } catch (err) {
+        if (!cancelled) {
+          setWorkOrders([]);
+          setWoTotal(0);
+          toastApiError(err);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId, woPage, woPageSize, reloadKey]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.listWorkOrders({
+          customerId,
+          page: 1,
+          pageSize: 200,
+          sort: "serviceDate",
+          direction: "desc",
+        });
+        if (cancelled) return;
+        const items = res.data.items ?? [];
+        const closed = new Set(["COMPLETE", "COMPLETED", "CLOSED", "CANCELLED", "CANCELED", "ARCHIVED"]);
+        const scheduledSet = new Set(["SCHEDULED", "PENDING", "DRAFT", "OPEN", "NEEDS_REVIEW"]);
+        let scheduled = 0;
+        let inProgress = 0;
+        let open = 0;
+        for (const wo of items) {
+          const s = (wo.status ?? "").toUpperCase();
+          if (closed.has(s)) continue;
+          open += 1;
+          if (s === "IN_PROGRESS") inProgress += 1;
+          else if (scheduledSet.has(s) || !s) scheduled += 1;
+          else scheduled += 1;
+        }
+        setWoStats({ open, scheduled, inProgress });
+      } catch {
+        if (!cancelled) setWoStats({ open: 0, scheduled: 0, inProgress: 0 });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId, reloadKey]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.listCustomers({
+          page: 1,
+          pageSize: 200,
+          sort: "name",
+          direction: "asc",
+        });
+        if (cancelled) return;
+        setNeighborIds((res.data.items ?? []).map((row) => row.id));
+      } catch {
+        if (!cancelled) setNeighborIds([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function reloadCustomer() {
     try {
@@ -580,14 +697,30 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
     status: string,
   ): "success" | "warning" | "error" | "neutral" | "offline" {
     const s = status.toUpperCase();
-    if (["ACTIVE", "COMPLETE", "SUBMITTED", "WON", "SENT", "MET"].includes(s)) {
+    if (
+      ["ACTIVE", "COMPLETE", "COMPLETED", "SUBMITTED", "WON", "SENT", "MET", "APPROVED"].includes(
+        s,
+      )
+    ) {
       return "success";
     }
-    if (["PENDING", "NEEDS_REVIEW", "DRAFT", "OPEN"].includes(s)) {
+    if (["PENDING", "NEEDS_REVIEW", "DRAFT", "OPEN", "SCHEDULED"].includes(s)) {
       return "warning";
     }
-    if (["IN_PROGRESS"].includes(s)) return "offline";
-    if (["INACTIVE", "ARCHIVED", "EXPIRED", "LOST", "ON_HOLD"].includes(s)) {
+    if (["IN_PROGRESS", "BILLABLE"].includes(s)) return "offline";
+    if (
+      [
+        "INACTIVE",
+        "ARCHIVED",
+        "EXPIRED",
+        "LOST",
+        "ON_HOLD",
+        "MISSING",
+        "MISSING_OUT",
+        "CANCELLED",
+        "CANCELED",
+      ].includes(s)
+    ) {
       return "error";
     }
     return "neutral";
@@ -615,7 +748,50 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
     });
   }
 
+  function formatClock(value?: string | null) {
+    if (!value) return "—";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  function formatHours(start?: string | null, end?: string | null) {
+    if (!start || !end) return "—";
+    const a = new Date(start).getTime();
+    const b = new Date(end).getTime();
+    if (Number.isNaN(a) || Number.isNaN(b) || b <= a) return "—";
+    return (Math.round(((b - a) / 3_600_000) * 10) / 10).toFixed(1);
+  }
+
+  async function handleToggleClockInRadius(next: boolean) {
+    try {
+      const radius = next
+        ? (apiDetail?.clockInRadius?.trim() || detail.radiusMiles || "5 MI")
+        : null;
+      await crmApi.updateCustomer(customerId, { clockInRadius: radius });
+      setApiDetail((prev) => (prev ? { ...prev, clockInRadius: radius } : prev));
+      setDetail((prev) => ({
+        ...prev,
+        maxClockInRadius: next,
+        radiusMiles: next ? (radius ?? prev.radiusMiles) : prev.radiusMiles,
+      }));
+      toastSuccess(next ? "Max clock-in radius enabled" : "Max clock-in radius disabled");
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
   const c = detail;
+  const neighborIndex = neighborIds.indexOf(customerId);
+  const prevCustomerId =
+    neighborIndex > 0 ? neighborIds[neighborIndex - 1] : null;
+  const nextCustomerId =
+    neighborIndex >= 0 && neighborIndex < neighborIds.length - 1
+      ? neighborIds[neighborIndex + 1]
+      : null;
   const contactRows = (apiDetail?.contacts ?? []).map((contact) => ({
     id: contact.id,
     name: contact.fullName,
@@ -629,6 +805,26 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
     detail: [loc.county, loc.state].filter(Boolean).join(", ") || "—",
     status: loc.status,
   }));
+  const activeLocations = locationRows.filter(
+    (loc) => (loc.status ?? "").toUpperCase() === "ACTIVE",
+  ).length;
+  const inactiveLocations = Math.max(0, locationRows.length - activeLocations);
+  const requirementRows = (apiDetail?.requirements ?? []).map((req) => ({
+    id: req.id,
+    title: req.name,
+    detail: [
+      req.requirementType,
+      req.enforcementLevel ? titleCaseStatus(req.enforcementLevel) : null,
+      req.status ? titleCaseStatus(req.status) : null,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    status: req.status,
+  }));
+  const needsReviewReqs = requirementRows.filter((req) => {
+    const s = (req.status ?? "").toUpperCase();
+    return s === "NEEDS_REVIEW" || s === "PENDING" || s === "OPEN" || s === "DRAFT";
+  }).length;
   const siteLocation =
     (apiDetail?.locations ?? []).find(
       (loc) => loc.latitude != null && loc.longitude != null,
@@ -863,45 +1059,120 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
       variant: statusVariant(quote.status),
     },
   }));
-  const activityRows = (apiDetail?.activities ?? []).map((activity) => ({
-    id: activity.id,
-    serviceDate: formatDate(activity.activityAt),
-    woNumber: activity.activityCode,
-    customer: activity.customer?.name ?? c.name,
+  const workOrderRows = workOrders.map((wo) => ({
+    id: wo.id,
+    serviceDate: formatDate(wo.serviceDate ?? wo.scheduledStart ?? wo.createdAt),
+    woNumber: wo.workOrderNumber || wo.code || "—",
+    customer: wo.customer?.name ?? c.name,
     category: {
-      label: titleCaseStatus(activity.type),
-      variant: statusVariant(activity.type),
+      label: titleCaseStatus(wo.category || "Billable"),
+      variant: statusVariant(wo.category || "BILLABLE"),
     },
-    clockIn: activity.duration ?? "—",
-    clockOut: activity.outcome ?? "—",
-    hours: activity.subject ?? "—",
+    clockIn: formatClock(wo.scheduledStart),
+    clockOut: formatClock(wo.scheduledEnd),
+    hours: formatHours(wo.scheduledStart, wo.scheduledEnd),
     status: {
-      label: titleCaseStatus(activity.status),
-      variant: statusVariant(activity.status),
+      label: titleCaseStatus(wo.status || "Pending"),
+      variant: statusVariant(wo.status || "PENDING"),
     },
   }));
-  const woTotal = activityRows.length;
-  const activityPageRows = activityRows.slice(
-    (woPage - 1) * woPageSize,
-    woPage * woPageSize,
-  );
+  const openJobsValue =
+    apiDetail?.openJobs != null ? Number(apiDetail.openJobs) : woStats.open;
   const kpiCells: KpiCell[] = [
     {
-      title: "Contacts",
-      value: String(contactRows.length),
-      icon: "customers",
+      title: "Open Jobs",
+      value: formatKpiValue(openJobsValue),
+      meta: `${woStats.scheduled} Scheduled · ${woStats.inProgress} In Progress`,
+      icon: "folder",
     },
     {
-      title: "Locations",
+      title: "Locations / Wells",
       value: String(locationRows.length),
+      meta: `${activeLocations} Active · ${inactiveLocations} Inactive`,
       icon: "gps",
     },
     {
-      title: "Open jobs",
-      value: formatKpiValue(apiDetail?.openJobs),
-      icon: "time",
+      title: "Requirements",
+      value: String(requirementRows.length),
+      meta: `${needsReviewReqs} Need Review`,
+      icon: "document",
     },
   ];
+
+  useSetHeaderBreadcrumb(
+    apiDetail?.name
+      ? `CRM / Customers / ${apiDetail.name}`
+      : "CRM / Customers / Detail",
+  );
+
+  useSetHeaderActions(
+    apiDetail ? (
+      <>
+        <Link href="/crm/accounts">
+          <ToolbarBtn>Back</ToolbarBtn>
+        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/operations/work-orders/new?customerId=${encodeURIComponent(customerId || c.id)}`}
+          >
+            <ToolbarBtn>Create Work Order</ToolbarBtn>
+          </Link>
+          <div className="relative">
+            <DashboardToolbarButton
+              ref={quoteBtnRef}
+              variant="primary"
+              leftIcon={<QuoteGridIcon className="shrink-0" />}
+              showChevron
+              className="!rounded-full"
+              onClick={() => setQuoteMenuOpen((o) => !o)}
+            >
+              Create Quote
+            </DashboardToolbarButton>
+            <DashboardMenuPopover
+              open={quoteMenuOpen}
+              onClose={() => setQuoteMenuOpen(false)}
+              anchorRef={quoteBtnRef}
+              align="right"
+              className="min-w-[200px]"
+              items={[
+                {
+                  id: "new-quote",
+                  label: "New Quote",
+                  onSelect: () =>
+                    router.push(
+                      `/crm/quotes/new?customer=${encodeURIComponent(c.name)}&customerId=${encodeURIComponent(customerId || c.id)}`,
+                    ),
+                },
+                {
+                  id: "from-pricing",
+                  label: "From Pricing Rules",
+                  onSelect: () =>
+                    router.push(
+                      `/crm/quotes/new?customer=${encodeURIComponent(c.name)}&customerId=${encodeURIComponent(customerId || c.id)}`,
+                    ),
+                },
+                {
+                  id: "view-quotes",
+                  label: "View All Quotes",
+                  onSelect: () =>
+                    router.push(
+                      `/crm/quotes?customerId=${encodeURIComponent(customerId || c.id)}`,
+                    ),
+                },
+              ]}
+            />
+          </div>
+        </div>
+      </>
+    ) : null,
+    [
+      apiDetail,
+      customerId,
+      c.id,
+      c.name,
+      quoteMenuOpen,
+    ],
+  );
 
   if (loading || loadError || !apiDetail) {
     return (
@@ -921,72 +1192,57 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
   return (
     <div className="space-y-[18px] overflow-x-hidden bg-shell p-3 sm:p-4">
 
-      {/* ── top actions ── */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/crm/accounts">
-          <ToolbarBtn>Back</ToolbarBtn>
-        </Link>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href="/operations/work-orders/new">
-            <ToolbarBtn>Create Work Order</ToolbarBtn>
-          </Link>
-          <Link
-            href={`/crm/quotes/new?customer=${encodeURIComponent(c.name)}`}
-            className="inline-flex shrink-0"
-          >
-            <DashboardToolbarButton
-              variant="primary"
-              leftIcon={<QuoteGridIcon className="shrink-0" />}
-              showChevron
-              className="!rounded-full"
-            >
-              Create Quote
-            </DashboardToolbarButton>
-          </Link>
-        </div>
-      </div>
-
       {/* ── entity identity card ── */}
       <div className="overflow-hidden rounded-xl bg-panel">
         <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-5 sm:py-5">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-[#2A2A2A] text-[#FDFDFF]">
-              <FileTextIcon />
+              <BuildingIcon />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2.5">
                 <h2 className="font-sans text-[15px] font-[590] uppercase leading-none tracking-[-0.03em] text-[#FDFDFF] sm:text-[17px]">
                   {c.name}
                 </h2>
-                <DashboardBadge variant="error" pill>
+                <DashboardBadge variant={c.status.variant} pill>
                   {c.status.label}
                 </DashboardBadge>
               </div>
-              <div className="mt-2 flex flex-col gap-1">
-                <p className="font-sans text-[10px] uppercase leading-[1.35] tracking-[-0.01em] text-[#959597] sm:text-[11px]">
-                  <span className="whitespace-nowrap">{c.code}</span>
-                  <span aria-hidden> · </span>
-                  <span className="whitespace-nowrap">Account Owner: {c.accountOwner}</span>
-                  <span aria-hidden> ·</span>
-                </p>
-                <p className="font-sans text-[10px] uppercase leading-[1.35] tracking-[-0.01em] text-[#959597] sm:text-[11px]">
-                  <span className="whitespace-nowrap">{c.email}</span>
-                  <span aria-hidden> · </span>
-                  <span className="whitespace-nowrap">{c.phone}</span>
-                </p>
-              </div>
+              <p className="mt-2 truncate font-sans text-[10px] uppercase leading-[1.35] tracking-[-0.01em] text-[#959597] sm:text-[11px]">
+                <span>{c.code}</span>
+                <span aria-hidden> · </span>
+                <span>Account Owner: {c.accountOwner}</span>
+                <span aria-hidden> · </span>
+                <span>{c.email}</span>
+                <span aria-hidden> · </span>
+                <span>{c.phone}</span>
+              </p>
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <PageMenu
               customerId={customerId || c.id}
-              netsuiteId={apiDetail?.netsuiteId}
-              email={apiDetail?.email}
+              netsuiteId={apiDetail.netsuiteId}
+              email={apiDetail.email}
               onArchive={() => void handleArchiveCustomer()}
               onDuplicate={() => void handleDuplicateCustomer()}
             />
-            <ToolbarBtn>Previous</ToolbarBtn>
-            <ToolbarBtn>Next</ToolbarBtn>
+            <ToolbarBtn
+              className={!prevCustomerId ? "pointer-events-none opacity-40" : undefined}
+              onClick={() => {
+                if (prevCustomerId) router.push(`/crm/accounts/${prevCustomerId}`);
+              }}
+            >
+              Previous
+            </ToolbarBtn>
+            <ToolbarBtn
+              className={!nextCustomerId ? "pointer-events-none opacity-40" : undefined}
+              onClick={() => {
+                if (nextCustomerId) router.push(`/crm/accounts/${nextCustomerId}`);
+              }}
+            >
+              Next
+            </ToolbarBtn>
           </div>
         </div>
       </div>
@@ -1033,7 +1289,10 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
           <div>
             <FieldLabel>Permissions</FieldLabel>
             <div className="mt-1 flex items-center gap-2.5">
-              <ToggleSwitch checked={c.maxClockInRadius} />
+              <ToggleSwitch
+                checked={c.maxClockInRadius}
+                onCheckedChange={(next) => void handleToggleClockInRadius(next)}
+              />
               <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
                 Max Clock-In Radius
               </span>
@@ -1343,7 +1602,27 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
             />
           ) : (
             formRows.map((form) => (
-              <DetailRow key={form.id} title={form.title} trailing={form.detail} />
+              <DetailRow
+                key={form.id}
+                title={form.title}
+                trailing={form.detail}
+                menu={
+                  <RowMenu
+                    items={[
+                      {
+                        id: "edit",
+                        label: "Edit Form Rule",
+                        onSelect: () => router.push(`/crm/form-rules/${form.id}/edit`),
+                      },
+                      {
+                        id: "open",
+                        label: "View Form Rules",
+                        onSelect: () => router.push("/crm/form-rules"),
+                      },
+                    ]}
+                  />
+                }
+              />
             ))
           )}
         </SectionPanel>
@@ -1365,25 +1644,43 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
             />
           ) : (
             routeRows.map((route) => (
-              <DetailRow key={route.id} title={route.name} trailing={route.detail} />
+              <DetailRow
+                key={route.id}
+                title={route.name}
+                trailing={route.detail}
+                menu={
+                  <RowMenu
+                    items={[
+                      {
+                        id: "edit",
+                        label: "Edit Route Rule",
+                        onSelect: () => router.push(`/crm/route-rules/${route.id}/edit`),
+                      },
+                      {
+                        id: "open",
+                        label: "View Route Rules",
+                        onSelect: () => router.push("/crm/route-rules"),
+                      },
+                    ]}
+                  />
+                }
+              />
             ))
           )}
         </SectionPanel>
 
-        </div>
-
         <SectionPanel
           icon={<LightningIcon />}
-          title="Quotes"
+          title="Sales Tickets"
           meta={`${ticketRows.length} Recent`}
         >
           {ticketRows.length === 0 ? (
             <CrmEmptyTabState
-              description="This tab has no quotes for this customer."
+              description="This tab has no sales tickets for this customer."
               addLabel="Create Quote"
               onAdd={() =>
                 router.push(
-                  `/crm/quotes/new?customer=${encodeURIComponent(c.name)}`,
+                  `/crm/quotes/new?customer=${encodeURIComponent(c.name)}&customerId=${encodeURIComponent(customerId || c.id)}`,
                 )
               }
             />
@@ -1407,22 +1704,82 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                     </DashboardBadge>
                   </span>
                 }
+                menu={
+                  <RowMenu
+                    items={[
+                      {
+                        id: "view",
+                        label: "Open Quote",
+                        onSelect: () => router.push(`/crm/quotes/${t.id}`),
+                      },
+                      {
+                        id: "edit",
+                        label: "Edit Quote",
+                        onSelect: () => router.push(`/crm/quotes/${t.id}/edit`),
+                      },
+                    ]}
+                  />
+                }
               />
             ))
           )}
         </SectionPanel>
+
+        <SectionPanel
+          icon={<LightningIcon />}
+          title="Requirements"
+          meta={`${requirementRows.length} Items`}
+        >
+          {requirementRows.length === 0 ? (
+            <CrmEmptyTabState
+              description="This tab has no requirements for this customer."
+              addLabel="Add Requirement"
+              onAdd={() =>
+                router.push(
+                  `/crm/requirements/new?customerId=${encodeURIComponent(customerId || c.id)}`,
+                )
+              }
+            />
+          ) : (
+            requirementRows.map((req) => (
+              <DetailRow
+                key={req.id}
+                title={req.title}
+                trailing={req.detail}
+                menu={
+                  <RowMenu
+                    items={[
+                      {
+                        id: "edit",
+                        label: "Edit Requirement",
+                        onSelect: () =>
+                          router.push(`/crm/requirements/${req.id}/edit`),
+                      },
+                    ]}
+                  />
+                }
+              />
+            ))
+          )}
+        </SectionPanel>
+
+        </div>
       </div>
 
       <SectionPanel
         icon={<LightningIcon />}
-        title="Activities"
-        meta={`${woTotal} Recent`}
+        title="Work Orders"
+        meta={`${woTotal} Total`}
       >
-        {activityPageRows.length === 0 ? (
+        {workOrderRows.length === 0 ? (
           <CrmEmptyTabState
-            description="This tab has no sales activities for this customer."
-            addLabel="Log Activity"
-            onAdd={() => router.push("/crm/sales/new")}
+            description="This tab has no work orders for this customer."
+            addLabel="Create Work Order"
+            onAdd={() =>
+              router.push(
+                `/operations/work-orders/new?customerId=${encodeURIComponent(customerId || c.id)}`,
+              )
+            }
           />
         ) : (
         <>
@@ -1431,12 +1788,12 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
             <thead>
               <tr>
                 {[
-                  { id: "date", label: "Activity Date" },
-                  { id: "wo", label: "Activity Code" },
+                  { id: "date", label: "Service Date" },
+                  { id: "wo", label: "W/O Number" },
                   { id: "customer", label: "Customer" },
-                  { id: "category", label: "Type" },
-                  { id: "clock", label: "Duration / Outcome" },
-                  { id: "hours", label: "Subject" },
+                  { id: "category", label: "Category" },
+                  { id: "clock", label: "Clock In/Out" },
+                  { id: "hours", label: "Hours" },
                   { id: "status", label: "Status" },
                   { id: "actions", label: "" },
                 ].map((h) => (
@@ -1450,7 +1807,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
               </tr>
             </thead>
             <tbody>
-              {activityPageRows.map((wo) => (
+              {workOrderRows.map((wo) => (
                 <tr key={wo.id}>
                   <td className="max-w-[110px] px-3 py-3">
                     <span className="block truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]" title={wo.serviceDate}>
@@ -1460,7 +1817,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                   <td className="px-3 py-3 whitespace-nowrap">
                     <button
                       type="button"
-                      onClick={() => router.push(`/crm/sales/${wo.id}`)}
+                      onClick={() => router.push(`/operations/work-orders/${wo.id}`)}
                       className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] underline underline-offset-2 hover:opacity-70"
                     >
                       {wo.woNumber}
@@ -1495,13 +1852,13 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                     <RowMenu items={[
                       {
                         id: "view",
-                        label: "View Activity",
-                        onSelect: () => router.push(`/crm/sales/${wo.id}`),
+                        label: "View Work Order",
+                        onSelect: () => router.push(`/operations/work-orders/${wo.id}`),
                       },
                       {
                         id: "edit",
-                        label: "Edit Activity",
-                        onSelect: () => router.push(`/crm/sales/${wo.id}/edit`),
+                        label: "Edit Work Order",
+                        onSelect: () => router.push(`/operations/work-orders/${wo.id}/edit`),
                       },
                       {
                         id: "approve",
@@ -1527,7 +1884,10 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
             pageSize={woPageSize}
             total={woTotal}
             onPageChange={setWoPage}
-            onPageSizeChange={setWoPageSize}
+            onPageSizeChange={(size) => {
+              setWoPageSize(size);
+              setWoPage(1);
+            }}
           />
         </div>
         </>

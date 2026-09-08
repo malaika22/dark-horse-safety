@@ -51,10 +51,23 @@ export class LocationsService {
           { wellPadNumber: containsCi(q) },
           { apiNumber: containsCi(q) },
           { county: containsCi(q) },
+          { city: containsCi(q) },
+          { customer: { name: containsCi(q) } },
         ],
       });
     }
     return and.length ? { AND: and } : {};
+  }
+
+  private listOrderBy(
+    sort?: string,
+    direction?: 'asc' | 'desc',
+  ): Prisma.LocationOrderByWithRelationInput {
+    const dir = direction === 'asc' ? 'asc' : 'desc';
+    if (sort === 'customer') return { customer: { name: dir } };
+    return orderByFrom(sort, direction, SORT_MAP, {
+      createdAt: 'desc',
+    }) as Prisma.LocationOrderByWithRelationInput;
   }
 
   async list(query: LocationListQueryDto) {
@@ -66,9 +79,7 @@ export class LocationsService {
         where,
         skip,
         take,
-        orderBy: orderByFrom(query.sort, query.direction, SORT_MAP, {
-          createdAt: 'desc',
-        }),
+        orderBy: this.listOrderBy(query.sort, query.direction),
         include: {
           customer: { select: { id: true, name: true, code: true } },
           workOrders: {
@@ -90,26 +101,63 @@ export class LocationsService {
   }
 
   async kpi() {
-    const [total, active, archived, gpsRequired] = await Promise.all([
-      this.prisma.location.count({ where: { archivedAt: null } }),
-      this.prisma.location.count({
-        where: { archivedAt: null, status: CrmRecordStatus.ACTIVE },
-      }),
-      this.prisma.location.count({ where: { archivedAt: { not: null } } }),
-      this.prisma.location.count({
-        where: { archivedAt: null, gpsRequired: true },
-      }),
-    ]);
-    return { data: { total, active, archived, gpsRequired } };
+    const base = { archivedAt: null as null };
+    const [total, active, inactive, missingGps, inactiveSample] =
+      await Promise.all([
+        this.prisma.location.count({ where: base }),
+        this.prisma.location.count({
+          where: { ...base, status: CrmRecordStatus.ACTIVE },
+        }),
+        this.prisma.location.count({
+          where: { ...base, status: CrmRecordStatus.INACTIVE },
+        }),
+        this.prisma.location.count({
+          where: {
+            ...base,
+            OR: [
+              { latitude: null },
+              { longitude: null },
+              { gpsStatus: { contains: 'Missing', mode: 'insensitive' } },
+              { gpsStatus: { contains: 'Offline', mode: 'insensitive' } },
+              { gpsStatus: { contains: 'Not set', mode: 'insensitive' } },
+              { gpsStatus: { contains: 'Unset', mode: 'insensitive' } },
+            ],
+          },
+        }),
+        this.prisma.location.findFirst({
+          where: { ...base, status: CrmRecordStatus.INACTIVE },
+          orderBy: { updatedAt: 'desc' },
+          select: { updatedAt: true, siteType: true, accessNotes: true },
+        }),
+      ]);
+
+    let inactiveDetail: string | undefined;
+    if (inactiveSample) {
+      const since = inactiveSample.updatedAt.toLocaleString('en-US', {
+        month: 'short',
+        year: 'numeric',
+      });
+      const reason =
+        inactiveSample.siteType?.trim() ||
+        inactiveSample.accessNotes?.trim()?.split(/[\n.]/)[0]?.trim() ||
+        'Inactive';
+      inactiveDetail = `Inactive since ${since} · ${reason}`;
+    }
+
+    return {
+      data: {
+        total,
+        active,
+        inactive,
+        missingGps,
+        ...(inactiveDetail ? { inactiveDetail } : {}),
+      },
+    };
   }
 
   async mapPins() {
     const pins = await this.prisma.location.findMany({
-      where: {
-        archivedAt: null,
-        latitude: { not: null },
-        longitude: { not: null },
-      },
+      where: { archivedAt: null },
       select: {
         id: true,
         name: true,
@@ -118,6 +166,7 @@ export class LocationsService {
         status: true,
         customerId: true,
         gpsRequired: true,
+        gpsStatus: true,
         geofenceRadius: true,
         openJobs: true,
         customer: { select: { id: true, name: true } },

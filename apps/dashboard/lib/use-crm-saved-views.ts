@@ -7,6 +7,7 @@ import { toastApiError, toastSuccess } from "@/lib/toast";
 
 export type CrmSavedViewItem = DashboardSavedView & {
   payload?: unknown;
+  builtin?: boolean;
 };
 
 /** Load / create / delete CRM saved views for a backend SavedViewScope. */

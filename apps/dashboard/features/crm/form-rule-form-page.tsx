@@ -17,10 +17,31 @@ import { CrmFormPageShell } from "./crm-form-page-shell";
 import { useCustomerOptions } from "./use-customer-options";
 
 const FORM_RULE_FORM = {
-  dueOptions: [
-    { value: "Before Job Start", label: "Before Job Start" },
+  triggerOptions: [
     { value: "On Dispatch", label: "On Dispatch" },
+    { value: "On Start", label: "On Start" },
     { value: "Per Shift", label: "Per Shift" },
+  ] as DashboardSelectOption[],
+  dueOptions: [
+    { value: "Before Dispatch", label: "Before Dispatch" },
+    { value: "Before Closeout", label: "Before Closeout" },
+    { value: "Before Job Start", label: "Before Job Start" },
+  ] as DashboardSelectOption[],
+  appliesToOptions: [
+    { value: "All Jobs", label: "All Jobs" },
+    { value: "Well Sites", label: "Well Sites" },
+    { value: "Fleet Jobs", label: "Fleet Jobs" },
+    { value: "H2S Sites", label: "H2S Sites" },
+  ] as DashboardSelectOption[],
+  versionOptions: [
+    { value: "V1", label: "V1" },
+    { value: "V2", label: "V2" },
+    { value: "V3", label: "V3" },
+  ] as DashboardSelectOption[],
+  statusOptions: [
+    { value: "ACTIVE", label: "Active" },
+    { value: "INACTIVE", label: "Inactive" },
+    { value: "DRAFT", label: "Draft" },
   ] as DashboardSelectOption[],
 };
 
@@ -42,10 +63,14 @@ export function FormRuleFormPage({
   const [customerId, setCustomerId] = React.useState("");
   const [jobType, setJobType] = React.useState("");
   const [formTemplate, setFormTemplate] = React.useState("");
-  const [required, setRequired] = React.useState(false);
+  const [required, setRequired] = React.useState(true);
   const [hardgate, setHardgate] = React.useState(false);
   const [blocksToggle, setBlocksToggle] = React.useState(false);
+  const [trigger, setTrigger] = React.useState("");
   const [due, setDue] = React.useState("");
+  const [appliesTo, setAppliesTo] = React.useState("");
+  const [version, setVersion] = React.useState("V1");
+  const [status, setStatus] = React.useState("ACTIVE");
   const [appliesFrom, setAppliesFrom] = React.useState("");
 
   React.useEffect(() => {
@@ -62,7 +87,11 @@ export function FormRuleFormPage({
         setRequired(Boolean(r.required));
         setHardgate(Boolean(r.hardGate));
         setBlocksToggle(Boolean(r.blocksToggle));
-        setDue(r.due ?? r.trigger ?? "");
+        setTrigger(r.trigger ?? "");
+        setDue(r.due ?? "");
+        setAppliesTo(r.appliesTo ?? r.jobType ?? "");
+        setVersion(r.version ?? "V1");
+        setStatus((r.status ?? "ACTIVE").toUpperCase());
         setAppliesFrom(r.appliesFrom ? String(r.appliesFrom).slice(0, 10) : "");
         setReady(true);
       } catch (err) {
@@ -85,13 +114,16 @@ export function FormRuleFormPage({
       const body = {
         customerId,
         formTemplate,
-        jobType: jobType || undefined,
+        jobType: jobType || appliesTo || undefined,
         required,
         hardGate: hardgate,
         blocksToggle,
+        trigger: trigger || undefined,
         due: due || undefined,
+        appliesTo: appliesTo || jobType || undefined,
+        version: version || undefined,
         appliesFrom: toIsoDate(appliesFrom),
-        status: toApiStatus("active"),
+        status: toApiStatus(status),
       };
       if (isEdit && ruleId) {
         await crmApi.updateFormRule(ruleId, body);
@@ -136,54 +168,75 @@ export function FormRuleFormPage({
                   emptyMessage="No record found"
                 />
                 <DashboardSelectField
-                  label="Job Type *"
-                  value={jobType}
-                  onChange={(e) => setJobType(e.target.value)}
-                  options={jobTypeOptions}
-                  emptyMessage="No record found"
-                />
-                <DashboardSelectField
                   label="Form Template *"
                   value={formTemplate}
                   onChange={(e) => setFormTemplate(e.target.value)}
                   options={templateOptions}
                   emptyMessage="No record found"
-                  containerClassName="md:col-span-2"
                 />
-              </DashboardFormGrid>
-
-              <div className="space-y-3">
-                <DashboardToggle
-                  label="Required? *"
-                  checked={required}
-                  onCheckedChange={setRequired}
-                />
-                <DashboardToggle
-                  label="Hardgate"
-                  checked={hardgate}
-                  onCheckedChange={setHardgate}
-                />
-                <DashboardToggle
-                  label="Blocks Toggle?"
-                  checked={blocksToggle}
-                  onCheckedChange={setBlocksToggle}
-                />
-              </div>
-
-              <DashboardFormGrid className="gap-x-4 gap-y-5">
                 <DashboardSelectField
-                  label="Due"
+                  label="Trigger"
+                  value={trigger}
+                  onChange={(e) => setTrigger(e.target.value)}
+                  options={FORM_RULE_FORM.triggerOptions}
+                />
+                <DashboardSelectField
+                  label="Applies To"
+                  value={appliesTo}
+                  onChange={(e) => {
+                    setAppliesTo(e.target.value);
+                    if (!jobType) setJobType(e.target.value);
+                  }}
+                  options={
+                    jobTypeOptions.length
+                      ? jobTypeOptions
+                      : FORM_RULE_FORM.appliesToOptions
+                  }
+                  emptyMessage="No record found"
+                />
+                <DashboardSelectField
+                  label="Due By"
                   value={due}
                   onChange={(e) => setDue(e.target.value)}
                   options={FORM_RULE_FORM.dueOptions}
+                />
+                <DashboardSelectField
+                  label="Version"
+                  value={version}
+                  onChange={(e) => setVersion(e.target.value)}
+                  options={FORM_RULE_FORM.versionOptions}
+                />
+                <DashboardSelectField
+                  label="Status"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  options={FORM_RULE_FORM.statusOptions}
                 />
                 <DashboardTextField
                   label="Applies From"
                   value={appliesFrom}
                   onChange={(e) => setAppliesFrom(e.target.value)}
-                  placeholder="MM/DD/YYYY"
+                  placeholder="YYYY-MM-DD"
                 />
               </DashboardFormGrid>
+
+              <div className="space-y-3">
+                <DashboardToggle
+                  label="Required?"
+                  checked={required}
+                  onCheckedChange={setRequired}
+                />
+                <DashboardToggle
+                  label="Hard Gate (enforcement)"
+                  checked={hardgate}
+                  onCheckedChange={setHardgate}
+                />
+                <DashboardToggle
+                  label="Blocks Payroll?"
+                  checked={blocksToggle}
+                  onCheckedChange={setBlocksToggle}
+                />
+              </div>
             </div>
           ),
         },

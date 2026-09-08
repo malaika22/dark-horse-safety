@@ -40,6 +40,12 @@ export class FormRulesController {
     return this.formRules.kpi();
   }
 
+  @Get('insights')
+  @ApiOperation({ summary: 'Form rules bottom widgets' })
+  insights() {
+    return this.formRules.insights();
+  }
+
   @Get('export')
   @ApiOperation({ summary: 'Export form rules CSV or PDF' })
   export(@Query() query: ExportQueryDto & FormRuleListQueryDto) {

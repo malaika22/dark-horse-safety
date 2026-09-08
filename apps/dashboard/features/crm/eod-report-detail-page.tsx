@@ -9,6 +9,10 @@ import {
 import { crmApi, downloadCsv, type CrmEodReport } from "@/lib/crm-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmDetailStateGate } from "@/features/crm/crm-states";
+import {
+  useSetHeaderActions,
+  useSetHeaderBreadcrumb,
+} from "@/features/app-shell/header-actions-context";
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
@@ -69,6 +73,21 @@ export function EodReportDetailPage({ reportId }: { reportId: string }) {
     }
   }
 
+  useSetHeaderBreadcrumb(
+    detail?.reportCode
+      ? `CRM / EOD Reports / ${detail.reportCode}`
+      : "CRM / EOD Reports / Detail",
+  );
+
+  useSetHeaderActions(
+    detail ? (
+      <DashboardToolbarButton disabled={exporting} onClick={() => void handleExport()}>
+        Export
+      </DashboardToolbarButton>
+    ) : null,
+    [exporting, reportId, detail?.reportCode, detail],
+  );
+
   if (loading || !detail || loadError) {
     return (
       <CrmDetailStateGate
@@ -88,19 +107,9 @@ export function EodReportDetailPage({ reportId }: { reportId: string }) {
 
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-3">
-          <h1 className="font-sans text-[18px] font-[510] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[24px]">
-            EOD Report · {detail.reportCode}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2.5">
-            <DashboardBadge variant="success" pill>{detail.status}</DashboardBadge>
-            <span className="font-sans text-[11px] font-normal uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">{meta}</span>
-          </div>
-        </div>
-        <DashboardToolbarButton disabled={exporting} onClick={() => void handleExport()}>
-          Export
-        </DashboardToolbarButton>
+      <div className="flex flex-wrap items-center gap-2.5">
+        <DashboardBadge variant="success" pill>{detail.status}</DashboardBadge>
+        <span className="font-sans text-[11px] font-normal uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">{meta}</span>
       </div>
 
       <DashboardPanel className="p-4 sm:p-5">

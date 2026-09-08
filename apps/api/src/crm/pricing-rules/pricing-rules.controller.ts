@@ -88,7 +88,10 @@ export class PricingRulesController {
 
   @Post(':id/duplicate')
   @ApiOperation({ summary: 'Duplicate pricing rule' })
-  duplicate(@Param('id') id: string) {
-    return this.pricingRules.duplicate(id);
+  duplicate(
+    @Param('id') id: string,
+    @Body() body?: { customerId?: string },
+  ) {
+    return this.pricingRules.duplicate(id, body?.customerId);
   }
 }

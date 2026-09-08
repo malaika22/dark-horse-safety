@@ -50,10 +50,22 @@ export class FormRulesService {
           { formTemplate: containsCi(q) },
           { code: containsCi(q) },
           { jobType: containsCi(q) },
+          { customer: { name: containsCi(q) } },
         ],
       });
     }
     return and.length ? { AND: and } : {};
+  }
+
+  private listOrderBy(
+    sort?: string,
+    direction?: 'asc' | 'desc',
+  ): Prisma.FormRuleOrderByWithRelationInput {
+    const dir = direction === 'asc' ? 'asc' : 'desc';
+    if (sort === 'customer') return { customer: { name: dir } };
+    return orderByFrom(sort, direction, SORT_MAP, {
+      createdAt: 'desc',
+    }) as Prisma.FormRuleOrderByWithRelationInput;
   }
 
   async list(query: FormRuleListQueryDto) {
@@ -65,9 +77,7 @@ export class FormRulesService {
         where,
         skip,
         take,
-        orderBy: orderByFrom(query.sort, query.direction, SORT_MAP, {
-          createdAt: 'desc',
-        }),
+        orderBy: this.listOrderBy(query.sort, query.direction),
         include: {
           customer: { select: { id: true, name: true, code: true } },
           owner: {
@@ -80,17 +90,222 @@ export class FormRulesService {
   }
 
   async kpi() {
-    const [total, active, archived, hardGate] = await Promise.all([
-      this.prisma.formRule.count({ where: { archivedAt: null } }),
+    const [active, pricedGroups, customerTotal, hardGate] = await Promise.all([
       this.prisma.formRule.count({
         where: { archivedAt: null, status: CrmRecordStatus.ACTIVE },
       }),
-      this.prisma.formRule.count({ where: { archivedAt: { not: null } } }),
+      this.prisma.formRule.groupBy({
+        by: ['customerId'],
+        where: { archivedAt: null },
+      }),
+      this.prisma.customer.count({ where: { archivedAt: null } }),
       this.prisma.formRule.count({
         where: { archivedAt: null, hardGate: true },
       }),
     ]);
-    return { data: { total, active, archived, hardGate } };
+    const customersConfigured = pricedGroups.length;
+    const missing = Math.max(0, customerTotal - customersConfigured);
+    return {
+      data: {
+        active,
+        customersConfigured,
+        hardGate,
+        missing,
+      },
+    };
+  }
+
+  async insights() {
+    const hardGateRules = await this.prisma.formRule.findMany({
+      where: { archivedAt: null, hardGate: true },
+      select: {
+        id: true,
+        formTemplate: true,
+        customerId: true,
+        customer: { select: { name: true } },
+      },
+      take: 20,
+    });
+
+    const hardCustomerIds = Array.from(
+      new Set(hardGateRules.map((r) => r.customerId)),
+    );
+
+    const [workOrders, contacts, woCounts, customers] = await Promise.all([
+      hardCustomerIds.length
+        ? this.prisma.workOrder.findMany({
+            where: {
+              customerId: { in: hardCustomerIds },
+              archivedAt: null,
+              status: { not: CrmRecordStatus.ARCHIVED },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 8,
+            select: {
+              id: true,
+              code: true,
+              customerId: true,
+              customer: { select: { name: true } },
+            },
+          })
+        : Promise.resolve([]),
+      hardCustomerIds.length
+        ? this.prisma.contact.findMany({
+            where: {
+              archivedAt: null,
+              OR: [
+                { primaryCustomerId: { in: hardCustomerIds } },
+                {
+                  customers: { some: { customerId: { in: hardCustomerIds } } },
+                },
+              ],
+            },
+            orderBy: { fullName: 'asc' },
+            take: 8,
+            select: {
+              id: true,
+              fullName: true,
+              primaryCustomerId: true,
+              customers: {
+                where: { customerId: { in: hardCustomerIds } },
+                select: { customerId: true },
+                take: 1,
+              },
+            },
+          })
+        : Promise.resolve([]),
+      hardCustomerIds.length
+        ? this.prisma.workOrder.groupBy({
+            by: ['customerId'],
+            where: {
+              customerId: { in: hardCustomerIds },
+              archivedAt: null,
+              status: { not: CrmRecordStatus.ARCHIVED },
+            },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+      this.prisma.customer.findMany({
+        where: { archivedAt: null },
+        select: {
+          id: true,
+          name: true,
+          formRules: { where: { archivedAt: null }, select: { id: true }, take: 1 },
+        },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    const formByCustomer = new Map<string, string>();
+    for (const r of hardGateRules) {
+      const current = formByCustomer.get(r.customerId);
+      if (
+        !current ||
+        /h2s|cert/i.test(r.formTemplate) ||
+        current.length < r.formTemplate.length
+      ) {
+        formByCustomer.set(r.customerId, r.formTemplate);
+      }
+    }
+
+    const blockedItems: {
+      id: string;
+      label: string;
+      reason: string;
+    }[] = [];
+
+    for (const wo of workOrders.slice(0, 4)) {
+      blockedItems.push({
+        id: wo.id,
+        label: `${wo.code} · ${this.shortCustomer(wo.customer?.name)}`,
+        reason: this.shortForm(formByCustomer.get(wo.customerId)),
+      });
+    }
+
+    for (const c of contacts) {
+      if (blockedItems.length >= 6) break;
+      const customerId =
+        c.customers[0]?.customerId ?? c.primaryCustomerId ?? '';
+      const reason = formByCustomer.get(customerId);
+      if (!reason) continue;
+      blockedItems.push({
+        id: c.id,
+        label: this.shortPerson(c.fullName),
+        reason: this.shortForm(reason),
+      });
+    }
+
+    const jobsBlocked = workOrders.length;
+    const techsBlocked = contacts.length;
+    const blockedTotal = jobsBlocked + techsBlocked;
+
+    const openByCustomer = new Map<string, number>();
+    for (const row of woCounts) {
+      openByCustomer.set(row.customerId, row._count._all);
+    }
+    const missCounts = new Map<
+      string,
+      { form: string; customer: string; count: number }
+    >();
+    for (const rule of hardGateRules) {
+      const key = rule.formTemplate.toUpperCase();
+      const openJobs = openByCustomer.get(rule.customerId) ?? 0;
+      if (openJobs <= 0) continue;
+      const existing = missCounts.get(key);
+      if (!existing || openJobs > existing.count) {
+        missCounts.set(key, {
+          form: key,
+          customer: rule.customer?.name ?? '—',
+          count: openJobs,
+        });
+      }
+    }
+    const mostMissed = Array.from(missCounts.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4)
+      .map((m) => ({
+        id: m.form,
+        form: m.form,
+        detail: `${m.count} · ${this.shortCustomer(m.customer)}`,
+      }));
+
+    const coverageGaps = customers
+      .filter((c) => c.formRules.length === 0)
+      .slice(0, 8)
+      .map((c) => ({ id: c.id, name: c.name }));
+
+    return {
+      data: {
+        currentlyBlocked: {
+          total: blockedTotal || blockedItems.length,
+          jobs: jobsBlocked,
+          technicians: techsBlocked,
+          items: blockedItems,
+        },
+        mostMissed,
+        coverageGaps,
+      },
+    };
+  }
+
+  private shortCustomer(name?: string | null) {
+    if (!name?.trim()) return 'CUSTOMER';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length <= 2) return name.toUpperCase();
+    return `${parts[0]} ${parts[1]}`.toUpperCase();
+  }
+
+  private shortPerson(fullName: string) {
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return `${parts[0].charAt(0)}. ${parts[parts.length - 1]}`.toUpperCase();
+    }
+    return fullName.toUpperCase();
+  }
+
+  private shortForm(form?: string | null) {
+    if (!form?.trim()) return 'FORM';
+    return form.trim().toUpperCase().slice(0, 18);
   }
 
   async getById(id: string) {

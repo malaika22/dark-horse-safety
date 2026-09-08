@@ -29,16 +29,20 @@ function MetricBlock({
   meta?: string;
   metaTone?: "muted" | "success";
 }) {
+  const showValue = Boolean(value?.trim());
   return (
     <div className="min-w-0">
-      <p className="font-sans text-[24px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[32px]">
-        {value}
-      </p>
+      {showValue ? (
+        <p className="font-sans text-[24px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[32px]">
+          {value}
+        </p>
+      ) : null}
       {meta ? (
         <p
           title={meta}
           className={cn(
-            "mt-2 truncate font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[16px]",
+            "font-sans text-[13px] font-normal uppercase leading-snug tracking-[-0.02em] md:text-[16px]",
+            showValue ? "mt-2 truncate leading-none" : "mt-1",
             metaTone === "success" ? "text-[#22C55E]" : "text-[#959597]",
           )}
         >

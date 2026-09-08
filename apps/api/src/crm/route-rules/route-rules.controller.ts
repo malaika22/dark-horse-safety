@@ -40,6 +40,12 @@ export class RouteRulesController {
     return this.routeRules.kpi();
   }
 
+  @Get('overview')
+  @ApiOperation({ summary: 'Route / GPS rules overview (hierarchy, map, flags)' })
+  overview() {
+    return this.routeRules.overview();
+  }
+
   @Get('export')
   @ApiOperation({ summary: 'Export route rules CSV or PDF' })
   export(@Query() query: ExportQueryDto & RouteRuleListQueryDto) {

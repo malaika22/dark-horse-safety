@@ -33,38 +33,38 @@ export const CONTACTS_KPI_SHELL: KpiCell[] = [
 ];
 
 export const LOCATIONS_KPI_SHELL: KpiCell[] = [
-  { title: "Total Locations", value: "—", icon: "customers" },
+  { title: "Total Locations", value: "—", icon: "document" },
   { title: "Active Wells", value: "—", icon: "time" },
-  { title: "Inactive", value: "—", icon: "edit" },
-  { title: "Missing GPS", value: "—", icon: "wrench" },
+  { title: "Inactive", value: "—", icon: "document" },
+  { title: "Missing GPS", value: "—", icon: "lightning" },
 ];
 
 export const PRICING_KPI_SHELL: KpiCell[] = [
   { title: "Active Rules", value: "—", icon: "document" },
   { title: "Customers Priced", value: "—", icon: "time" },
-  { title: "Missing Pricing", value: "—", icon: "edit" },
+  { title: "Missing Pricing", value: "—", icon: "document" },
   { title: "Expiring Soon", value: "—", icon: "lightning" },
 ];
 
 export const REQUIREMENTS_KPI_SHELL: KpiCell[] = [
   { title: "Total Requirements", value: "—", icon: "document" },
-  { title: "Needs Review", value: "—", icon: "edit" },
-  { title: "Expiring", value: "—", icon: "time" },
+  { title: "Needs Review", value: "—", icon: "time" },
+  { title: "Expiring", value: "—", icon: "document" },
   { title: "Missing Docs", value: "—", icon: "lightning" },
 ];
 
 export const FORM_RULES_KPI_SHELL: KpiCell[] = [
   { title: "Active Rules", value: "—", icon: "document" },
-  { title: "Customers Configured", value: "—", icon: "customers" },
-  { title: "Hard-Gate Forms", value: "—", icon: "edit" },
+  { title: "Customers Configured", value: "—", icon: "time" },
+  { title: "Hard-Gate Forms", value: "—", icon: "document" },
   { title: "Missing Rules", value: "—", icon: "lightning" },
 ];
 
 export const ROUTE_RULES_KPI_SHELL: KpiCell[] = [
-  { title: "Active Rules", value: "—", icon: "document" },
-  { title: "Customers Configured", value: "—", icon: "time" },
-  { title: "Geofenced Sites", value: "—", icon: "customers" },
-  { title: "Missing Rules", value: "—", icon: "lightning" },
+  { title: "Sites with a Rule", value: "—", icon: "document" },
+  { title: "Using System Default", value: "—", icon: "time" },
+  { title: "GPS Flags this Cycle", value: "—", icon: "document" },
+  { title: "Sites with No Rule", value: "—", icon: "lightning" },
 ];
 
 export const EOD_KPI_SHELL: KpiCell[] = [
@@ -107,33 +107,43 @@ export const CONTACTS_SORT_OPTIONS: SortOption[] = [
 ];
 
 export const LOCATIONS_SORT_OPTIONS: SortOption[] = [
-  { id: "name", label: "Location name" },
+  { id: "customer", label: "Customer" },
+  { id: "name", label: "Well name" },
   { id: "createdAt", label: "Created" },
   { id: "status", label: "Status" },
 ];
 
 export const PRICING_SORT_OPTIONS: SortOption[] = [
+  { id: "customer", label: "Customer" },
   { id: "serviceItem", label: "Service" },
   { id: "createdAt", label: "Created" },
   { id: "status", label: "Status" },
 ];
 
 export const REQUIREMENTS_SORT_OPTIONS: SortOption[] = [
+  { id: "customer", label: "Customer" },
   { id: "name", label: "Requirement" },
   { id: "dueDate", label: "Due date" },
-  { id: "createdAt", label: "Created" },
   { id: "status", label: "Status" },
+  { id: "enforcementLevel", label: "Enforcement level" },
+  { id: "techniciansAffected", label: "Technicians affected" },
 ];
 
 export const FORM_RULES_SORT_OPTIONS: SortOption[] = [
+  { id: "customer", label: "Customer" },
   { id: "formTemplate", label: "Form template" },
-  { id: "createdAt", label: "Created" },
   { id: "status", label: "Status" },
+  { id: "createdAt", label: "Created" },
 ];
 
 export const ROUTE_RULES_SORT_OPTIONS: SortOption[] = [
-  { id: "createdAt", label: "Created" },
-  { id: "status", label: "Status" },
+  { id: "site", label: "Site" },
+  { id: "customer", label: "Customer" },
+  { id: "radius", label: "Radius" },
+  { id: "rule", label: "Rule" },
+  { id: "source", label: "Source" },
+  { id: "flagRaised", label: "Flag Raised" },
+  { id: "lastModified", label: "Last Modified" },
 ];
 
 export const EOD_SORT_OPTIONS: SortOption[] = [
@@ -159,24 +169,30 @@ export const CONTACT_DETAIL_TABS = [
   { id: "activity" as const, label: "Activity" },
   { id: "quotes" as const, label: "Quotes" },
   { id: "work-orders" as const, label: "Work Orders" },
-  { id: "customers" as const, label: "Customers" },
 ];
 
 /** Preferred order of API kpi keys when filling shells. */
 export const KPI_KEY_ORDER = [
   "total",
   "active",
-  "archived",
+  "openJobs",
   "needsReview",
+  "archived",
+  "customersConfigured",
   "primary",
   "missingEmail",
   "missingPhone",
+  "sitesWithRule",
+  "usingSystemDefault",
+  "gpsFlagsThisCycle",
+  "sitesWithNoRule",
   "inactive",
   "missingGps",
   "customersPriced",
+  "hardGate",
   "missing",
   "expiring",
-  "hardGate",
+  "missingDocs",
   "geofenced",
   "today",
   "submitted",

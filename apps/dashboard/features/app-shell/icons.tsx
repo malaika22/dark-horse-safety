@@ -20,6 +20,7 @@ function Svg({ children, className }: SvgProps) {
 export type NavIconName =
   | "dashboard"
   | "crm"
+  | "sales"
   | "hr"
   | "fleet"
   | "operations"
@@ -49,6 +50,47 @@ const NAV_ICON_PATHS: Record<NavIconName, ReactNode> = {
         strokeWidth="1.75"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </>
+  ),
+  sales: (
+    <>
+      {/* Briefcase */}
+      <rect
+        x="3"
+        y="8"
+        width="14"
+        height="11"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <path
+        d="M9 8V6.5A1.5 1.5 0 0110.5 5h3A1.5 1.5 0 0115 6.5V8"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+      <path
+        d="M3 12h14"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+      {/* Magnifying glass overlay */}
+      <circle
+        cx="17.5"
+        cy="17.5"
+        r="3.25"
+        fill="#0D0D0D"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <path
+        d="M19.75 19.75L22 22"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
       />
     </>
   ),

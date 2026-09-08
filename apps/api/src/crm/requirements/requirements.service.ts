@@ -25,7 +25,10 @@ const SORT_MAP: Record<string, string> = {
   createdAt: 'createdAt',
   status: 'status',
   dueDate: 'dueDate',
+  enforcementLevel: 'enforcementLevel',
 };
+
+const EXPIRING_WINDOW_DAYS = 30;
 
 @Injectable()
 export class RequirementsService {
@@ -56,10 +59,25 @@ export class RequirementsService {
           { code: containsCi(q) },
           { requirementType: containsCi(q) },
           { notes: containsCi(q) },
+          { customer: { name: containsCi(q) } },
         ],
       });
     }
     return and.length ? { AND: and } : {};
+  }
+
+  private listOrderBy(
+    sort?: string,
+    direction?: 'asc' | 'desc',
+  ): Prisma.CustomerRequirementOrderByWithRelationInput {
+    const dir = direction === 'asc' ? 'asc' : 'desc';
+    if (sort === 'customer') return { customer: { name: dir } };
+    if (sort === 'techniciansAffected') {
+      return { customer: { contacts: { _count: dir } } };
+    }
+    return orderByFrom(sort, direction, SORT_MAP, {
+      createdAt: 'desc',
+    }) as Prisma.CustomerRequirementOrderByWithRelationInput;
   }
 
   async list(query: RequirementListQueryDto) {
@@ -71,9 +89,7 @@ export class RequirementsService {
         where,
         skip,
         take,
-        orderBy: orderByFrom(query.sort, query.direction, SORT_MAP, {
-          createdAt: 'desc',
-        }),
+        orderBy: this.listOrderBy(query.sort, query.direction),
         include: {
           customer: { select: { id: true, name: true, code: true } },
           owner: {
@@ -86,22 +102,35 @@ export class RequirementsService {
   }
 
   async kpi() {
-    const [total, active, archived, hardGate] = await Promise.all([
-      this.prisma.customerRequirement.count({ where: { archivedAt: null } }),
+    const now = new Date();
+    const inWindow = new Date();
+    inWindow.setDate(inWindow.getDate() + EXPIRING_WINDOW_DAYS);
+
+    const base = { archivedAt: null } as const;
+
+    const [total, needsReview, expiring, missingDocs] = await Promise.all([
+      this.prisma.customerRequirement.count({ where: base }),
       this.prisma.customerRequirement.count({
-        where: { archivedAt: null, status: CrmRecordStatus.ACTIVE },
-      }),
-      this.prisma.customerRequirement.count({
-        where: { archivedAt: { not: null } },
+        where: { ...base, status: CrmRecordStatus.NEEDS_REVIEW },
       }),
       this.prisma.customerRequirement.count({
         where: {
-          archivedAt: null,
-          enforcementLevel: EnforcementLevel.HARD_GATE,
+          ...base,
+          OR: [
+            { status: CrmRecordStatus.EXPIRED },
+            { dueDate: { gte: now, lte: inWindow } },
+          ],
+        },
+      }),
+      this.prisma.customerRequirement.count({
+        where: {
+          ...base,
+          OR: [{ docsRequired: true }, { evidenceRequired: true }],
+          status: { not: CrmRecordStatus.COMPLETE },
         },
       }),
     ]);
-    return { data: { total, active, archived, hardGate } };
+    return { data: { total, needsReview, expiring, missingDocs } };
   }
 
   async getById(id: string) {
@@ -297,7 +326,16 @@ export class RequirementsService {
   async affected(id: string) {
     const req = await this.prisma.customerRequirement.findUnique({
       where: { id },
-      select: { id: true, customerId: true },
+      select: {
+        id: true,
+        name: true,
+        customerId: true,
+        status: true,
+        docsRequired: true,
+        evidenceRequired: true,
+        dueDate: true,
+        enforcementLevel: true,
+      },
     });
     if (!req) {
       throw new NotFoundException({
@@ -305,239 +343,400 @@ export class RequirementsService {
         message: 'Requirement not found',
       });
     }
-    const [contacts, workOrderRows, locations] = await Promise.all([
-      this.prisma.contact.findMany({
-        where: {
-          archivedAt: null,
-          OR: [
-            { primaryCustomerId: req.customerId },
-            { customers: { some: { customerId: req.customerId } } },
-          ],
-        },
-        orderBy: { fullName: 'asc' },
-        take: 50,
-        select: {
-          id: true,
-          fullName: true,
-          roleTitle: true,
-          customers: {
-            where: { customerId: req.customerId },
-            select: { roleAtCustomer: true },
-            take: 1,
-          },
-        },
-      }),
-      this.prisma.workOrder.findMany({
-        where: {
-          customerId: req.customerId,
-          status: { not: CrmRecordStatus.ARCHIVED },
-          archivedAt: null,
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 50,
-        select: {
-          id: true,
-          code: true,
-          title: true,
-          status: true,
-        },
-      }),
-      this.prisma.location.findMany({
-        where: {
-          customerId: req.customerId,
-          archivedAt: null,
-          openJobs: { gt: 0 },
-        },
-        orderBy: { openJobs: 'desc' },
-        take: 50,
-        select: {
-          id: true,
-          code: true,
-          name: true,
-          openJobs: true,
-          status: true,
-        },
-      }),
-    ]);
 
-    const technicians = contacts.map((c) => ({
-      id: c.id,
-      name: c.fullName,
-      role:
-        c.customers[0]?.roleAtCustomer ?? c.roleTitle ?? 'Technician',
-    }));
+    const summary = await this.buildAffectedForCustomers(
+      [req.customerId],
+      [{
+        id: req.id,
+        name: req.name,
+        customerId: req.customerId,
+        status: req.status,
+        docsRequired: req.docsRequired,
+        evidenceRequired: req.evidenceRequired,
+        dueDate: req.dueDate,
+        enforcementLevel: req.enforcementLevel,
+      }],
+    );
 
-    if (workOrderRows.length > 0) {
-      return {
-        data: {
-          technicians,
-          workOrders: workOrderRows.map((wo) => ({
-            id: wo.id,
-            workOrder: wo.title?.trim()
-              ? `${wo.code} / ${wo.title}`
-              : wo.code,
-            priority: this.priorityFromStatus(wo.status),
-            source: 'work_orders' as const,
-          })),
-          source: 'work_orders' as const,
-        },
-      };
-    }
-
-    return {
-      data: {
-        technicians,
-        workOrders: locations.map((loc) => ({
-          id: loc.id,
-          workOrder: `Location: ${loc.code} / ${loc.name}`,
-          priority: this.priorityFromOpenJobs(loc.openJobs),
-          source: 'location' as const,
-        })),
-        source: 'locations_with_open_jobs' as const,
-      },
-    };
+    return { data: summary };
   }
 
   async affectedSummary() {
-    const customerIds = (
-      await this.prisma.customerRequirement.findMany({
-        where: { archivedAt: null },
-        select: { customerId: true },
-        distinct: ['customerId'],
-      })
-    ).map((r) => r.customerId);
+    const requirements = await this.prisma.customerRequirement.findMany({
+      where: { archivedAt: null },
+      select: {
+        id: true,
+        name: true,
+        customerId: true,
+        status: true,
+        docsRequired: true,
+        evidenceRequired: true,
+        dueDate: true,
+        enforcementLevel: true,
+      },
+      orderBy: { name: 'asc' },
+      take: 100,
+    });
+
+    const customerIds = Array.from(
+      new Set(requirements.map((r) => r.customerId)),
+    );
 
     if (customerIds.length === 0) {
       return {
         data: {
           technicians: [],
           workOrders: [],
+          requirementStatus: [],
+          enforcementItems: [],
+          blockedTechnicians: [],
+          blockedActions: [],
           statusWells: [],
-          source: 'locations_with_open_jobs' as const,
+          source: 'empty' as const,
         },
       };
     }
 
-    const [contacts, workOrderRows, openLocations, statusLocations] =
-      await Promise.all([
-        this.prisma.contact.findMany({
-          where: {
-            archivedAt: null,
-            OR: [
-              { primaryCustomerId: { in: customerIds } },
-              { customers: { some: { customerId: { in: customerIds } } } },
-            ],
-          },
-          orderBy: { fullName: 'asc' },
-          take: 8,
-          select: {
-            id: true,
-            fullName: true,
-            roleTitle: true,
-            customers: {
-              where: { customerId: { in: customerIds } },
-              select: { roleAtCustomer: true },
-              take: 1,
-            },
-          },
-        }),
-        this.prisma.workOrder.findMany({
-          where: {
-            customerId: { in: customerIds },
-            status: { not: CrmRecordStatus.ARCHIVED },
-            archivedAt: null,
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 8,
-          select: {
-            id: true,
-            code: true,
-            title: true,
-            status: true,
-          },
-        }),
-        this.prisma.location.findMany({
-          where: {
-            customerId: { in: customerIds },
-            archivedAt: null,
-            openJobs: { gt: 0 },
-          },
-          orderBy: { openJobs: 'desc' },
-          take: 8,
-          select: {
-            id: true,
-            code: true,
-            name: true,
-            openJobs: true,
-          },
-        }),
-        this.prisma.location.findMany({
-          where: {
-            customerId: { in: customerIds },
-            archivedAt: null,
-          },
-          orderBy: { name: 'asc' },
-          take: 12,
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            status: true,
-          },
-        }),
-      ]);
+    const summary = await this.buildAffectedForCustomers(
+      customerIds,
+      requirements,
+    );
+    return { data: summary };
+  }
 
-    const technicians = contacts.map((c) => ({
-      id: c.id,
-      name: c.fullName,
-      role:
-        c.customers[0]?.roleAtCustomer ?? c.roleTitle ?? 'Technician',
-    }));
+  private async buildAffectedForCustomers(
+    customerIds: string[],
+    requirements: Array<{
+      id: string;
+      name: string;
+      customerId: string;
+      status: CrmRecordStatus;
+      docsRequired: boolean;
+      evidenceRequired: boolean;
+      dueDate: Date | null;
+      enforcementLevel: EnforcementLevel;
+    }>,
+  ) {
+    const unmetByCustomer = new Map<string, string[]>();
+    for (const req of requirements) {
+      if (this.isRequirementMet(req)) continue;
+      const list = unmetByCustomer.get(req.customerId) ?? [];
+      list.push(req.name);
+      unmetByCustomer.set(req.customerId, list);
+    }
 
-    const statusWells = statusLocations.map((loc) => ({
-      id: loc.id,
-      label: loc.name || loc.code,
-      status: this.statusBadge(loc.status),
-    }));
+    const [contacts, workOrderRows, locationRows] = await Promise.all([
+      this.prisma.contact.findMany({
+        where: {
+          archivedAt: null,
+          OR: [
+            { primaryCustomerId: { in: customerIds } },
+            { customers: { some: { customerId: { in: customerIds } } } },
+          ],
+        },
+        orderBy: { fullName: 'asc' },
+        take: 8,
+        select: {
+          id: true,
+          fullName: true,
+          roleTitle: true,
+          primaryCustomerId: true,
+          customers: {
+            where: { customerId: { in: customerIds } },
+            select: { customerId: true, roleAtCustomer: true },
+            take: 1,
+          },
+        },
+      }),
+      this.prisma.workOrder.findMany({
+        where: {
+          customerId: { in: customerIds },
+          status: { not: CrmRecordStatus.ARCHIVED },
+          archivedAt: null,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+        select: {
+          id: true,
+          code: true,
+          title: true,
+          status: true,
+          serviceDate: true,
+          createdAt: true,
+          customerId: true,
+          customer: { select: { name: true } },
+          assignedRep: {
+            select: { firstName: true, lastName: true, email: true },
+          },
+        },
+      }),
+      this.prisma.location.findMany({
+        where: {
+          customerId: { in: customerIds },
+          archivedAt: null,
+        },
+        orderBy: { name: 'asc' },
+        take: 8,
+        select: {
+          id: true,
+          name: true,
+          wellPadNumber: true,
+          status: true,
+          customerId: true,
+        },
+      }),
+    ]);
 
-    if (workOrderRows.length > 0) {
+    const technicians = contacts.map((c) => {
+      const customerId =
+        c.customers[0]?.customerId ?? c.primaryCustomerId ?? customerIds[0];
+      const unmet = unmetByCustomer.get(customerId ?? '') ?? [];
+      const met = unmet.length === 0;
       return {
-        data: {
-          technicians,
-          workOrders: workOrderRows.map((wo) => ({
-            id: wo.id,
-            workOrder: wo.title?.trim()
-              ? `${wo.code} / ${wo.title}`
-              : wo.code,
-            priority: this.priorityFromStatus(wo.status),
-            source: 'work_orders' as const,
-          })),
-          statusWells,
-          source: 'work_orders' as const,
-        },
+        id: c.id,
+        name: this.shortContactName(c.fullName),
+        role:
+          c.customers[0]?.roleAtCustomer ?? c.roleTitle ?? 'Field Tech',
+        status: met
+          ? { label: 'MET', variant: 'success' as const }
+          : { label: 'NOT MET', variant: 'error' as const },
+        fails: unmet[0] ?? null,
       };
-    }
+    });
+
+    const workOrders = workOrderRows.map((wo) => {
+      const blockedNames = unmetByCustomer.get(wo.customerId) ?? [];
+      const blockedBy = blockedNames[0] ?? null;
+      const date = wo.serviceDate ?? wo.createdAt;
+      const tech = wo.assignedRep
+        ? this.shortUserLabel(wo.assignedRep)
+        : 'UNASSIGNED';
+      return {
+        id: wo.id,
+        workOrder: `${wo.code} - ${wo.customer?.name ?? 'Customer'}`,
+        subtitle: `${this.formatWidgetDate(date)} · TECH: ${tech}`,
+        blockedBy,
+        priority: this.priorityFromStatus(wo.status),
+        source: 'work_orders' as const,
+      };
+    });
+
+    const requirementStatus = this.requirementStatusBreakdown(requirements);
+
+    const enforcementItems = requirements.slice(0, 8).map((r) => ({
+      id: r.id,
+      label: r.name,
+      enforcement: this.enforcementBadge(r.enforcementLevel),
+    }));
+
+    const blockedTechnicians = technicians
+      .filter((t) => t.status.label === 'NOT MET')
+      .map((t) => ({
+        id: t.id,
+        name: t.name,
+        fails: t.fails ? `FAILS: ${t.fails}` : 'FAILS: REQUIREMENT',
+      }));
+
+    const hasHard = requirements.some(
+      (r) =>
+        !this.isRequirementMet(r) &&
+        r.enforcementLevel === EnforcementLevel.HARD_GATE,
+    );
+    const hasSoft = requirements.some(
+      (r) =>
+        !this.isRequirementMet(r) &&
+        r.enforcementLevel !== EnforcementLevel.HARD_GATE,
+    );
+
+    const blockedActions = [
+      ...(hasHard
+        ? [
+            {
+              id: 'dispatch',
+              label: 'Dispatch to this Customer',
+              level: this.enforcementBadge(EnforcementLevel.HARD_GATE),
+            },
+            {
+              id: 'quote',
+              label: 'Quote',
+              level: this.enforcementBadge(EnforcementLevel.HARD_GATE),
+            },
+          ]
+        : []),
+      ...(hasSoft
+        ? [
+            {
+              id: 'invoice',
+              label: 'Invoice',
+              level: this.enforcementBadge(EnforcementLevel.SOFT_GATE),
+            },
+            {
+              id: 'payroll',
+              label: 'Payroll',
+              level: this.enforcementBadge(EnforcementLevel.SOFT_GATE),
+            },
+          ]
+        : []),
+    ];
+
+    const statusWells = locationRows.map((loc) => {
+      const unmet = unmetByCustomer.get(loc.customerId) ?? [];
+      const blocked = unmet.length > 0;
+      return {
+        id: loc.id,
+        label: loc.wellPadNumber?.trim() || loc.name,
+        status: blocked
+          ? { label: 'BLOCKED', variant: 'error' as const }
+          : {
+              label: String(loc.status).replace(/_/g, ' '),
+              variant:
+                loc.status === CrmRecordStatus.ACTIVE
+                  ? ('success' as const)
+                  : loc.status === CrmRecordStatus.NEEDS_REVIEW
+                    ? ('warning' as const)
+                    : ('neutral' as const),
+            },
+      };
+    });
 
     return {
-      data: {
-        technicians,
-        workOrders: openLocations.map((loc) => ({
-          id: loc.id,
-          workOrder: `Location: ${loc.code} / ${loc.name}`,
-          priority: this.priorityFromOpenJobs(loc.openJobs),
-          source: 'location' as const,
-        })),
-        statusWells,
-        source: 'locations_with_open_jobs' as const,
-      },
+      technicians,
+      workOrders,
+      requirementStatus,
+      enforcementItems,
+      blockedTechnicians,
+      blockedActions,
+      statusWells,
+      source: 'work_orders' as const,
     };
   }
 
-  private priorityFromOpenJobs(openJobs: number): string {
-    if (openJobs >= 5) return 'CRITICAL';
-    if (openJobs >= 3) return 'HIGH';
-    if (openJobs >= 1) return 'MEDIUM';
-    return 'LOW';
+  private isRequirementMet(r: {
+    status: CrmRecordStatus;
+    docsRequired: boolean;
+    evidenceRequired: boolean;
+    dueDate: Date | null;
+  }): boolean {
+    const display = this.requirementDisplayKind(r);
+    return display === 'MET';
+  }
+
+  private requirementDisplayKind(r: {
+    status: CrmRecordStatus;
+    docsRequired: boolean;
+    evidenceRequired: boolean;
+    dueDate: Date | null;
+  }): 'MET' | 'NOT_MET' | 'MISSING' | 'EXPIRING' | 'NEEDS_REVIEW' {
+    const s = r.status;
+    const now = new Date();
+    const inWindow = new Date();
+    inWindow.setDate(inWindow.getDate() + EXPIRING_WINDOW_DAYS);
+    const docsNeeded = r.docsRequired || r.evidenceRequired;
+
+    if (
+      s === CrmRecordStatus.EXPIRED ||
+      (r.dueDate != null && r.dueDate >= now && r.dueDate <= inWindow)
+    ) {
+      return 'EXPIRING';
+    }
+    if (docsNeeded && s !== CrmRecordStatus.COMPLETE) {
+      return 'MISSING';
+    }
+    if (s === CrmRecordStatus.NEEDS_REVIEW) {
+      return 'NEEDS_REVIEW';
+    }
+    if (s === CrmRecordStatus.COMPLETE || s === CrmRecordStatus.ACTIVE) {
+      return 'MET';
+    }
+    return 'NOT_MET';
+  }
+
+  private requirementStatusBreakdown(
+    requirements: Array<{
+      status: CrmRecordStatus;
+      docsRequired: boolean;
+      evidenceRequired: boolean;
+      dueDate: Date | null;
+    }>,
+  ) {
+    const counts = {
+      MET: 0,
+      NEEDS_REVIEW: 0,
+      EXPIRING: 0,
+      MISSING: 0,
+      NOT_MET: 0,
+    };
+    for (const r of requirements) {
+      const kind = this.requirementDisplayKind(r);
+      if (kind === 'NOT_MET') counts.NEEDS_REVIEW += 1;
+      else if (kind === 'NEEDS_REVIEW') counts.NEEDS_REVIEW += 1;
+      else counts[kind] += 1;
+    }
+    return [
+      { id: 'met', label: 'Met', count: counts.MET, variant: 'success' as const },
+      {
+        id: 'needsReview',
+        label: 'Needs Review',
+        count: counts.NEEDS_REVIEW,
+        variant: 'warning' as const,
+      },
+      {
+        id: 'expiring',
+        label: 'Expiring',
+        count: counts.EXPIRING,
+        variant: 'warning' as const,
+      },
+      {
+        id: 'missing',
+        label: 'Missing',
+        count: counts.MISSING,
+        variant: 'error' as const,
+      },
+    ];
+  }
+
+  private enforcementBadge(level: EnforcementLevel): {
+    label: string;
+    variant: 'success' | 'warning' | 'error' | 'offline' | 'neutral';
+  } {
+    switch (level) {
+      case EnforcementLevel.HARD_GATE:
+        return { label: 'HARD GATE', variant: 'error' };
+      case EnforcementLevel.SOFT_GATE:
+        return { label: 'WARNING', variant: 'warning' };
+      case EnforcementLevel.ADVISORY:
+      default:
+        return { label: 'INFORMATIONAL', variant: 'neutral' };
+    }
+  }
+
+  private shortContactName(fullName: string): string {
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return `${parts[0].charAt(0)}. ${parts[parts.length - 1]}`.toUpperCase();
+    }
+    return fullName.toUpperCase();
+  }
+
+  private shortUserLabel(user: {
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  }): string {
+    const first = user.firstName?.trim();
+    const last = user.lastName?.trim();
+    if (first && last) return `${first.charAt(0)}. ${last}`.toUpperCase();
+    return (first || last || user.email || 'UNASSIGNED').toUpperCase();
+  }
+
+  private formatWidgetDate(value: Date): string {
+    return value
+      .toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+      .toUpperCase();
   }
 
   private priorityFromStatus(status: CrmRecordStatus): string {
@@ -552,26 +751,6 @@ export class RequirementsService {
         return 'LOW';
       default:
         return 'MEDIUM';
-    }
-  }
-
-  private statusBadge(status: CrmRecordStatus): {
-    label: string;
-    variant: 'success' | 'warning' | 'error' | 'offline' | 'neutral';
-  } {
-    switch (status) {
-      case CrmRecordStatus.ACTIVE:
-        return { label: 'Active', variant: 'success' };
-      case CrmRecordStatus.DRAFT:
-        return { label: 'Draft', variant: 'warning' };
-      case CrmRecordStatus.EXPIRED:
-        return { label: 'Expired', variant: 'error' };
-      case CrmRecordStatus.INACTIVE:
-        return { label: 'Inactive', variant: 'offline' };
-      case CrmRecordStatus.ARCHIVED:
-        return { label: 'Archived', variant: 'neutral' };
-      default:
-        return { label: String(status), variant: 'neutral' };
     }
   }
 

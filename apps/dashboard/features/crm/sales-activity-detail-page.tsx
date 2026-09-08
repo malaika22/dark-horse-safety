@@ -17,6 +17,10 @@ import {
 import { crmApi, type CrmSalesActivity } from "@/lib/crm-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmDetailStateGate } from "@/features/crm/crm-states";
+import {
+  useSetHeaderActions,
+  useSetHeaderBreadcrumb,
+} from "@/features/app-shell/header-actions-context";
 
 function shortName(full?: string | null) {
   if (!full?.trim()) return "—";
@@ -662,6 +666,34 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
     }
   }
 
+  useSetHeaderBreadcrumb(
+    detail?.activityCode
+      ? `CRM / Sales / ${detail.activityCode}`
+      : "CRM / Sales / Activity",
+  );
+
+  useSetHeaderActions(
+    detail ? (
+      <>
+        <Link href={`/crm/sales/${activityId}/edit`}>
+          <DashboardToolbarButton>Edit</DashboardToolbarButton>
+        </Link>
+        <DashboardToolbarButton onClick={() => setFollowUpOpen(true)}>
+          Log Follow Up
+        </DashboardToolbarButton>
+        <DashboardToolbarButton
+          variant="primary"
+          leftIcon={<TaskIcon />}
+          showChevron
+          onClick={() => setTaskOpen(true)}
+        >
+          Create Task
+        </DashboardToolbarButton>
+      </>
+    ) : null,
+    [detail, activityId],
+  );
+
   if (loading || !detail || loadError) {
     return (
       <CrmDetailStateGate
@@ -690,36 +722,13 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
 
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-3">
-          <h1 className="font-sans text-[18px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[22px]">
-            Sales Activity · {detail.activityCode}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <DashboardBadge variant={statusVariant(detail.status)} pill>
-              {detail.status === "COMPLETE" ? "OPEN" : detail.status}
-            </DashboardBadge>
-            <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
-              {meta}
-            </span>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href={`/crm/sales/${activityId}/edit`}>
-            <DashboardToolbarButton>Edit</DashboardToolbarButton>
-          </Link>
-          <DashboardToolbarButton onClick={() => setFollowUpOpen(true)}>
-            Log Follow Up
-          </DashboardToolbarButton>
-          <DashboardToolbarButton
-            variant="primary"
-            leftIcon={<TaskIcon />}
-            showChevron
-            onClick={() => setTaskOpen(true)}
-          >
-            Create Task
-          </DashboardToolbarButton>
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <DashboardBadge variant={statusVariant(detail.status)} pill>
+          {detail.status === "COMPLETE" ? "OPEN" : detail.status}
+        </DashboardBadge>
+        <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
+          {meta}
+        </span>
       </div>
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(260px,1fr)]">

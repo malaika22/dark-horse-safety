@@ -119,7 +119,7 @@ export const crmApi = {
   listLocations: (params?: CrmListParams) =>
     api.get<ApiList<CrmLocation>>(`/crm/locations${q(params)}`),
   locationsKpi: () =>
-    api.get<ApiData<Record<string, number>>>("/crm/locations/kpi"),
+    api.get<ApiData<Record<string, number | string>>>("/crm/locations/kpi"),
   locationsMapPins: () =>
     api.get<ApiData<CrmMapPin[]>>("/crm/locations/map-pins"),
   getLocation: (id: string) =>
@@ -147,8 +147,25 @@ export const crmApi = {
   pricingRulesSidePanels: () =>
     api.get<
       ApiData<{
-        rateChanges: { id: string; label: string; from: string; to: string }[];
-        scheduleChanges: { id: string; customer: string; effective: string }[];
+        rateChanges: {
+          id: string;
+          label: string;
+          from: string;
+          to: string;
+          cycle?: string;
+          changedBy?: string;
+          date?: string;
+          reason?: string;
+        }[];
+        scheduleChanges: {
+          id: string;
+          customer: string;
+          from?: string;
+          to?: string;
+          cycle?: string;
+          scheduledBy?: string;
+          effective: string;
+        }[];
         permissionGates: { id: string; customer: string; status: string }[];
       }>
     >("/crm/pricing-rules/side-panels"),
@@ -158,8 +175,11 @@ export const crmApi = {
     api.post<ApiData<CrmPricingRule>>("/crm/pricing-rules", body),
   updatePricingRule: (id: string, body: Record<string, unknown>) =>
     api.patch<ApiData<CrmPricingRule>>(`/crm/pricing-rules/${id}`, body),
-  duplicatePricingRule: (id: string) =>
-    api.post<ApiData<CrmPricingRule>>(`/crm/pricing-rules/${id}/duplicate`),
+  duplicatePricingRule: (id: string, body?: { customerId?: string }) =>
+    api.post<ApiData<CrmPricingRule>>(
+      `/crm/pricing-rules/${id}/duplicate`,
+      body ?? {},
+    ),
   deletePricingRule: (id: string) =>
     api.post<ApiData<CrmPricingRule>>(`/crm/pricing-rules/${id}/archive`).catch(
       () =>
@@ -204,9 +224,42 @@ export const crmApi = {
   requirementsAffectedSummary: () =>
     api.get<
       ApiData<{
-        technicians: { id: string; name: string; role: string }[];
-        workOrders: { id: string; workOrder: string; priority: string }[];
-        statusWells: {
+        technicians: {
+          id: string;
+          name: string;
+          role: string;
+          status?: { label: string; variant: string };
+          fails?: string | null;
+        }[];
+        workOrders: {
+          id: string;
+          workOrder: string;
+          priority?: string;
+          subtitle?: string;
+          blockedBy?: string | null;
+        }[];
+        requirementStatus?: {
+          id: string;
+          label: string;
+          count: number;
+          variant: string;
+        }[];
+        enforcementItems?: {
+          id: string;
+          label: string;
+          enforcement: { label: string; variant: string };
+        }[];
+        blockedTechnicians?: {
+          id: string;
+          name: string;
+          fails: string;
+        }[];
+        blockedActions?: {
+          id: string;
+          label: string;
+          level: { label: string; variant: string };
+        }[];
+        statusWells?: {
           id: string;
           label: string;
           status: { label: string; variant: string };
@@ -216,8 +269,41 @@ export const crmApi = {
   requirementAffected: (id: string) =>
     api.get<
       ApiData<{
-        technicians: { id: string; name: string; role: string }[];
-        workOrders: { id: string; workOrder: string; priority: string }[];
+        technicians: {
+          id: string;
+          name: string;
+          role: string;
+          status?: { label: string; variant: string };
+          fails?: string | null;
+        }[];
+        workOrders: {
+          id: string;
+          workOrder: string;
+          priority?: string;
+          subtitle?: string;
+          blockedBy?: string | null;
+        }[];
+        requirementStatus?: {
+          id: string;
+          label: string;
+          count: number;
+          variant: string;
+        }[];
+        enforcementItems?: {
+          id: string;
+          label: string;
+          enforcement: { label: string; variant: string };
+        }[];
+        blockedTechnicians?: {
+          id: string;
+          name: string;
+          fails: string;
+        }[];
+        blockedActions?: {
+          id: string;
+          label: string;
+          level: { label: string; variant: string };
+        }[];
       }>
     >(`/crm/requirements/${id}/affected`),
 
@@ -226,6 +312,19 @@ export const crmApi = {
     api.get<ApiList<CrmFormRule>>(`/crm/form-rules${q(params)}`),
   formRulesKpi: () =>
     api.get<ApiData<Record<string, number>>>("/crm/form-rules/kpi"),
+  formRulesInsights: () =>
+    api.get<
+      ApiData<{
+        currentlyBlocked: {
+          total: number;
+          jobs: number;
+          technicians: number;
+          items: { id: string; label: string; reason: string }[];
+        };
+        mostMissed: { id: string; form: string; detail: string }[];
+        coverageGaps: { id: string; name: string }[];
+      }>
+    >("/crm/form-rules/insights"),
   getFormRule: (id: string) =>
     api.get<ApiData<CrmFormRule>>(`/crm/form-rules/${id}`),
   createFormRule: (body: Record<string, unknown>) =>
@@ -266,7 +365,75 @@ export const crmApi = {
   listRouteRules: (params?: CrmListParams) =>
     api.get<ApiList<CrmRouteRule>>(`/crm/route-rules${q(params)}`),
   routeRulesKpi: () =>
-    api.get<ApiData<Record<string, number>>>("/crm/route-rules/kpi"),
+    api.get<ApiData<Record<string, number | string | null>>>("/crm/route-rules/kpi"),
+  routeRulesOverview: () =>
+    api.get<
+      ApiData<{
+        kpi: Record<string, number | string | null>;
+        systemDefault: {
+          id: string;
+          name: string;
+          detail: string;
+          appliesTo: number;
+        };
+        customerDefaults: {
+          id: string;
+          name: string;
+          geofenceRadius: string;
+          gpsRequired: boolean;
+          gpsLabel: string;
+          sitesCount: number;
+          detail: string;
+        }[];
+        siteOverrides: {
+          id: string;
+          name: string;
+          customer: string;
+          locationId: string | null;
+          geofenceRadius: string;
+          gpsRequired: boolean;
+          gpsLabel: string;
+          detail: string;
+          overrides: string;
+        }[];
+        mapSites: {
+          id: string;
+          locationId: string;
+          label: string;
+          customer: string;
+          latitude: number | null;
+          longitude: number | null;
+          ruleSource: string;
+          gpsMode: "required" | "optional" | "not_required";
+          flagCount: number;
+          radiusFt: number;
+          radiusLabel: string;
+          geofenceRadius: string;
+        }[];
+        flags: {
+          id: string;
+          site: string;
+          siteId: string;
+          customer: string;
+          technician: string;
+          technicianInitials: string;
+          flaggedAt: string;
+          flagType: string;
+          distanceOutside: string | null;
+          radiusApplied: string | null;
+          ruleSource: string;
+          outcome: string;
+          routeRuleId: string | null;
+        }[];
+        flagsSummary: { total: number; sites: number };
+        insight: {
+          site: string;
+          locationId: string;
+          message: string;
+          routeRuleId: string | null;
+        } | null;
+      }>
+    >("/crm/route-rules/overview"),
   getRouteRule: (id: string) =>
     api.get<ApiData<CrmRouteRule>>(`/crm/route-rules/${id}`),
   createRouteRule: (body: Record<string, unknown>) =>
@@ -635,6 +802,7 @@ export type CrmMapPin = {
   customerId?: string;
   customer?: { id: string; name: string } | null;
   gpsRequired?: boolean;
+  gpsStatus?: string | null;
   geofenceRadius?: string | null;
   openJobs?: number;
   x?: number;
@@ -836,6 +1004,7 @@ export type CrmDashboardOverview = {
   customers: {
     total: number;
     active: number;
+    openJobs: number;
     archived: number;
     needsReview: number;
   };
@@ -872,6 +1041,21 @@ export type CrmDashboardOverview = {
     activityAt: string;
     outcome: string | null;
     status: string;
+  }[];
+  msaRenewals: {
+    id: string;
+    customer: string;
+    code: string;
+    expiresAt: string;
+    status: string;
+    detail: string;
+  }[];
+  repPerformance: {
+    id: string;
+    name: string;
+    activities: number;
+    calls: number;
+    visits: number;
   }[];
   syncedAt: string;
 };
@@ -915,7 +1099,11 @@ export type CrmRepDashboard = {
   rank: number | null;
   kpis: {
     pipeline: number;
+    pipelineTarget: number;
+    pipelinePct: number;
     quotesSent: number;
+    quotesWon: number;
+    quotesClosed: number;
     winRate: number;
     eodStatus: string;
     eodSubmittedAt: string | null;
@@ -956,6 +1144,11 @@ export type CrmRepDashboard = {
     customer: string | null;
     hasFollowUp: boolean;
   }[];
+  expenses: {
+    submittedThisCycle: number;
+    pendingApproval: number;
+    missingReceipts: number;
+  };
   accounts: {
     id: string;
     name: string;

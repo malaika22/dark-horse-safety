@@ -5,6 +5,7 @@ export type NavItem = {
   icon:
     | "dashboard"
     | "crm"
+    | "sales"
     | "hr"
     | "fleet"
     | "operations"
@@ -28,15 +29,12 @@ export const APP_NAV: NavItem[] = [
     children: [
       { id: "crm-dashboard", label: "CRM Dashboard", href: "/crm" },
       { id: "crm-customers", label: "Customers", href: "/crm/accounts" },
-      { id: "crm-eod", label: "EOD Reports", href: "/crm/eod-reports" },
       { id: "crm-contacts", label: "Contacts", href: "/crm/contacts" },
-      { id: "crm-sales", label: "Sales", href: "/crm/sales" },
-      { id: "crm-quotes", label: "Quotes", href: "/crm/quotes" },
       { id: "crm-locations", label: "Locations / Wells", href: "/crm/locations" },
       { id: "crm-pricing", label: "Pricing Rules", href: "/crm/pricing-rules" },
       {
         id: "crm-requirements",
-        label: "Customer Reqs.",
+        label: "Customer Requests",
         href: "/crm/requirements",
       },
       {
@@ -48,6 +46,21 @@ export const APP_NAV: NavItem[] = [
         id: "crm-route-rules",
         label: "Route / GPS Rules",
         href: "/crm/route-rules",
+      },
+    ],
+  },
+  {
+    id: "sales",
+    label: "Sales",
+    icon: "sales",
+    children: [
+      { id: "sales-quotes", label: "Quotes", href: "/crm/quotes" },
+      { id: "sales-activity", label: "Sales Activity", href: "/crm/sales" },
+      { id: "sales-eod", label: "EOD Reports", href: "/crm/eod-reports" },
+      {
+        id: "sales-calendar",
+        label: "Sales Calendar",
+        href: "/crm/sales-calendar",
       },
     ],
   },

@@ -11,6 +11,7 @@ import {
   DashboardListToolbar,
   DashboardModal,
   DashboardPagination,
+  DashboardPanel,
   DashboardRowActionMenu,
   DashboardSaveNewViewModal,
   DashboardSaveViewsModal,
@@ -72,35 +73,6 @@ function FilterCheckMarkIcon({ className }: { className?: string }) {
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ClipboardIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-      className={className}
-    >
-      <path
-        d="M9 5h6l1 2h3v13a1 1 0 01-1 1H6a1 1 0 01-1-1V7h3l1-2z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
-      <rect
-        x="9"
-        y="3"
-        width="6"
-        height="3.5"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.75"
       />
     </svg>
   );
@@ -354,6 +326,18 @@ export function FormRulesPage() {
   const [templateTitle, setTemplateTitle] = React.useState("Form Template");
   const [templateForm, setTemplateForm] = React.useState("");
   const [templateJobType, setTemplateJobType] = React.useState("");
+  const [blockedTotal, setBlockedTotal] = React.useState(0);
+  const [blockedJobs, setBlockedJobs] = React.useState(0);
+  const [blockedTechs, setBlockedTechs] = React.useState(0);
+  const [blockedItems, setBlockedItems] = React.useState<
+    { id: string; label: string; reason: string }[]
+  >([]);
+  const [mostMissed, setMostMissed] = React.useState<
+    { id: string; form: string; detail: string }[]
+  >([]);
+  const [coverageGaps, setCoverageGaps] = React.useState<
+    { id: string; name: string }[]
+  >([]);
   const {
     savedViews,
     activeViewId,
@@ -392,6 +376,27 @@ export function FormRulesPage() {
     () => kpiCellsFromApi(FORM_RULES_KPI_SHELL, kpiData),
     [kpiData],
   );
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.formRulesInsights();
+        if (cancelled) return;
+        setBlockedTotal(res.data.currentlyBlocked?.total ?? 0);
+        setBlockedJobs(res.data.currentlyBlocked?.jobs ?? 0);
+        setBlockedTechs(res.data.currentlyBlocked?.technicians ?? 0);
+        setBlockedItems(res.data.currentlyBlocked?.items ?? []);
+        setMostMissed(res.data.mostMissed ?? []);
+        setCoverageGaps(res.data.coverageGaps ?? []);
+      } catch (err) {
+        if (!cancelled) toastApiError(err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const bulkOpen = selectedIds.length > 0;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -599,7 +604,7 @@ export function FormRulesPage() {
       {
         id: "customer",
         header: "Customer",
-        className: "min-w-[180px] max-w-[240px]",
+        className: "min-w-[160px] max-w-[220px]",
         cell: (row) => (
           <DashboardTablePrimaryCell
             title={row.customer}
@@ -611,13 +616,13 @@ export function FormRulesPage() {
       {
         id: "template",
         header: "Form Template",
-        className: "min-w-[160px]",
+        className: "min-w-[140px] max-w-[180px]",
         cell: (row) => row.formTemplate,
       },
       {
         id: "status",
         header: "Status",
-        className: "min-w-[110px]",
+        className: "min-w-[100px] max-w-[120px]",
         cell: (row) => (
           <DashboardBadge
             variant={row.status.variant}
@@ -631,32 +636,71 @@ export function FormRulesPage() {
       {
         id: "trigger",
         header: "Trigger",
-        className: "min-w-[120px] hidden md:table-cell",
+        className: "hidden min-w-[110px] max-w-[130px] md:table-cell",
         cell: (row) => row.trigger,
       },
       {
-        id: "hardGate",
-        header: "Hard-Gate",
-        className: "min-w-[90px] hidden lg:table-cell",
-        cell: (row) => row.hardGate,
+        id: "enforcement",
+        header: "Enforcement",
+        className: "hidden min-w-[120px] max-w-[140px] md:table-cell",
+        cell: (row) => (
+          <DashboardBadge
+            variant={row.enforcement.variant}
+            pill
+            className="max-w-full"
+          >
+            {row.enforcement.label}
+          </DashboardBadge>
+        ),
       },
       {
         id: "appliesTo",
         header: "Applies To",
-        className: "min-w-[110px] hidden lg:table-cell",
+        className: "hidden min-w-[100px] max-w-[130px] lg:table-cell",
         cell: (row) => row.appliesTo,
       },
       {
         id: "version",
         header: "Version",
-        className: "min-w-[80px] hidden xl:table-cell",
-        cell: (row) => row.version,
+        className: "hidden min-w-[70px] max-w-[90px] lg:table-cell",
+        cell: (row) => (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleViewTemplate(row);
+            }}
+            className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] underline underline-offset-2 hover:opacity-70"
+          >
+            {row.version}
+          </button>
+        ),
       },
       {
         id: "owner",
-        header: "Owner",
-        className: "min-w-[110px] hidden xl:table-cell",
+        header: "Last Changed By",
+        className: "hidden min-w-[110px] max-w-[140px] xl:table-cell",
         cell: (row) => row.owner,
+      },
+      {
+        id: "dueBy",
+        header: "Due By",
+        className: "hidden min-w-[110px] max-w-[140px] xl:table-cell",
+        cell: (row) => row.dueBy,
+      },
+      {
+        id: "blocksPayroll",
+        header: "Blocks Payroll",
+        className: "hidden min-w-[110px] max-w-[130px] xl:table-cell",
+        cell: (row) => (
+          <DashboardBadge
+            variant={row.blocksPayroll.variant}
+            pill
+            className="max-w-full"
+          >
+            {row.blocksPayroll.label}
+          </DashboardBadge>
+        ),
       },
       {
         id: "actions",
@@ -786,12 +830,6 @@ export function FormRulesPage() {
                 onDirectionChange={setSortDirection}
                 showDirectionInTrigger={false}
               />
-              <DashboardToolbarButton
-                leftIcon={<ClipboardIcon className="shrink-0" />}
-                onClick={() => setSavedViewsOpen(true)}
-              >
-                Payroll Review
-              </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
                   { id: "view-csv", label: "Export current view • CSV", onSelect: () => void runExport() },
@@ -835,7 +873,6 @@ export function FormRulesPage() {
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
-        onRowClick={(row) => router.push(`/crm/form-rules/${row.id}/edit`)}
       />
 
       <DashboardPagination
@@ -845,6 +882,127 @@ export function FormRulesPage() {
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Currently Blocked */}
+        <DashboardPanel className="flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3 sm:px-5">
+            <h2 className="font-sans text-[11px] font-normal uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
+              Currently Blocked
+            </h2>
+            <span className="shrink-0 font-sans text-[10px] font-normal uppercase tracking-[-0.02em] text-[#959597]">
+              Real-Time
+            </span>
+          </div>
+          <div className="px-4 pb-4 sm:px-5">
+            <div className="flex flex-wrap items-end gap-x-2.5 gap-y-1">
+              <span className="font-sans text-[36px] font-[590] leading-none tracking-[-0.02em] text-[#FF4D4D] md:text-[40px]">
+                {blockedTotal > 0 ? blockedTotal : "—"}
+              </span>
+              <span className="pb-1 font-sans text-[11px] font-[510] uppercase leading-tight tracking-[-0.02em] text-[#FF4D4D]">
+                Blocked by a Hard Gate
+              </span>
+            </div>
+            <p className="mt-2.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+              {blockedJobs} Jobs · {blockedTechs} Technicians
+            </p>
+          </div>
+          <div className="mt-auto divide-y divide-[#2D2D30] border-t border-[#2D2D30]">
+            {blockedItems.length === 0 ? (
+              <p className="px-4 py-3.5 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
+                No hard-gate blocks
+              </p>
+            ) : (
+              blockedItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 px-4 py-3.5 sm:px-5"
+                >
+                  <span className="min-w-0 truncate font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                    {item.label}
+                  </span>
+                  <span className="shrink-0 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FF4D4D]">
+                    {item.reason}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </DashboardPanel>
+
+        {/* Most-Missed Forms */}
+        <DashboardPanel className="flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3 sm:px-5">
+            <h2 className="font-sans text-[11px] font-normal uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
+              Most-Missed Forms
+            </h2>
+            <span className="shrink-0 font-sans text-[10px] font-normal uppercase tracking-[-0.02em] text-[#959597]">
+              Last 30 Days
+            </span>
+          </div>
+          <div className="divide-y divide-[#2D2D30] border-t border-[#2D2D30]">
+            {mostMissed.length === 0 ? (
+              <p className="px-4 py-3.5 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
+                No missed forms
+              </p>
+            ) : (
+              mostMissed.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 px-4 py-3.5 sm:px-5"
+                >
+                  <span className="min-w-0 truncate font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                    {item.form}
+                  </span>
+                  <span className="shrink-0 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#E8C07A]">
+                    {item.detail}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </DashboardPanel>
+
+        {/* Coverage */}
+        <DashboardPanel className="flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-2 sm:px-5">
+            <h2 className="font-sans text-[11px] font-normal uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
+              Coverage
+            </h2>
+            <span className="shrink-0 font-sans text-[10px] font-normal uppercase tracking-[-0.02em] text-[#959597]">
+              {coverageGaps.length} Gap{coverageGaps.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <p className="px-4 pb-3 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597] sm:px-5">
+            Customers with no form rules
+          </p>
+          <div className="flex-1 divide-y divide-[#2D2D30] border-t border-[#2D2D30]">
+            {coverageGaps.length === 0 ? (
+              <p className="px-4 py-3.5 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
+                All customers covered
+              </p>
+            ) : (
+              coverageGaps.map((item) => (
+                <div
+                  key={item.id}
+                  className="px-4 py-3.5 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF] sm:px-5"
+                >
+                  {item.name}
+                </div>
+              ))
+            )}
+          </div>
+          <div className="mt-auto border-t border-[#2D2D30] px-4 py-3.5 sm:px-5">
+            <button
+              type="button"
+              onClick={() => router.push("/crm/form-rules/new")}
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-[#FDFDFF] px-4 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#121212] transition-opacity hover:opacity-90"
+            >
+              + Add Form Rule
+            </button>
+          </div>
+        </DashboardPanel>
+      </div>
 
       <FormRulesFiltersDrawer
         open={filtersOpen}

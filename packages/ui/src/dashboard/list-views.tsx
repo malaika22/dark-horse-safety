@@ -300,6 +300,8 @@ function FilterRadioRow({
 export interface DashboardSavedView {
   id: string;
   label: string;
+  /** Built-in presets — still shown in the list; delete/rename are no-ops. */
+  builtin?: boolean;
 }
 
 export interface DashboardSaveViewsModalProps {
@@ -312,7 +314,24 @@ export interface DashboardSaveViewsModalProps {
   onViewAction?: (viewId: string, action: string) => void;
 }
 
-/** Saved views list modal. */
+function KebabIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+      className={className}
+    >
+      <circle cx="12" cy="5" r="1.75" />
+      <circle cx="12" cy="12" r="1.75" />
+      <circle cx="12" cy="19" r="1.75" />
+    </svg>
+  );
+}
+
+/** Saved views list modal — Figma Save View panel. */
 export function DashboardSaveViewsModal({
   open,
   onClose,
@@ -356,6 +375,7 @@ export function DashboardSaveViewsModal({
         open={open}
         onClose={onClose}
         title="Save view"
+        widthClassName="max-w-[420px]"
         footer={
           <>
             <button
@@ -367,6 +387,7 @@ export function DashboardSaveViewsModal({
             </button>
             <DashboardToolbarButton
               variant="primary"
+              className="!rounded-full"
               onClick={() => {
                 onClose();
                 onSaveNewView();
@@ -377,45 +398,51 @@ export function DashboardSaveViewsModal({
           </>
         }
       >
-        <p className="mb-3 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597]">
+        <p className="mb-4 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597]">
           Current saved views
         </p>
-        <ul className="space-y-1">
-          {views.map((view) => {
-            const active = view.id === activeViewId;
-            return (
-              <li
-                key={view.id}
-                className="flex items-center justify-between gap-3 rounded-md px-1 py-2"
-              >
-                <button
-                  type="button"
-                  onClick={() => onSelectView(view.id)}
-                  className="inline-flex min-w-0 items-center gap-2 font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF]"
+        {views.length === 0 ? (
+          <p className="py-6 text-center font-sans text-[12px] uppercase tracking-[-0.02em] text-[#959597]">
+            No saved views yet
+          </p>
+        ) : (
+          <ul className="space-y-0">
+            {views.map((view) => {
+              const active = view.id === activeViewId;
+              return (
+                <li
+                  key={view.id}
+                  className="flex items-center gap-2 py-2.5"
                 >
-                  <span className="truncate">{view.label}</span>
-                  {active ? <CheckGlyph /> : null}
-                </button>
-                <button
-                  ref={(node) => {
-                    buttonRefs.current[view.id] = node;
-                  }}
-                  type="button"
-                  aria-label={`${view.label} actions`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    const node = buttonRefs.current[view.id] ?? null;
-                    menuAnchorRef.current = node;
-                    setMenuFor((prev) => (prev === view.id ? null : view.id));
-                  }}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]"
-                >
-                  ⋮
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                  <button
+                    type="button"
+                    onClick={() => onSelectView(view.id)}
+                    className="inline-flex min-w-0 flex-1 items-center gap-2.5 text-left font-sans text-[13px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] transition-opacity hover:opacity-80"
+                  >
+                    <span className="truncate">{view.label}</span>
+                    {active ? <CheckGlyph /> : null}
+                  </button>
+                  <button
+                    ref={(node) => {
+                      buttonRefs.current[view.id] = node;
+                    }}
+                    type="button"
+                    aria-label={`${view.label} actions`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      const node = buttonRefs.current[view.id] ?? null;
+                      menuAnchorRef.current = node;
+                      setMenuFor((prev) => (prev === view.id ? null : view.id));
+                    }}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#959597] transition-colors hover:bg-white/5 hover:text-[#FDFDFF]"
+                  >
+                    <KebabIcon />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </DashboardModal>
       <DashboardMenuPopover
         open={Boolean(menuFor)}

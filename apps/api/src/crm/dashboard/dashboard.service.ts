@@ -76,6 +76,9 @@ export class DashboardService {
       quotesWon,
       recentActivities,
       openPipeline,
+      msaCustomers,
+      weekActivitiesByRep,
+      customersOpenJobsAgg,
     ] = await Promise.all([
       this.prisma.crmSyncState.findUnique({ where: { id: 'crm' } }),
       this.prisma.customer.count({ where: { archivedAt: null } }),
@@ -177,6 +180,33 @@ export class DashboardService {
         },
         _sum: { amount: true },
       }),
+      this.prisma.customer.findMany({
+        where: {
+          archivedAt: null,
+          msaOnFile: true,
+          msaExpiry: { not: null },
+        },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          msaExpiry: true,
+        },
+        orderBy: { msaExpiry: 'asc' },
+        take: 40,
+      }),
+      this.prisma.salesActivity.findMany({
+        where: { archivedAt: null, activityAt: { gte: weekAgo } },
+        select: {
+          type: true,
+          repId: true,
+          rep: { select: { id: true, firstName: true, lastName: true } },
+        },
+      }),
+      this.prisma.customer.aggregate({
+        where: { archivedAt: null },
+        _sum: { openJobs: true },
+      }),
     ]);
 
     const pipelineSum = openPipeline._sum.amount;
@@ -184,11 +214,67 @@ export class DashboardService {
       pipelineSum == null ? 0 : Number(pipelineSum.toString());
     const syncedAt = (syncState?.syncedAt ?? new Date()).toISOString();
 
+    const renewalHorizon = new Date(startOfToday);
+    renewalHorizon.setDate(renewalHorizon.getDate() + 90);
+    const msaRenewals = msaCustomers
+      .filter((c) => c.msaExpiry && c.msaExpiry <= renewalHorizon)
+      .slice(0, 8)
+      .map((c) => {
+        const expiry = c.msaExpiry!;
+        const expired = expiry < startOfToday;
+        const days = Math.ceil(
+          (expiry.getTime() - startOfToday.getTime()) / (24 * 60 * 60 * 1000),
+        );
+        return {
+          id: c.id,
+          customer: c.name,
+          code: c.code,
+          expiresAt: expiry.toISOString(),
+          status: expired
+            ? 'EXPIRED'
+            : days <= 30
+              ? 'DUE SOON'
+              : 'UPCOMING',
+          detail: expired
+            ? `Expired ${Math.abs(days)}d ago`
+            : `Due in ${days}d`,
+        };
+      });
+
+    const repAgg = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        activities: number;
+        calls: number;
+        visits: number;
+      }
+    >();
+    for (const a of weekActivitiesByRep) {
+      if (!a.repId || !a.rep) continue;
+      const existing = repAgg.get(a.repId) ?? {
+        id: a.repId,
+        name: shortRepName(a.rep.firstName, a.rep.lastName),
+        activities: 0,
+        calls: 0,
+        visits: 0,
+      };
+      existing.activities += 1;
+      if (a.type === SalesActivityType.CALL) existing.calls += 1;
+      if (a.type === SalesActivityType.VISIT) existing.visits += 1;
+      repAgg.set(a.repId, existing);
+    }
+    const repPerformance = Array.from(repAgg.values())
+      .sort((a, b) => b.activities - a.activities)
+      .slice(0, 3);
+
     return {
       data: {
         customers: {
           total: customersTotal,
           active: customersActive,
+          openJobs: customersOpenJobsAgg._sum.openJobs ?? 0,
           archived: customersArchived,
           needsReview: customersNeedsReview,
         },
@@ -226,6 +312,8 @@ export class DashboardService {
           outcome: a.outcome,
           status: a.status,
         })),
+        msaRenewals,
+        repPerformance,
         syncedAt,
       },
     };
@@ -442,6 +530,7 @@ export class DashboardService {
     const [
       quotesSent,
       quotesWon,
+      quotesLost,
       quotesTotal,
       pipelineAgg,
       eodToday,
@@ -449,6 +538,9 @@ export class DashboardService {
       tasksOverdue,
       calendarToday,
       accounts,
+      expenseClosedAgg,
+      expensePending,
+      expenseMissingNotes,
     ] = await Promise.all([
       this.prisma.quote.count({
         where: {
@@ -472,6 +564,17 @@ export class DashboardService {
           OR: [
             { status: CrmRecordStatus.WON },
             { approvalStatus: QuoteApprovalStatus.APPROVED },
+          ],
+        },
+      }),
+      this.prisma.quote.count({
+        where: {
+          ownerId: userId,
+          archivedAt: null,
+          createdAt: { gte: from, lte: to },
+          OR: [
+            { status: CrmRecordStatus.LOST },
+            { approvalStatus: QuoteApprovalStatus.REJECTED },
           ],
         },
       }),
@@ -565,14 +668,59 @@ export class DashboardService {
         orderBy: { name: 'asc' },
         take: 25,
       }),
+      this.prisma.eodReport.aggregate({
+        where: {
+          repId: userId,
+          reportDate: { gte: from, lte: to },
+          status: {
+            in: [CrmRecordStatus.SUBMITTED, CrmRecordStatus.COMPLETE],
+          },
+        },
+        _sum: { closedToday: true },
+      }),
+      this.prisma.eodReport.count({
+        where: {
+          repId: userId,
+          status: {
+            in: [CrmRecordStatus.PENDING, CrmRecordStatus.DRAFT],
+          },
+        },
+      }),
+      this.prisma.eodReport.count({
+        where: {
+          repId: userId,
+          reportDate: { gte: from, lte: to },
+          status: {
+            in: [CrmRecordStatus.SUBMITTED, CrmRecordStatus.COMPLETE],
+          },
+          OR: [{ notes: null }, { notes: '' }],
+        },
+      }),
     ]);
 
     const pipeline =
       pipelineAgg._sum.amount == null
         ? 0
         : Number(pipelineAgg._sum.amount.toString());
+    const quotesClosed = quotesWon + quotesLost;
     const winRate =
-      quotesTotal === 0 ? 0 : Math.round((quotesWon / quotesTotal) * 100);
+      quotesClosed === 0
+        ? quotesTotal === 0
+          ? 0
+          : Math.round((quotesWon / quotesTotal) * 100)
+        : Math.round((quotesWon / quotesClosed) * 100);
+
+    const pipelineTarget =
+      pipeline <= 0
+        ? 100_000
+        : Math.max(
+            100_000,
+            Math.ceil((pipeline * 1.25) / 10_000) * 10_000,
+          );
+    const pipelinePct =
+      pipelineTarget <= 0
+        ? 0
+        : Math.min(100, Math.round((pipeline / pipelineTarget) * 100));
 
     const eodDone =
       eodToday?.status === CrmRecordStatus.SUBMITTED ||
@@ -607,7 +755,11 @@ export class DashboardService {
         rank: myRank,
         kpis: {
           pipeline,
+          pipelineTarget,
+          pipelinePct,
           quotesSent,
+          quotesWon,
+          quotesClosed: quotesClosed || quotesTotal,
           winRate,
           eodStatus: eodDone ? 'DONE' : eodToday ? 'PENDING' : 'MISSING',
           eodSubmittedAt: eodToday?.submittedAt?.toISOString() ?? null,
@@ -627,6 +779,14 @@ export class DashboardService {
           customer: a.customer?.name ?? null,
           hasFollowUp: Boolean(a.followUpAt),
         })),
+        expenses: {
+          submittedThisCycle:
+            expenseClosedAgg._sum.closedToday == null
+              ? 0
+              : Number(expenseClosedAgg._sum.closedToday.toString()),
+          pendingApproval: expensePending,
+          missingReceipts: expenseMissingNotes,
+        },
         accounts: accounts.map((c) => {
           const accountPipeline = c.quotes.reduce(
             (sum, q) =>

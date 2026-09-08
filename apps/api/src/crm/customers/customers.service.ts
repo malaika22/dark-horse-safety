@@ -125,10 +125,13 @@ export class CustomersService {
   }
 
   async kpi() {
-    const [total, active, archived, needsReview] = await Promise.all([
-      this.prisma.customer.count({ where: { archivedAt: null } }),
+    const [active, openJobsAgg, archived, needsReview] = await Promise.all([
       this.prisma.customer.count({
         where: { archivedAt: null, status: CrmRecordStatus.ACTIVE },
+      }),
+      this.prisma.customer.aggregate({
+        where: { archivedAt: null },
+        _sum: { openJobs: true },
       }),
       this.prisma.customer.count({ where: { archivedAt: { not: null } } }),
       this.prisma.customer.count({
@@ -137,10 +140,10 @@ export class CustomersService {
     ]);
     return {
       data: {
-        total,
         active,
-        archived,
+        openJobs: openJobsAgg._sum.openJobs ?? 0,
         needsReview,
+        archived,
       },
     };
   }

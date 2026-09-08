@@ -62,6 +62,7 @@ model User {
   quotesOwned         Quote[]              @relation("QuoteOwner")
   workOrdersOwned     WorkOrder[]          @relation("WorkOrderAssignedRep")
   savedViews          SavedView[]
+  gpsFlags            GpsFlag[]            @relation("GpsFlagTechnician")
 }
 
 model PasswordResetToken {
@@ -199,6 +200,7 @@ model Customer {
   activities    SalesActivity[]
   documents     CrmDocument[]
   contactLinks  ContactCustomer[]
+  gpsFlags      GpsFlag[]
 
   @@index([status])
   @@index([assignedRepId])
@@ -286,6 +288,7 @@ model Location {
 
   routeRules RouteRule[]
   workOrders WorkOrder[]
+  gpsFlags   GpsFlag[]
 
   @@index([customerId])
   @@index([status])
@@ -400,10 +403,38 @@ model RouteRule {
   owner                User?           @relation("RouteRuleOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
+  gpsFlags             GpsFlag[]
 
   @@index([customerId])
   @@index([locationId])
   @@index([status])
+}
+
+// ─── GPS Flag (clock-in / geofence violations) ────────────────────────────────
+
+model GpsFlag {
+  id              String   @id @default(uuid())
+  flaggedAt       DateTime
+  flagType        String
+  distanceOutside String?
+  radiusApplied   String?
+  ruleSource      String
+  outcome         String
+  locationId      String
+  location        Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  customerId      String
+  customer        Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  technicianId    String?
+  technician      User?    @relation("GpsFlagTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
+  routeRuleId     String?
+  routeRule       RouteRule? @relation(fields: [routeRuleId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([locationId])
+  @@index([customerId])
+  @@index([flaggedAt])
+  @@index([outcome])
 }
 
 // ─── EOD Report ──────────────────────────────────────────────────────────────

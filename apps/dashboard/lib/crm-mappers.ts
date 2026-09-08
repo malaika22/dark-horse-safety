@@ -155,10 +155,10 @@ export function mapContactRow(c: CrmContact): ContactRow {
 
 export function mapLocationCard(l: CrmLocation): LocationCard {
   const hasCoords = l.latitude != null && l.longitude != null;
-  const gpsSet =
-    Boolean(l.gpsRequired) ||
-    (hasCoords && !/missing|not set|unset/i.test(l.gpsStatus ?? ""));
-  const gpsMissing = !gpsSet;
+  const gpsMissing =
+    !hasCoords ||
+    /missing|not set|unset|offline/i.test(l.gpsStatus ?? "");
+  const gpsSet = !gpsMissing;
   const hasGeo = Boolean(l.geofenceRadius?.trim());
   const hasApi = Boolean(l.apiNumber?.trim());
   const score = [gpsSet, hasGeo, hasApi].filter(Boolean).length;
@@ -193,18 +193,48 @@ export function mapLocationCard(l: CrmLocation): LocationCard {
   };
 }
 
+function shortUserName(user?: CrmUserRef | null) {
+  if (!user) return "—";
+  const first = user.firstName?.trim();
+  const last = user.lastName?.trim();
+  if (first && last) return `${first.charAt(0)}. ${last}`.toUpperCase();
+  return (first || last || user.email || "—").toUpperCase();
+}
+
+function fmtIsoDate(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toISOString().slice(0, 10);
+}
+
+function pricingStatusBadge(status: string): {
+  label: string;
+  variant: DashboardBadgeVariant;
+} {
+  const label = titleCaseStatus(status);
+  const s = status.toUpperCase();
+  if (s === "ACTIVE") return { label, variant: "success" };
+  if (s === "EXPIRED") return { label, variant: "employee" };
+  if (s === "PENDING" || s === "DRAFT" || s === "NEEDS_REVIEW") {
+    return { label, variant: "offline" };
+  }
+  return statusBadge(status);
+}
+
 export function mapPricingRuleRow(r: CrmPricingRule): PricingRuleRow {
   return {
     id: r.id,
     customer: r.customer?.name ?? "—",
+    customerId: r.customerId ?? r.customer?.id,
     code: r.code,
     service: r.serviceItem,
-    status: statusBadge(r.status),
+    status: pricingStatusBadge(r.status),
     rate: money(r.rate),
     unit: r.unit ?? "—",
-    effective: fmtDate(r.effectiveFrom),
-    expires: fmtDate(r.effectiveTo),
-    owner: userName(r.owner),
+    effective: fmtIsoDate(r.effectiveFrom),
+    expires: fmtIsoDate(r.effectiveTo),
+    owner: shortUserName(r.owner),
   };
 }
 
@@ -212,22 +242,78 @@ export function mapRequirementRow(r: CrmRequirement): RequirementRow {
   return {
     id: r.id,
     customer: r.customer?.name ?? "—",
+    customerId: r.customerId ?? r.customer?.id,
     code: r.code,
     requirement: r.name,
-    status: statusBadge(r.status),
-    type: r.requirementType ?? "—",
-    enforcementLevel: r.enforcementLevel ?? "—",
-    owner: userName(r.owner),
-    due: fmtDate(r.dueDate),
-    review: {
-      label: r.reviewCycle ?? r.renewalPeriod ?? "—",
-      variant: "neutral",
-    },
-    docs: {
-      label: r.docsRequired || r.evidenceRequired ? "Required" : "Optional",
-      variant: r.docsRequired || r.evidenceRequired ? "warning" : "success",
-    },
+    status: requirementStatusBadge(r),
+    type: (r.requirementType ?? "—").toUpperCase(),
+    enforcement: requirementEnforcementBadge(r.enforcementLevel),
+    owner: shortUserName(r.owner),
+    due: fmtIsoDate(r.dueDate),
+    evidence: requirementEvidenceBadge(r),
   };
+}
+
+function requirementStatusBadge(r: CrmRequirement): {
+  label: string;
+  variant: DashboardBadgeVariant;
+} {
+  const s = (r.status ?? "").toUpperCase();
+  const due = r.dueDate ? new Date(r.dueDate) : null;
+  const now = new Date();
+  const in30 = new Date();
+  in30.setDate(in30.getDate() + 30);
+  const docsNeeded = Boolean(r.docsRequired || r.evidenceRequired);
+
+  if (
+    s === "EXPIRED" ||
+    (due != null && !Number.isNaN(due.getTime()) && due >= now && due <= in30)
+  ) {
+    return { label: "EXPIRING", variant: "warning" };
+  }
+  if (docsNeeded && s !== "COMPLETE") {
+    return { label: "MISSING", variant: "error" };
+  }
+  if (s === "COMPLETE" || s === "ACTIVE") {
+    return { label: "MET", variant: "success" };
+  }
+  return { label: "NOT MET", variant: "error" };
+}
+
+function requirementEvidenceBadge(r: CrmRequirement): {
+  label: string;
+  variant: DashboardBadgeVariant;
+} {
+  const s = (r.status ?? "").toUpperCase();
+  const due = r.dueDate ? new Date(r.dueDate) : null;
+  const now = new Date();
+  const docsNeeded = Boolean(r.docsRequired || r.evidenceRequired);
+
+  if (
+    due != null &&
+    !Number.isNaN(due.getTime()) &&
+    due < now &&
+    s !== "COMPLETE"
+  ) {
+    return { label: "OVERDUE", variant: "error" };
+  }
+  if (!docsNeeded || s === "COMPLETE") {
+    return { label: "ON FILE", variant: "success" };
+  }
+  if (s === "PENDING" || s === "NEEDS_REVIEW" || s === "IN_PROGRESS") {
+    return { label: "PENDING", variant: "warning" };
+  }
+  return { label: "MISSING", variant: "error" };
+}
+
+function requirementEnforcementBadge(level?: string | null): {
+  label: string;
+  variant: DashboardBadgeVariant;
+} {
+  const s = (level ?? "").toUpperCase();
+  if (s === "HARD_GATE") return { label: "HARD GATE", variant: "error" };
+  if (s === "SOFT_GATE") return { label: "WARNING", variant: "warning" };
+  return { label: "INFORMATIONAL", variant: "neutral" };
 }
 
 export function mapFormRuleRow(r: CrmFormRule): FormRuleRow {
@@ -236,15 +322,54 @@ export function mapFormRuleRow(r: CrmFormRule): FormRuleRow {
     customer: r.customer?.name ?? "—",
     customerId: r.customerId,
     code: r.code,
-    formTemplate: r.formTemplate,
+    formTemplate: (r.formTemplate ?? "—").toUpperCase(),
     jobType: r.jobType ?? r.appliesTo ?? "—",
-    status: statusBadge(r.status),
-    trigger: r.trigger ?? r.due ?? "—",
-    hardGate: r.hardGate ? "Yes" : "No",
-    appliesTo: r.appliesTo ?? r.jobType ?? "—",
-    version: r.version ?? "—",
-    owner: userName(r.owner),
+    status: formRuleStatusBadge(r.status),
+    trigger: (r.trigger ?? "—").toUpperCase(),
+    enforcement: formRuleEnforcementBadge(r.hardGate, r.blocksToggle),
+    appliesTo: (r.appliesTo ?? r.jobType ?? "—").toUpperCase(),
+    version: formatFormRuleVersion(r.version),
+    owner: shortUserName(r.owner),
+    dueBy: (r.due ?? "—").toUpperCase(),
+    blocksPayroll: formRuleBlocksPayrollBadge(r.blocksToggle),
   };
+}
+
+function formRuleStatusBadge(status: string): {
+  label: string;
+  variant: DashboardBadgeVariant;
+} {
+  const s = (status ?? "").toUpperCase();
+  if (s === "ACTIVE") return { label: "ACTIVE", variant: "success" };
+  if (s === "INACTIVE") return { label: "INACTIVE", variant: "employee" };
+  if (s === "DRAFT") return { label: "DRAFT", variant: "offline" };
+  return statusBadge(status);
+}
+
+function formRuleEnforcementBadge(
+  hardGate?: boolean,
+  blocksToggle?: boolean,
+): {
+  label: string;
+  variant: DashboardBadgeVariant;
+} {
+  if (hardGate) return { label: "HARD GATE", variant: "billing" };
+  if (blocksToggle) return { label: "WARNING", variant: "warning" };
+  return { label: "INFORMATIONAL", variant: "neutral" };
+}
+
+function formRuleBlocksPayrollBadge(blocks?: boolean): {
+  label: string;
+  variant: DashboardBadgeVariant;
+} {
+  if (blocks) return { label: "YES", variant: "gold" };
+  return { label: "NO", variant: "neutral" };
+}
+
+function formatFormRuleVersion(version?: string | null) {
+  if (!version?.trim()) return "—";
+  const v = version.trim().toUpperCase();
+  return v.startsWith("V") ? v : `V${v}`;
 }
 
 export function mapRouteRuleRow(r: CrmRouteRule): RouteRuleRow {

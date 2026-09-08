@@ -8,10 +8,7 @@ import {
   DashboardMenuPopover,
   cn,
 } from "@dark-horse-safety/ui";
-import {
-  crmApi,
-  type CrmRepDashboard,
-} from "@/lib/crm-api";
+import { crmApi, type CrmRepDashboard } from "@/lib/crm-api";
 import { toastApiError } from "@/lib/toast";
 import { BrandLoader } from "@/features/loading/brand-loader";
 import { CrmEmptyTabState, CrmLoadFailedState } from "@/features/crm/crm-states";
@@ -66,14 +63,23 @@ function formatPipeline(n: number) {
   return `$${Math.round(n).toLocaleString()}`;
 }
 
+function formatMoney(n: number) {
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function barPct(value: number, max: number) {
   if (max <= 0) return 0;
   return Math.max(0, Math.min(100, (value / max) * 100));
 }
 
-function eodBarColor(pct: number) {
-  if (pct >= 90) return "#5EEAD4";
-  if (pct >= 70) return "#F5A524";
+function performanceBarColor(pct: number) {
+  if (pct >= 80) return "#4ADE80";
+  if (pct >= 50) return "#E8C47C";
   return "#F97066";
 }
 
@@ -128,14 +134,16 @@ function calendarKind(type: string, hasFollowUp: boolean) {
   const u = type.toUpperCase();
   if (u === "VISIT") return "VISIT";
   if (u === "CALL") return "CALL";
-  if (u === "MEETING" || u === "EMAIL") return "REVIEW";
+  if (u === "MEETING") return "MEETING";
+  if (u === "EMAIL" || u === "OTHER") return "TASK";
   return u || "TASK";
 }
 
 function kindBadgeClass(kind: string) {
-  if (kind === "FOLLOW-UP") return "bg-[#2A2618] text-[#C4A35A]";
-  if (kind === "REVIEW") return "bg-[#1A2A24] text-[#5EEAD4]";
-  return "bg-[#1A2A24] text-[#5EEAD4]";
+  if (kind === "FOLLOW-UP") return "bg-[#2A2618] text-[#E8C47C]";
+  if (kind === "TASK") return "bg-[#122A2A] text-[#5EEAD4]";
+  if (kind === "MEETING") return "bg-[#2A1A1A] text-[#F97066]";
+  return "bg-[#1A2A24] text-[#4ADE80]";
 }
 
 function LightningIcon() {
@@ -234,11 +242,15 @@ function KpiCard({
   value,
   meta,
   icon,
+  progressPct,
+  progressColor = "#E8C47C",
 }: {
   title: string;
   value: string;
-  meta: string;
+  meta: React.ReactNode;
   icon: React.ReactNode;
+  progressPct?: number;
+  progressColor?: string;
 }) {
   return (
     <div className="rounded-xl border border-[#2D2D30] bg-[#121212] p-4">
@@ -253,9 +265,20 @@ function KpiCard({
       <p className="mt-5 font-sans text-[28px] font-[590] uppercase leading-none tracking-[-0.03em] text-[#FDFDFF]">
         {value}
       </p>
-      <p className="mt-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+      <div className="mt-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
         {meta}
-      </p>
+      </div>
+      {progressPct != null ? (
+        <div className="mt-3 h-[4px] w-full overflow-hidden rounded-full bg-[#2A2A2A]">
+          <div
+            className="h-full rounded-full transition-[width]"
+            style={{
+              width: `${Math.max(0, Math.min(100, progressPct))}%`,
+              backgroundColor: progressColor,
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -289,7 +312,6 @@ function Panel({
 export function CrmRepDashboardPage() {
   const router = useRouter();
   const presets = React.useMemo(() => buildPresets(), []);
-  const [presetId, setPresetId] = React.useState("14");
   const [from, setFrom] = React.useState(presets[0]!.from);
   const [to, setTo] = React.useState(presets[0]!.to);
   const [rangeOpen, setRangeOpen] = React.useState(false);
@@ -323,7 +345,6 @@ export function CrmRepDashboardPage() {
   }, [from, to, reloadKey]);
 
   function applyPreset(p: DatePreset) {
-    setPresetId(p.id);
     setFrom(p.from);
     setTo(p.to);
     setRangeOpen(false);
@@ -354,6 +375,12 @@ export function CrmRepDashboardPage() {
   const todayLabel = new Date()
     .toLocaleDateString("en-US", { month: "short", day: "numeric" })
     .toUpperCase();
+  const pipelinePct = data.kpis.pipelinePct ?? 0;
+  const expenses = data.expenses ?? {
+    submittedThisCycle: 0,
+    pendingApproval: 0,
+    missingReceipts: 0,
+  };
 
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
@@ -361,8 +388,15 @@ export function CrmRepDashboardPage() {
         <KpiCard
           title="My Pipeline"
           value={formatPipeline(data.kpis.pipeline)}
-          meta="Open"
+          meta={
+            <span>
+              / {formatPipeline(data.kpis.pipelineTarget ?? 0)} Target —{" "}
+              {pipelinePct}%
+            </span>
+          }
           icon={<LightningIcon />}
+          progressPct={pipelinePct}
+          progressColor="#E8C47C"
         />
         <KpiCard
           title="My Quotes Sent"
@@ -371,9 +405,9 @@ export function CrmRepDashboardPage() {
           icon={<DocIcon />}
         />
         <KpiCard
-          title="My Win Rate"
+          title="My Win Rate (Quotes)"
           value={`${data.kpis.winRate}%`}
-          meta="Won / Total"
+          meta={`${data.kpis.quotesWon ?? 0} Won / ${data.kpis.quotesClosed ?? 0} Closed`}
           icon={<ChartIcon />}
         />
         <KpiCard
@@ -430,7 +464,7 @@ export function CrmRepDashboardPage() {
             {data.rank ? (
               <span className="text-[#959597]">
                 {" "}
-                · You&apos;re Ranked #{data.rank}
+                — You&apos;re Ranked #{data.rank}
               </span>
             ) : null}
           </span>
@@ -467,6 +501,7 @@ export function CrmRepDashboardPage() {
               <tbody>
                 {data.leaderboard.map((row) => {
                   const isMe = row.id === data.me.id;
+                  const pipePct = barPct(row.pipeline, maxPipeline);
                   return (
                     <tr
                       key={row.id}
@@ -478,11 +513,11 @@ export function CrmRepDashboardPage() {
                       <td
                         className={cn(
                           "px-4 py-3.5 font-sans text-[12px] uppercase tracking-[-0.02em] sm:px-5",
-                          isMe ? "font-[510] text-[#5EEAD4]" : "text-[#FDFDFF]",
+                          isMe ? "font-[510] text-[#4ADE80]" : "text-[#FDFDFF]",
                         )}
                       >
                         {row.name}
-                        {isMe ? " · You" : ""}
+                        {isMe ? " — You" : ""}
                       </td>
                       <td className="px-4 py-3.5 font-sans text-[12px] uppercase tabular-nums text-[#FDFDFF] sm:px-5">
                         {row.activities}
@@ -502,9 +537,10 @@ export function CrmRepDashboardPage() {
                         </p>
                         <div className="mt-2 h-[3px] w-full overflow-hidden rounded-full bg-[#2A2A2A]">
                           <div
-                            className="h-full rounded-full bg-[#FDFDFF]"
+                            className="h-full rounded-full"
                             style={{
-                              width: `${barPct(row.pipeline, maxPipeline)}%`,
+                              width: `${pipePct}%`,
+                              backgroundColor: performanceBarColor(pipePct),
                             }}
                           />
                         </div>
@@ -518,7 +554,7 @@ export function CrmRepDashboardPage() {
                             className="h-full rounded-full"
                             style={{
                               width: `${barPct(row.eodPct, 100)}%`,
-                              backgroundColor: eodBarColor(row.eodPct),
+                              backgroundColor: performanceBarColor(row.eodPct),
                             }}
                           />
                         </div>
@@ -532,14 +568,14 @@ export function CrmRepDashboardPage() {
         )}
       </Panel>
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <Panel
           title={
             <span>
               My Tasks
               <span className="text-[#959597]">
                 {" "}
-                · {data.kpis.tasksToday} Today · {data.kpis.overdue} Overdue
+                — {data.kpis.tasksToday} Today — {data.kpis.overdue} Overdue
               </span>
             </span>
           }
@@ -563,7 +599,7 @@ export function CrmRepDashboardPage() {
                       >
                         <span className="min-w-0 truncate font-sans text-[12px] uppercase text-[#FDFDFF]">
                           {t.title}
-                          {t.customer ? ` · ${t.customer}` : ""}
+                          {t.customer ? ` — ${t.customer}` : ""}
                         </span>
                         <span className="shrink-0 font-sans text-[11px] uppercase tabular-nums text-[#959597]">
                           {formatClock(t.dueAt)}
@@ -592,7 +628,7 @@ export function CrmRepDashboardPage() {
                       >
                         <span className="min-w-0 truncate font-sans text-[12px] uppercase text-[#FF8F9B]">
                           {t.title}
-                          {t.customer ? ` · ${t.customer}` : ""}
+                          {t.customer ? ` — ${t.customer}` : ""}
                         </span>
                         <span className="shrink-0 font-sans text-[11px] uppercase tabular-nums text-[#FF8F9B]">
                           Due {formatShortDate(t.dueAt)}
@@ -610,7 +646,7 @@ export function CrmRepDashboardPage() {
           title={
             <span>
               My Calendar
-              <span className="text-[#959597]"> · Today · {todayLabel}</span>
+              <span className="text-[#959597]"> — Today — {todayLabel}</span>
             </span>
           }
         >
@@ -631,7 +667,7 @@ export function CrmRepDashboardPage() {
                         href={`/crm/sales/${item.id}`}
                         className="flex flex-wrap items-center gap-3 py-2.5 transition-opacity hover:opacity-80"
                       >
-                        <span className="w-16 shrink-0 font-sans text-[11px] uppercase tabular-nums text-[#959597]">
+                        <span className="w-[4.5rem] shrink-0 font-sans text-[11px] uppercase tabular-nums text-[#959597]">
                           {formatClockLong(item.activityAt)}
                         </span>
                         <span
@@ -653,6 +689,37 @@ export function CrmRepDashboardPage() {
             )}
           </div>
         </Panel>
+
+        <Panel title="My Expenses">
+          <div className="divide-y divide-[#2D2D30] px-4 sm:px-5">
+            {[
+              {
+                label: "Submitted This Cycle",
+                value: formatMoney(expenses.submittedThisCycle),
+              },
+              {
+                label: "Pending Approval",
+                value: String(expenses.pendingApproval),
+              },
+              {
+                label: "Missing Receipts",
+                value: String(expenses.missingReceipts),
+              },
+            ].map((row) => (
+              <div
+                key={row.label}
+                className="flex items-center justify-between gap-3 py-3.5"
+              >
+                <span className="font-sans text-[12px] uppercase tracking-[-0.02em] text-[#959597]">
+                  {row.label}
+                </span>
+                <span className="font-sans text-[12px] font-[510] uppercase tabular-nums tracking-[-0.02em] text-[#FDFDFF]">
+                  {row.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Panel>
       </div>
 
       <Panel
@@ -661,7 +728,7 @@ export function CrmRepDashboardPage() {
             My Accounts
             <span className="text-[#959597]">
               {" "}
-              · {data.accounts.length} Accounts Assigned To You
+              — {data.accounts.length} Accounts Assigned To You
             </span>
           </span>
         }

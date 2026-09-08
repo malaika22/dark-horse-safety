@@ -1,6 +1,5 @@
 import {
   DashboardChartLegend,
-  DashboardControlHeader,
   DashboardCycleKpiCard,
   DashboardCycleKpiStrip,
   DashboardExceptionRow,
@@ -34,7 +33,6 @@ import {
   QUOTE_PIPELINE,
   REPORTS_DUE,
   SAFETY_RECORD,
-  SYNC_LABEL,
   THIS_CYCLE,
   UNBILLED_LEGEND,
 } from "./data/overview.mock";
@@ -44,13 +42,6 @@ const LIVE_CREW_VISIBLE = LIVE_CREW.slice(0, 8);
 export function DashboardOverview() {
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
-      <DashboardControlHeader
-        title="Dashboard"
-        syncLabel={SYNC_LABEL}
-        showNotificationBell
-        className="divider-edge-bottom -mx-3 px-3 pb-3 sm:-mx-5 sm:px-5 sm:pb-4"
-      />
-
       <div className="space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <DashboardSectionLabel>This cycle</DashboardSectionLabel>

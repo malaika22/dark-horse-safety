@@ -34,10 +34,11 @@ import { useCrmList } from "@/lib/use-crm-list";
 import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
+import { toIsoDate } from "@/lib/crm-ui";
 import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
 import { CrmListEmptyState } from "@/features/crm/crm-states";
 import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
-import { CrmHistoryModal } from "./crm-action-modals";
+import { CrmHistoryModal, CrmPromptFieldsModal } from "./crm-action-modals";
 import { PRICING_KPI_SHELL, PRICING_SORT_OPTIONS } from "./crm-constants";
 import type { PricingRuleRow } from "./crm-types";
 
@@ -79,36 +80,6 @@ function FilterCheckMarkIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
-function ClipboardIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-      className={className}
-    >
-      <path
-        d="M9 5h6l1 2h3v13a1 1 0 01-1 1H6a1 1 0 01-1-1V7h3l1-2z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
-      <rect
-        x="9"
-        y="3"
-        width="6"
-        height="3.5"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.75"
-      />
-    </svg>
-  );
-}
-
 
 function countTrailing(label: string) {
   return (
@@ -189,19 +160,19 @@ function FilterRangeRow({
       </p>
       <div className="flex min-w-0 items-center gap-1.5">
         <input
-          type="text"
+          type="date"
           value={from}
           onChange={(e) => onFromChange(e.target.value)}
-          className="h-8 w-[72px] rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
+          className="h-8 w-[118px] rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
         />
         <span className="font-sans text-[11px] text-[#FDFDFF]" aria-hidden>
           -
         </span>
         <input
-          type="text"
+          type="date"
           value={to}
           onChange={(e) => onToChange(e.target.value)}
-          className="h-8 w-[72px] rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
+          className="h-8 w-[118px] rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
         />
       </div>
     </div>
@@ -345,10 +316,10 @@ function PricingFiltersDrawer({
 
 export function PricingRulesPage() {
   const router = useRouter();
-  const { askConfirm, dialogs } = useCrmDialogs();
+  const { askConfirm, askPick, dialogs } = useCrmDialogs();
 
   const [query, setQuery] = React.useState("");
-  const [sortField, setSortField] = React.useState("serviceItem");
+  const [sortField, setSortField] = React.useState("customer");
   const [sortDir, setSortDir] = React.useState<DashboardSortDirection>("asc");
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
@@ -368,15 +339,32 @@ export function PricingRulesPage() {
   const [historyEvents, setHistoryEvents] = React.useState<
     { id: string; at: string; label: string; detail?: string }[]
   >([]);
+  const [datesModal, setDatesModal] = React.useState<{
+    id: string;
+    from: string;
+    to: string;
+  } | null>(null);
   const [sidePanels, setSidePanels] = React.useState<{
-    rateChanges: { id: string; label: string; from: string; to: string }[];
-    scheduleChanges: { id: string; customer: string; effective: string }[];
-    permissionGates: {
+    rateChanges: {
+      id: string;
+      label: string;
+      from: string;
+      to: string;
+      cycle?: string;
+      changedBy?: string;
+      date?: string;
+      reason?: string;
+    }[];
+    scheduleChanges: {
       id: string;
       customer: string;
-      status: { label: string; variant: "success" | "warning" | "offline" | "error" | "neutral" };
+      from?: string;
+      to?: string;
+      cycle?: string;
+      scheduledBy?: string;
+      effective: string;
     }[];
-  }>({ rateChanges: [], scheduleChanges: [], permissionGates: [] });
+  }>({ rateChanges: [], scheduleChanges: [] });
   const {
     savedViews,
     activeViewId,
@@ -397,6 +385,10 @@ export function PricingRulesPage() {
     if (appliedFilters.status) params.status = appliedFilters.status;
     if (appliedFilters.serviceType) params.serviceItem = appliedFilters.serviceType;
     if (appliedFilters.rateType) params.rateType = appliedFilters.rateType;
+    const from = toIsoDate(appliedFilters.effectiveFrom);
+    const to = toIsoDate(appliedFilters.effectiveTo);
+    if (from) params.effectiveFrom = from;
+    if (to) params.effectiveTo = to;
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters, filtersApplied]);
 
@@ -426,32 +418,12 @@ export function PricingRulesPage() {
         setSidePanels({
           rateChanges: res.data.rateChanges ?? [],
           scheduleChanges: res.data.scheduleChanges ?? [],
-          permissionGates: (res.data.permissionGates ?? []).map((g) => {
-            const s = (g.status ?? "").toUpperCase();
-            const variant =
-              s === "ACTIVE"
-                ? ("success" as const)
-                : s === "NEEDS_REVIEW" || s === "PENDING"
-                  ? ("warning" as const)
-                  : s === "INACTIVE" || s === "ARCHIVED"
-                    ? ("error" as const)
-                    : ("offline" as const);
-            return {
-              id: g.id,
-              customer: g.customer,
-              status: {
-                label: s.replaceAll("_", " ") || "ACTIVE",
-                variant,
-              },
-            };
-          }),
         });
       } catch {
         if (!cancelled) {
           setSidePanels({
             rateChanges: [],
             scheduleChanges: [],
-            permissionGates: [],
           });
         }
       }
@@ -571,10 +543,47 @@ export function PricingRulesPage() {
     }
   }
 
-  async function handleDuplicate(id: string) {
+  async function handleDuplicateToCustomer(row: PricingRuleRow) {
+    const options = customers.filter((c) => c.value !== row.customerId);
+    if (options.length === 0) {
+      toastApiError(new Error("No other customers available"));
+      return;
+    }
+    const customerId = await askPick({
+      title: "Duplicate to Another Customer",
+      label: "Customer",
+      options,
+      confirmLabel: "Duplicate",
+    });
+    if (!customerId) return;
     try {
-      await crmApi.duplicatePricingRule(id);
-      toastSuccess("Pricing rule duplicated");
+      await crmApi.duplicatePricingRule(row.id, { customerId });
+      toastSuccess("Pricing rule duplicated to customer");
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  function openSetEffectiveDates(row: PricingRuleRow) {
+    setDatesModal({
+      id: row.id,
+      from: row.effective !== "—" ? row.effective : "",
+      to: row.expires !== "—" ? row.expires : "",
+    });
+  }
+
+  async function handleSaveEffectiveDates(values: Record<string, string>) {
+    if (!datesModal) return;
+    const effectiveFrom = toIsoDate(values.from ?? "");
+    const effectiveTo = toIsoDate(values.to ?? "");
+    try {
+      await crmApi.updatePricingRule(datesModal.id, {
+        effectiveFrom: effectiveFrom ?? null,
+        effectiveTo: effectiveTo ?? null,
+      });
+      toastSuccess("Effective dates updated");
+      setDatesModal(null);
       reload();
     } catch (err) {
       toastApiError(err);
@@ -659,8 +668,8 @@ export function PricingRulesPage() {
       },
       {
         id: "owner",
-        header: "Owner",
-        className: "hidden min-w-[110px] max-w-[140px] xl:table-cell",
+        header: "Last Changed By",
+        className: "hidden min-w-[120px] max-w-[160px] xl:table-cell",
         cell: (row) => row.owner,
       },
       {
@@ -673,17 +682,28 @@ export function PricingRulesPage() {
               {
                 id: "edit",
                 label: "Edit Rate",
-                onSelect: () => router.push(`/crm/pricing-rules/${row.id}/edit`),
+                onSelect: () =>
+                  router.push(`/crm/pricing-rules/${row.id}/edit`),
               },
               {
-                id: "dup",
-                label: "Duplicate Rule",
-                onSelect: () => void handleDuplicate(row.id),
+                id: "dup-customer",
+                label: "Duplicate to Another Customer",
+                onSelect: () => void handleDuplicateToCustomer(row),
               },
-              { id: "history", label: "View History", onSelect: () => void handleViewHistory(row.id, row.customer) },
+              {
+                id: "history",
+                label: "View Change History",
+                onSelect: () =>
+                  void handleViewHistory(row.id, row.customer),
+              },
+              {
+                id: "dates",
+                label: "Set Effective Dates",
+                onSelect: () => openSetEffectiveDates(row),
+              },
               {
                 id: "delete",
-                label: "Delete Rule",
+                label: "Delete",
                 destructive: true,
                 onSelect: () => void handleDelete(row.id),
               },
@@ -692,7 +712,8 @@ export function PricingRulesPage() {
         ),
       },
     ],
-    [router],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handlers close over stable routers/toasts
+    [router, customers],
   );
 
   const bulkOpen = selectedIds.length > 0;
@@ -806,12 +827,6 @@ export function PricingRulesPage() {
                 onDirectionChange={setSortDir}
                 showDirectionInTrigger={false}
               />
-              <DashboardToolbarButton
-                leftIcon={<ClipboardIcon className="shrink-0" />}
-                onClick={() => setSavedViewsOpen(true)}
-              >
-                Payroll Review
-              </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
                   { id: "view-csv", label: "Export current view • CSV", onSelect: () => void runExport() },
@@ -825,6 +840,11 @@ export function PricingRulesPage() {
                     id: "pdf",
                     label: "Export as PDF",
                     onSelect: () => void runExport({ format: "pdf" }),
+                  },
+                  {
+                    id: "views",
+                    label: "Saved views…",
+                    onSelect: () => setSavedViewsOpen(true),
                   },
                 ]}
               />
@@ -855,7 +875,6 @@ export function PricingRulesPage() {
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
-        onRowClick={(row) => router.push(`/crm/pricing-rules/${row.id}/edit`)}
       />
 
       <DashboardPagination
@@ -877,26 +896,35 @@ export function PricingRulesPage() {
               )}
             />
           </div>
-          <div className="pb-2">
+          <div className="divide-y divide-[#2D2D30] pb-1">
             {sidePanels.rateChanges.length === 0 ? (
               <p className="px-4 py-3 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] sm:px-5">
                 No rate changes yet
               </p>
             ) : (
               sidePanels.rateChanges.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 px-4 py-2.5 sm:px-5"
-              >
-                <span className="min-w-0 flex-1 truncate font-sans text-[11px] uppercase leading-[1.35] tracking-[-0.02em] text-[#959597]">
-                  {item.label}
-                </span>
-                <span className="shrink-0 font-sans text-[11px] uppercase tracking-[-0.02em]">
-                  <span className="text-[#959597] line-through">{item.from}</span>
-                  <span className="mx-1.5 text-[#959597]">→</span>
-                  <span className="font-[510] text-[#FDFDFF]">{item.to}</span>
-                </span>
-              </div>
+                <div key={item.id} className="px-4 py-3.5 sm:px-5">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="min-w-0 font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                      {item.label}
+                    </p>
+                    <p className="shrink-0 font-sans text-[12px] uppercase tracking-[-0.02em]">
+                      <span className="text-[#959597] line-through">{item.from}</span>
+                      <span className="mx-1.5 text-[#959597]">→</span>
+                      <span className="font-[510] text-[#F5A623]">{item.to}</span>
+                    </p>
+                  </div>
+                  <p className="mt-2 font-sans text-[10px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+                    {[
+                      item.cycle,
+                      item.changedBy ? `Changed by ${item.changedBy}` : null,
+                      item.date,
+                      item.reason ? `"${item.reason}"` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
               ))
             )}
           </div>
@@ -906,72 +934,77 @@ export function PricingRulesPage() {
           <div className="px-4 pt-4 pb-2 sm:px-5">
             <DashboardPanelTitle
               icon="lightning"
-              title="Schedule Changes"
+              title="Scheduled Rate Changes"
               trailing={countTrailing(
                 `${sidePanels.scheduleChanges.length} Change${sidePanels.scheduleChanges.length === 1 ? "" : "s"}`,
               )}
             />
           </div>
-          <div className="pb-2">
+          <div className="divide-y divide-[#2D2D30] pb-1">
             {sidePanels.scheduleChanges.length === 0 ? (
               <p className="px-4 py-3 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] sm:px-5">
                 No scheduled changes
               </p>
             ) : (
               sidePanels.scheduleChanges.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 px-4 py-2.5 sm:px-5"
-              >
-                <span className="min-w-0 flex-1 truncate font-sans text-[11px] uppercase leading-[1.35] tracking-[-0.02em] text-[#959597]">
-                  {item.customer}
-                </span>
-                <span className="shrink-0 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                  Effective {item.effective}
-                </span>
-              </div>
+                <div
+                  key={item.id}
+                  className="flex items-start gap-3 px-4 py-3.5 sm:px-5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="min-w-0 font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                        {item.customer}
+                      </p>
+                      {item.from && item.to ? (
+                        <p className="shrink-0 font-sans text-[12px] uppercase tracking-[-0.02em]">
+                          <span className="text-[#959597] line-through">
+                            {item.from}
+                          </span>
+                          <span className="mx-1.5 text-[#959597]">→</span>
+                          <span className="font-[510] text-[#4ADE80]">
+                            {item.to}
+                          </span>
+                        </p>
+                      ) : (
+                        <p className="shrink-0 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                          Effective {item.effective}
+                        </p>
+                      )}
+                    </div>
+                    <p className="mt-2 font-sans text-[10px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+                      {[
+                        item.cycle,
+                        item.scheduledBy
+                          ? `Scheduled by ${item.scheduledBy}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  <DashboardRowActionMenu
+                    items={[
+                      {
+                        id: "edit",
+                        label: "Edit",
+                        onSelect: () =>
+                          router.push(`/crm/pricing-rules/${item.id}/edit`),
+                      },
+                      {
+                        id: "delete",
+                        label: "Delete",
+                        destructive: true,
+                        onSelect: () => void handleDelete(item.id),
+                      },
+                    ]}
+                  />
+                </div>
               ))
             )}
           </div>
         </DashboardPanel>
       </div>
-
-      <DashboardPanel className="overflow-hidden">
-        <div className="px-4 pt-4 pb-2 sm:px-5">
-          <DashboardPanelTitle
-            icon="lightning"
-            title="Permission Gate"
-            trailing={countTrailing(
-              `${sidePanels.permissionGates.length} Permission Gate${sidePanels.permissionGates.length === 1 ? "" : "s"}`,
-            )}
-          />
-        </div>
-        <div className="pb-2">
-          {sidePanels.permissionGates.length === 0 ? (
-            <p className="px-4 py-3 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] sm:px-5">
-              No hard permission gates
-            </p>
-          ) : (
-            sidePanels.permissionGates.map((item) => (
-            <div
-              key={item.id}
-              className="flex items-center gap-3 px-4 py-2.5 sm:px-5"
-            >
-              <span className="min-w-0 flex-1 truncate font-sans text-[11px] uppercase leading-[1.35] tracking-[-0.02em] text-[#959597]">
-                {item.customer}
-              </span>
-              <DashboardBadge
-                variant={item.status.variant}
-                pill
-                className="shrink-0"
-              >
-                {item.status.label}
-              </DashboardBadge>
-            </div>
-            ))
-          )}
-        </div>
-      </DashboardPanel>
 
       <PricingFiltersDrawer
         open={filtersOpen}
@@ -1031,6 +1064,27 @@ export function PricingRulesPage() {
         title={historyTitle}
         events={historyEvents}
         onClose={() => setHistoryOpen(false)}
+      />
+      <CrmPromptFieldsModal
+        open={Boolean(datesModal)}
+        title="Set Effective Dates"
+        confirmLabel="Save"
+        fields={[
+          {
+            key: "from",
+            label: "Effective From",
+            placeholder: "YYYY-MM-DD",
+            defaultValue: datesModal?.from ?? "",
+          },
+          {
+            key: "to",
+            label: "Effective To",
+            placeholder: "YYYY-MM-DD",
+            defaultValue: datesModal?.to ?? "",
+          },
+        ]}
+        onClose={() => setDatesModal(null)}
+        onConfirm={(values) => void handleSaveEffectiveDates(values)}
       />
       {dialogs}
     </div>

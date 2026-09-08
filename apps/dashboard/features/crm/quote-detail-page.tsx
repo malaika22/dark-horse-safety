@@ -10,6 +10,10 @@ import {
 import { crmApi, type CrmQuote } from "@/lib/crm-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmDetailStateGate } from "@/features/crm/crm-states";
+import {
+  useSetHeaderActions,
+  useSetHeaderBreadcrumb,
+} from "@/features/app-shell/header-actions-context";
 import { SendQuoteModal, type SendQuotePayload } from "./send-quote-modal";
 
 function DetailPair({ label, value }: { label: string; value: React.ReactNode }) {
@@ -100,6 +104,32 @@ export function QuoteDetailPage({ quoteId }: { quoteId: string }) {
     }
   }
 
+  useSetHeaderBreadcrumb(
+    quote?.quoteNumber
+      ? `CRM / Customer / Quotes / ${quote.quoteNumber}`
+      : "CRM / Customer / Quotes / Detail",
+  );
+
+  useSetHeaderActions(
+    quote ? (
+      <>
+        <Link href={`/crm/quotes/${quote.id}/edit`}>
+          <DashboardToolbarButton>Edit</DashboardToolbarButton>
+        </Link>
+        <Link href={`/crm/quotes/${quote.id}/preview`}>
+          <DashboardToolbarButton>Preview</DashboardToolbarButton>
+        </Link>
+        <DashboardToolbarButton
+          variant="primary"
+          onClick={() => setSendOpen(true)}
+        >
+          Send Quote
+        </DashboardToolbarButton>
+      </>
+    ) : null,
+    [quote, quoteId],
+  );
+
   if (loading || !quote || loadError) {
     return (
       <CrmDetailStateGate
@@ -119,34 +149,13 @@ export function QuoteDetailPage({ quoteId }: { quoteId: string }) {
 
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="space-y-2">
-          <h1 className="font-sans text-[18px] uppercase text-[#FDFDFF] md:text-[24px]">
-            Quote · {quote.quoteNumber}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <DashboardBadge variant="success" pill>
-              {quote.status}
-            </DashboardBadge>
-            <span className="font-sans text-[11px] uppercase text-[#959597]">
-              {money(quote.amount)} · {quote.customer?.name ?? "—"}
-            </span>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href={`/crm/quotes/${quote.id}/edit`}>
-            <DashboardToolbarButton>Edit</DashboardToolbarButton>
-          </Link>
-          <Link href={`/crm/quotes/${quote.id}/preview`}>
-            <DashboardToolbarButton>Preview</DashboardToolbarButton>
-          </Link>
-          <DashboardToolbarButton
-            variant="primary"
-            onClick={() => setSendOpen(true)}
-          >
-            Send Quote
-          </DashboardToolbarButton>
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <DashboardBadge variant="success" pill>
+          {quote.status}
+        </DashboardBadge>
+        <span className="font-sans text-[11px] uppercase text-[#959597]">
+          {money(quote.amount)} · {quote.customer?.name ?? "—"}
+        </span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

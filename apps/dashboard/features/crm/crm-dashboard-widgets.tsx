@@ -177,32 +177,38 @@ export function CrmEodComplianceCard() {
 
 export function CrmRepPerformanceTable() {
   const data = useDashboard();
+  const reps = data?.repPerformance ?? [];
+
+  if (reps.length === 0) {
+    return (
+      <p className="py-3 font-sans text-[12px] uppercase text-[#959597]">
+        No rep activity this week —
+      </p>
+    );
+  }
+
+  const headers = ["Metric", ...reps.map((r) => r.name)];
   const rows = [
     {
-      label: "Customers",
-      a: dash(data?.customers.active),
-      b: dash(data?.customers.needsReview),
-      c: dash(data?.customers.archived),
+      label: "Activities",
+      values: reps.map((r) => dash(r.activities)),
     },
     {
-      label: "Sales",
-      a: dash(data?.sales.thisWeek),
-      b: dash(data?.sales.calls),
-      c: dash(data?.sales.visits),
+      label: "Calls",
+      values: reps.map((r) => dash(r.calls)),
     },
     {
-      label: "Quotes",
-      a: dash(data?.quotes.draft),
-      b: dash(data?.quotes.sent),
-      c: dash(data?.quotes.approved),
+      label: "Visits",
+      values: reps.map((r) => dash(r.visits)),
     },
   ];
+
   return (
     <div className="overflow-x-auto [-ms-overflow-style:auto] [scrollbar-width:thin]">
       <table className="w-full min-w-0 border-collapse text-left md:min-w-[420px]">
         <thead>
           <tr className="divider-row">
-            {["Metric", "A", "B", "C"].map((header) => (
+            {headers.map((header) => (
               <th
                 key={header}
                 scope="col"
@@ -222,15 +228,14 @@ export function CrmRepPerformanceTable() {
               <td className="py-3 pr-2 font-sans text-[12px] uppercase text-[#FDFDFF]">
                 {row.label}
               </td>
-              <td className="py-3 pr-3 text-right font-sans text-[12px] tabular-nums text-[#FDFDFF]">
-                {row.a}
-              </td>
-              <td className="py-3 pr-3 text-right font-sans text-[12px] tabular-nums text-[#FDFDFF]">
-                {row.b}
-              </td>
-              <td className="py-3 text-right font-sans text-[12px] tabular-nums text-[#FDFDFF]">
-                {row.c}
-              </td>
+              {row.values.map((value, idx) => (
+                <td
+                  key={`${row.label}-${idx}`}
+                  className="py-3 pr-3 text-right font-sans text-[12px] tabular-nums text-[#FDFDFF] last:pr-0"
+                >
+                  {value}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>
@@ -277,28 +282,33 @@ export function CrmSalesActivityList() {
 
 export function CrmMsaRenewalList() {
   const data = useDashboard();
-  const cells = React.useMemo(
-    () =>
-      kpiCellsFromApi(CUSTOMERS_KPI_SHELL, {
-        total: data?.customers.total ?? 0,
-        active: data?.customers.active ?? 0,
-        needsReview: data?.customers.needsReview ?? 0,
-        archived: data?.customers.archived ?? 0,
-      }),
-    [data],
-  );
+  const renewals = data?.msaRenewals ?? [];
+
+  if (renewals.length === 0) {
+    return (
+      <p className="py-3 font-sans text-[12px] uppercase text-[#959597]">
+        No MSA renewals in the next 90 days —
+      </p>
+    );
+  }
+
   return (
     <ul className="list-none space-y-0">
-      {cells.map((cell) => (
+      {renewals.map((item) => (
         <li
-          key={cell.title}
+          key={item.id}
           className="flex items-center justify-between gap-3 divider-row py-3.5"
         >
-          <span className="min-w-0 truncate font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]">
-            {cell.title}
-          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-sans text-[12px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]">
+              {item.customer}
+            </p>
+            <p className="mt-1.5 truncate font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]">
+              {item.code} · {item.status}
+            </p>
+          </div>
           <span className="shrink-0 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]">
-            {cell.value}
+            {item.detail}
           </span>
         </li>
       ))}
@@ -446,8 +456,8 @@ export function CrmLiveKpiStrip() {
   const cells = React.useMemo(
     () =>
       kpiCellsFromApi(CUSTOMERS_KPI_SHELL, {
-        total: data?.customers.total ?? 0,
         active: data?.customers.active ?? 0,
+        openJobs: data?.customers.openJobs ?? 0,
         needsReview: data?.customers.needsReview ?? 0,
         archived: data?.customers.archived ?? 0,
       }),

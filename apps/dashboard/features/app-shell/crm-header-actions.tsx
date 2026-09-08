@@ -4,7 +4,6 @@ import type { ReactElement } from "react";
 import * as React from "react";
 import Link from "next/link";
 import {
-  DashboardModal,
   DashboardToolbarButton,
   SyncIcon,
 } from "@dark-horse-safety/ui";
@@ -15,33 +14,7 @@ import {
   formatCrmSyncLabel,
 } from "../crm/crm-constants";
 import { AddUserIcon } from "../crm/crm-list-page-shell";
-
-function BellIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-      className={className}
-    >
-      <path
-        d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M13.73 21a2 2 0 0 1-3.46 0"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
+import { SYNC_LABEL as DASHBOARD_SYNC_LABEL } from "../dashboard/data/overview.mock";
 
 /** Shared Figma header CTA — white pill + person icon. */
 function AddHeaderButton({
@@ -64,30 +37,18 @@ function AddHeaderButton({
   );
 }
 
-type NotificationItem = { id: string; title: string; href: string };
-
-/** Figma CRM header trailing — last synced + bell + Run sync + add customer. */
+/** Figma CRM dashboard header trailing — last synced + Run sync + add customer. */
 export function CrmDashboardHeaderActions() {
   const [syncLabel, setSyncLabel] = React.useState(CRM_SYNC_LABEL_FALLBACK);
   const [syncing, setSyncing] = React.useState(false);
-  const [notifOpen, setNotifOpen] = React.useState(false);
-  const [notifLoading, setNotifLoading] = React.useState(false);
-  const [notifications, setNotifications] = React.useState<NotificationItem[]>(
-    [],
-  );
-  const [notifCount, setNotifCount] = React.useState(0);
 
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [overview, notifs] = await Promise.all([
-          crmApi.dashboardOverview(),
-          crmApi.dashboardNotifications(),
-        ]);
+        const overview = await crmApi.dashboardOverview();
         if (cancelled) return;
         setSyncLabel(formatCrmSyncLabel(overview.data.syncedAt));
-        setNotifCount(notifs.data.count ?? 0);
       } catch {
         /* keep fallback label */
       }
@@ -114,38 +75,11 @@ export function CrmDashboardHeaderActions() {
     }
   }
 
-  async function openNotifications() {
-    setNotifOpen(true);
-    setNotifLoading(true);
-    try {
-      const res = await crmApi.dashboardNotifications();
-      setNotifications(res.data.items ?? []);
-      setNotifCount(res.data.count ?? 0);
-    } catch (err) {
-      toastApiError(err);
-      setNotifications([]);
-      setNotifCount(0);
-    } finally {
-      setNotifLoading(false);
-    }
-  }
-
   return (
     <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5 sm:gap-3">
       <p className="hidden shrink-0 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:block md:text-[12px]">
         {syncLabel}
       </p>
-      <button
-        type="button"
-        aria-label="Notifications"
-        onClick={() => void openNotifications()}
-        className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[#3E3E3E] bg-[#2A2A2A] text-[#959597] transition-colors hover:bg-[#353535] hover:text-[#FDFDFF]"
-      >
-        <BellIcon />
-        {notifCount > 0 ? (
-          <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-[#FFBBCA]" />
-        ) : null}
-      </button>
       <DashboardToolbarButton
         leftIcon={<SyncIcon className="shrink-0" />}
         className="!px-2.5 sm:!px-3"
@@ -167,42 +101,6 @@ export function CrmDashboardHeaderActions() {
           <span className="sm:hidden">Add</span>
         </DashboardToolbarButton>
       </Link>
-
-      <DashboardModal
-        open={notifOpen}
-        onClose={() => setNotifOpen(false)}
-        title="Notifications"
-        widthClassName="max-w-lg"
-        footer={
-          <DashboardToolbarButton onClick={() => setNotifOpen(false)}>
-            Close
-          </DashboardToolbarButton>
-        }
-      >
-        {notifLoading ? (
-          <p className="font-sans text-[12px] uppercase text-[#959597]">
-            Loading…
-          </p>
-        ) : notifications.length === 0 ? (
-          <p className="font-sans text-[12px] uppercase text-[#959597]">
-            No notifications
-          </p>
-        ) : (
-          <ul className="max-h-[360px] space-y-2 overflow-y-auto">
-            {notifications.map((item) => (
-              <li key={item.id}>
-                <Link
-                  href={item.href}
-                  onClick={() => setNotifOpen(false)}
-                  className="block rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] px-3 py-2.5 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:border-[#5A5A5A]"
-                >
-                  {item.title}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </DashboardModal>
     </div>
   );
 }
@@ -296,9 +194,56 @@ export function CreateWorkOrderHeaderButton() {
   );
 }
 
+/** Main /dashboard header row-2 — last synced + Run sync + Generate payroll. */
+export function DashboardHeaderActions() {
+  const [syncLabel, setSyncLabel] = React.useState(DASHBOARD_SYNC_LABEL);
+  const [syncing, setSyncing] = React.useState(false);
+
+  async function handleRunSync() {
+    setSyncing(true);
+    try {
+      const res = await crmApi.dashboardSync();
+      setSyncLabel(formatCrmSyncLabel(res.data.syncedAt));
+      toastSuccess(
+        res.data.ok
+          ? `Synced · ${formatCrmSyncLabel(res.data.syncedAt)}`
+          : "Sync completed",
+      );
+    } catch (err) {
+      toastApiError(err);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5 sm:gap-3">
+      <p className="hidden shrink-0 font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:block md:text-[12px]">
+        {syncLabel}
+      </p>
+      <DashboardToolbarButton
+        leftIcon={<SyncIcon className="shrink-0" />}
+        className="!px-2.5 sm:!px-3"
+        disabled={syncing}
+        onClick={() => void handleRunSync()}
+      >
+        <span className="hidden sm:inline">
+          {syncing ? "Syncing…" : "Run sync"}
+        </span>
+        <span className="sm:hidden">Sync</span>
+      </DashboardToolbarButton>
+      <Link href="/hr/payroll-export" className="inline-flex shrink-0">
+        <DashboardToolbarButton variant="primary" className="!rounded-full">
+          Generate payroll
+        </DashboardToolbarButton>
+      </Link>
+    </div>
+  );
+}
+
 /** Listing-page header CTAs keyed by exact path (no trailing slash). */
 export const CRM_LIST_HEADER_ACTIONS: Record<string, () => ReactElement> = {
-  "/crm": CrmDashboardHeaderActions,
+  "/dashboard": DashboardHeaderActions,
   "/crm/accounts": AddCustomerHeaderButton,
   "/crm/contacts": AddContactHeaderButton,
   "/crm/locations": AddLocationHeaderButton,

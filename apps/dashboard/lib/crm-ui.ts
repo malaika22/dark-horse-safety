@@ -85,3 +85,15 @@ export function latLngToMapPin(
   const y = Math.min(90, Math.max(10, ((33.5 - lat) / 3) * 100));
   return { id, label, x, y, active };
 }
+
+/** Deterministic scatter for wells without real coordinates (GPS missing). */
+export function syntheticMapPinPosition(id: string): { x: number; y: number } {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const x = 14 + (Math.abs(h) % 72);
+  const y = 16 + (Math.abs(h >>> 8) % 64);
+  return { x, y };
+}

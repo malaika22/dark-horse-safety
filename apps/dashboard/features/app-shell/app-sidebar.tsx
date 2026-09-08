@@ -6,8 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@dark-horse-safety/ui";
 import { APP_NAV } from "./nav";
-import { ChevronIcon, NavIcon, SettingsGearIcon } from "./icons";
-import { sessionDisplayName, sessionRoleLabel, useSession } from "./session-context";
+import { ChevronIcon, NavIcon } from "./icons";
 
 function isActivePath(
   pathname: string,
@@ -80,100 +79,6 @@ function SidebarBrand({ onClose }: { onClose?: () => void }) {
           </svg>
         </button>
       ) : null}
-    </div>
-  );
-}
-
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
-  }
-  return name.slice(0, 2).toUpperCase();
-}
-
-/** Sidebar footer — avatar, name/role, settings shortcut + sign-out menu. */
-function SidebarProfile() {
-  const { user, logout } = useSession();
-  const name = sessionDisplayName(user);
-  const role = sessionRoleLabel(user?.role);
-  const [open, setOpen] = React.useState(false);
-  const menuRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (!open) return;
-
-    function onPointerDown(event: MouseEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
-  return (
-    <div
-      ref={menuRef}
-      className="divider-section-top relative mt-auto shrink-0 px-3 pb-3 pt-3"
-    >
-      {open ? (
-        <div
-          role="menu"
-          className="absolute bottom-[calc(100%+6px)] left-3 right-3 z-50 overflow-hidden rounded-lg border border-divider bg-[#1A1A1A] py-1 shadow-lg"
-        >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              logout();
-            }}
-            className="flex w-full px-3 py-2.5 text-left font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-white/[0.06]"
-          >
-            Sign out
-          </button>
-        </div>
-      ) : null}
-
-      <div className="flex items-center gap-2.5">
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-haspopup="menu"
-          onClick={() => setOpen((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg py-1 pl-0.5 pr-1 text-left transition-colors hover:bg-white/[0.05]"
-        >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#2A2A2A] font-sans text-[10px] font-[590] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-            {initials(name)}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-sans text-[12px] font-[510] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF]">
-              {name}
-            </p>
-            {role ? (
-              <p className="mt-1 truncate font-sans text-[10px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597]">
-                {role}
-              </p>
-            ) : null}
-          </div>
-        </button>
-        <Link
-          href="/settings"
-          aria-label="Settings"
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#959597] transition-colors hover:bg-white/[0.05] hover:text-[#FDFDFF]"
-        >
-          <SettingsGearIcon />
-        </Link>
-      </div>
     </div>
   );
 }
@@ -325,14 +230,12 @@ export function AppSidebar({
       >
         <SidebarBrand onClose={onClose} />
         <SidebarNav onClose={onClose} />
-        <SidebarProfile />
       </aside>
 
       {/* Desktop sidebar — in layout flow only from lg+ */}
       <aside className="divider-edge-right hidden h-full w-[260px] shrink-0 flex-col bg-black lg:flex">
         <SidebarBrand />
         <SidebarNav />
-        <SidebarProfile />
       </aside>
     </>
   );

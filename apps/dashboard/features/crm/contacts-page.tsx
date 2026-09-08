@@ -30,7 +30,7 @@ import { mapContactRow } from "@/lib/crm-mappers";
 import { kpiCellsFromApi } from "@/lib/crm-ui";
 import { useCrmList } from "@/lib/use-crm-list";
 import { useCrmLookups, lookupOptions, optionLabel } from "@/lib/use-crm-lookups";
-import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
+import { useCrmSavedViews, type CrmSavedViewItem } from "@/lib/use-crm-saved-views";
 import { logContactChannel } from "@/lib/crm-activity-log";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
@@ -64,6 +64,53 @@ const DEFAULT_FILTERS: ContactFilters = {
   lastActivityFrom: "",
   lastActivityTo: "",
 };
+
+function daysAgoIso(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Figma default contact saved views (built-in). */
+const CONTACT_VIEW_PRESETS: CrmSavedViewItem[] = [
+  {
+    id: "__preset_all_contacts",
+    label: "All Contacts",
+    builtin: true,
+    payload: { filters: { ...DEFAULT_FILTERS }, query: "" },
+  },
+  {
+    id: "__preset_primary_only",
+    label: "Primary Contacts Only",
+    builtin: true,
+    payload: {
+      filters: { ...DEFAULT_FILTERS, isPrimary: true },
+      query: "",
+    },
+  },
+  {
+    id: "__preset_missing_email",
+    label: "Missing Email",
+    builtin: true,
+    payload: {
+      filters: { ...DEFAULT_FILTERS },
+      query: "",
+      missingEmail: true,
+    },
+  },
+  {
+    id: "__preset_no_activity_90",
+    label: "No Activity 90 Days",
+    builtin: true,
+    payload: {
+      filters: {
+        ...DEFAULT_FILTERS,
+        lastActivityTo: daysAgoIso(90),
+      },
+      query: "",
+    },
+  },
+];
 
 /* ── filter chips ── */
 function chipsFromFilters(
@@ -312,6 +359,20 @@ export function ContactsPage() {
     deleteView,
   } = useCrmSavedViews("CONTACTS");
 
+  const viewsForModal = React.useMemo(() => {
+    const apiLabels = new Set(
+      savedViews.map((v) => v.label.trim().toLowerCase()),
+    );
+    const presets = CONTACT_VIEW_PRESETS.filter(
+      (p) => !apiLabels.has(p.label.trim().toLowerCase()),
+    );
+    return [...presets, ...savedViews];
+  }, [savedViews]);
+
+  React.useEffect(() => {
+    if (!activeViewId) setActiveViewId(CONTACT_VIEW_PRESETS[0]!.id);
+  }, [activeViewId, setActiveViewId]);
+
   const { lookups, customers, reps } = useCrmLookups({ includeLocations: false });
   const roleOptions = lookupOptions(lookups, "contactRoles");
 
@@ -334,6 +395,27 @@ export function ContactsPage() {
     direction: sortDir,
     extraParams,
   });
+
+  const [viewFlags, setViewFlags] = React.useState<{
+    missingEmail?: boolean;
+  }>({});
+
+  const displayRows = React.useMemo(() => {
+    let next = rows;
+    if (appliedFilters.isPrimary) {
+      next = next.filter((r) => r.primary === "Primary");
+    }
+    if (viewFlags.missingEmail) {
+      next = next.filter((r) => !r.hasEmail);
+    }
+    if (appliedFilters.hasEmail) {
+      next = next.filter((r) => r.hasEmail);
+    }
+    if (appliedFilters.hasPhone) {
+      next = next.filter((r) => r.hasPhone);
+    }
+    return next;
+  }, [rows, appliedFilters.isPrimary, appliedFilters.hasEmail, appliedFilters.hasPhone, viewFlags.missingEmail]);
 
   const kpiCells = React.useMemo(
     () => kpiCellsFromApi(CONTACTS_KPI_SHELL, kpiData),
@@ -361,6 +443,7 @@ export function ContactsPage() {
       sortField?: string;
       sortDirection?: DashboardSortDirection;
       query?: string;
+      missingEmail?: boolean;
     };
     if (p.filters) {
       const nextFilters = { ...DEFAULT_FILTERS, ...p.filters };
@@ -372,7 +455,12 @@ export function ContactsPage() {
       setAppliedFilters(nextFilters);
       setDraftFilters(nextFilters);
       setChips(nextChips);
+    } else {
+      setAppliedFilters(DEFAULT_FILTERS);
+      setDraftFilters(DEFAULT_FILTERS);
+      setChips([]);
     }
+    setViewFlags({ missingEmail: Boolean(p.missingEmail) });
     if (typeof p.sortField === "string") setSortField(p.sortField);
     if (p.sortDirection === "asc" || p.sortDirection === "desc") {
       setSortDir(p.sortDirection);
@@ -728,7 +816,7 @@ export function ContactsPage() {
       {/* table */}
       <DashboardDataTable
         columns={columns}
-        rows={rows}
+        rows={displayRows}
         getRowId={(row) => row.id}
         emptyMessage={
           <CrmListEmptyState
@@ -790,15 +878,17 @@ export function ContactsPage() {
       <DashboardSaveViewsModal
         open={savedViewsOpen}
         onClose={() => setSavedViewsOpen(false)}
-        views={savedViews}
+        views={viewsForModal}
         activeViewId={activeViewId}
         onSelectView={(viewId) => {
           setActiveViewId(viewId);
-          const view = savedViews.find((v) => v.id === viewId);
+          const view = viewsForModal.find((v) => v.id === viewId);
           if (view?.payload != null) applySavedViewPayload(view.payload);
         }}
         onSaveNewView={() => setSaveNewOpen(true)}
         onViewAction={(viewId, action) => {
+          const view = viewsForModal.find((v) => v.id === viewId);
+          if (view?.builtin) return;
           if (action === "delete") void deleteView(viewId);
           if (action === "duplicate") {
             const src = savedViews.find((v) => v.id === viewId);

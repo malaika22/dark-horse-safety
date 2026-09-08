@@ -193,10 +193,10 @@ export function CrmMapPanel({
     { label: "GPS Missing", tone: "gps-missing" },
   ];
 
-  const mapMinH =
-    size === "full"
-      ? "min-h-[520px] md:min-h-[640px]"
-      : "min-h-[400px] md:min-h-[520px]";
+  const isFull = size === "full";
+  const mapMinH = isFull
+    ? "min-h-[560px] md:min-h-[680px]"
+    : "min-h-[400px] md:min-h-[520px]";
 
   const selectedPin = selectedId
     ? pins.find((p) => p.id === selectedId)
@@ -206,10 +206,10 @@ export function CrmMapPanel({
     <DashboardPanel className={cn("overflow-visible", className)}>
       <div className="relative z-10 px-4 pt-4 pb-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#2A2A2A] text-white">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#2A2A2A] text-[#FDFDFF]">
             <MapPinIcon />
           </span>
-          <div>
+          <div className="min-w-0">
             <h2 className="font-sans text-[12px] font-[510] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]">
               {title}
             </h2>
@@ -220,15 +220,15 @@ export function CrmMapPanel({
         </div>
       </div>
       <div
-        className={`relative z-20 overflow-visible border-t border-divider bg-[#121212] p-4 ${mapMinH}`}
+        className={`relative z-20 overflow-visible border-t border-divider bg-[#121212] p-4 sm:p-5 ${mapMinH}`}
         onClick={() => onPinClick?.("")}
       >
         <div
-          className="absolute inset-4 rounded-sm opacity-[0.28]"
+          className="pointer-events-none absolute inset-4 rounded-md opacity-[0.22] sm:inset-5"
           style={{
             backgroundImage:
               "linear-gradient(#3E3E3E 1px, transparent 1px), linear-gradient(90deg, #3E3E3E 1px, transparent 1px)",
-            backgroundSize: "72px 72px",
+            backgroundSize: isFull ? "80px 80px" : "72px 72px",
           }}
           aria-hidden
         />
@@ -236,7 +236,7 @@ export function CrmMapPanel({
         {pins.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
-              No wells with coordinates to plot
+              No wells to plot
             </p>
           </div>
         ) : (
@@ -251,10 +251,17 @@ export function CrmMapPanel({
               (ringActive && tone === "active");
             const dotClass =
               tone === "active"
-                ? "bg-[#4ADE80] ring-[#4ADE80]/40"
+                ? "bg-[#4ADE80] ring-[#4ADE80]/35"
                 : tone === "gps-missing"
-                  ? "bg-[#F87171] ring-[#F87171]/40"
-                  : "bg-[#6B6B6B] ring-[#6B6B6B]/35";
+                  ? "bg-[#F87171] ring-[#F87171]/35"
+                  : "bg-[#6B6B6B] ring-[#6B6B6B]/30";
+            const ringSize = selected
+              ? isFull
+                ? "h-11 w-11"
+                : "h-9 w-9"
+              : isFull
+                ? "h-10 w-10"
+                : "h-8 w-8";
             return (
               <button
                 key={pin.id}
@@ -269,26 +276,28 @@ export function CrmMapPanel({
                   left: `${pin.x}%`,
                   top: `${pin.y}%`,
                   transform: "translate(-50%, -50%)",
-                  zIndex: selected ? 20 : 10,
+                  zIndex: selected ? 30 : 10,
                 }}
               >
-                <span className="relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                <span
+                  className={`relative inline-flex shrink-0 items-center justify-center ${
+                    isFull ? "h-4 w-4" : "h-3.5 w-3.5"
+                  }`}
+                >
                   {showRing ? (
                     <span
-                      className={`absolute rounded-full border border-dashed border-[#60A5FA]/95 ${
-                        selected ? "h-9 w-9" : "h-8 w-8"
-                      }`}
+                      className={`absolute rounded-full border border-dashed border-[#60A5FA]/90 ${ringSize}`}
                     />
                   ) : null}
                   <span
-                    className={`relative h-2.5 w-2.5 rounded-full ring-2 ${dotClass} ${
-                      selected ? "h-3 w-3" : ""
+                    className={`relative rounded-full ring-2 ${dotClass} ${
+                      selected || isFull ? "h-3 w-3" : "h-2.5 w-2.5"
                     }`}
                   />
                 </span>
                 <span
-                  className={`whitespace-nowrap font-sans text-[9px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[10px] ${
-                    selected ? "text-[#FDFDFF]" : "text-[#D4D4D4]"
+                  className={`max-w-[140px] truncate whitespace-nowrap font-sans text-[9px] font-normal uppercase leading-none tracking-[-0.02em] md:text-[10px] ${
+                    selected ? "text-[#FDFDFF]" : "text-[#A3A3A3]"
                   }`}
                 >
                   {pin.label}
@@ -302,7 +311,7 @@ export function CrmMapPanel({
           <MapPinPopover pin={selectedPin} onOpenSite={onOpenSite} />
         ) : null}
 
-        <div className="pointer-events-none absolute bottom-4 left-4">
+        <div className="pointer-events-none absolute bottom-4 left-4 sm:bottom-5 sm:left-5">
           <MapLegend items={legendItems} />
         </div>
       </div>
@@ -327,7 +336,7 @@ export function CrmLocationsListPanel({
 }) {
   return (
     <div className={`flex min-h-0 flex-col ${className ?? ""}`}>
-      <p className="mb-3 font-sans text-[12px] font-[510] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]">
+      <p className="mb-3 font-sans text-[12px] font-[510] uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[13px]">
         {countLabel}
       </p>
       <div className="max-h-[520px] space-y-3 overflow-y-auto pr-0.5 md:max-h-[560px]">
@@ -349,7 +358,7 @@ export function CrmLocationsListPanel({
               className={`flex w-full items-start justify-between gap-3 rounded-[12px] border px-4 py-3.5 text-left transition-colors ${
                 selected
                   ? "border-[#FDFDFF]/35 bg-[#242424]"
-                  : "border-[#3E3E3E] bg-[#1E1E1E] hover:bg-[#2A2A2A]/60"
+                  : "border-transparent bg-[#1E1E1E] hover:bg-[#2A2A2A]/60"
               }`}
             >
               <div className="min-w-0 flex-1">
@@ -357,13 +366,17 @@ export function CrmLocationsListPanel({
                   {card.name}
                 </p>
                 <p className="mt-1.5 font-sans text-[10px] font-normal uppercase leading-snug tracking-[-0.02em] text-[#959597] md:text-[11px]">
-                  {card.customer} · {card.city}
+                  {card.customer} — {card.city}
                 </p>
                 <p className="mt-1 font-sans text-[10px] font-normal uppercase leading-snug tracking-[-0.02em] text-[#959597] md:text-[11px]">
                   {card.openJobs} Open Jobs · {card.gpsStatus}
                 </p>
               </div>
-              <div className="flex shrink-0 items-start gap-1">
+              <div
+                className="flex shrink-0 items-start gap-1"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
                 <DashboardBadge
                   variant={card.status.variant}
                   pill
@@ -394,13 +407,13 @@ export function CrmViewModeToggle({
     { id: "map", label: "Map" },
   ];
   return (
-    <div className="inline-flex shrink-0 overflow-hidden rounded-lg border border-[#3E3E3E]">
+    <div className="inline-flex shrink-0 overflow-hidden rounded-full border border-[#3E3E3E] bg-[#1A1A1A] p-0.5">
       {modes.map((mode) => (
         <button
           key={mode.id}
           type="button"
           onClick={() => onChange(mode.id)}
-          className={`px-4 py-2.5 font-sans text-[11px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors md:text-[12px] ${
+          className={`rounded-full px-4 py-2 font-sans text-[11px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors md:text-[12px] ${
             value === mode.id
               ? "bg-[#FDFDFF] text-[#0D0D0D]"
               : "bg-transparent text-[#959597] hover:text-[#FDFDFF]"

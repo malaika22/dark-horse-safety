@@ -47,19 +47,25 @@ function reqBadge(card: LocationCard): {
 
 export function CustomerSitesTable({
   rows,
+  totalLabel,
   onRowClick,
 }: {
   rows: LocationCard[];
+  /** Override well count in header (defaults to rows.length). */
+  totalLabel?: number;
   onRowClick?: (id: string) => void;
 }) {
+  const count = totalLabel ?? rows.length;
+
   return (
     <div className="overflow-hidden rounded-xl border border-[#2D2D30] bg-panel">
       <div className="px-4 pt-4 pb-3 sm:px-5">
-        <h2 className="font-sans text-[13px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+        <p className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
           Customer Sites
-        </h2>
-        <p className="mt-1.5 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597]">
-          {rows.length} Wells · Click A Row For Details
+          <span aria-hidden> · </span>
+          {count} Wells
+          <span aria-hidden> · </span>
+          Click A Row For Details
         </p>
       </div>
 
@@ -67,22 +73,24 @@ export function CustomerSitesTable({
         <table className="w-full min-w-[860px] border-collapse">
           <thead>
             <tr className="border-t border-[#2D2D30]">
-              {[
-                "Well Name",
-                "Customer",
-                "Open Jobs",
-                "GPS",
-                "Last Visited",
-                "Req Met",
-                "",
-              ].map((h) => (
+              {(
+                [
+                  "Well Name",
+                  "Customer",
+                  "Open Jobs",
+                  "GPS",
+                  "Last Visited",
+                  "Req Met",
+                ] as const
+              ).map((h) => (
                 <th
-                  key={h || "nav"}
+                  key={h}
                   className="px-4 py-3 text-left font-sans text-[10px] font-[510] uppercase tracking-[-0.01em] text-[#959597] sm:px-5"
                 >
                   {h}
                 </th>
               ))}
+              <th className="w-10 px-3 py-3 sm:px-4" aria-hidden />
             </tr>
           </thead>
           <tbody>
@@ -92,7 +100,7 @@ export function CustomerSitesTable({
               return (
                 <tr
                   key={row.id}
-                  role="button"
+                  role="link"
                   tabIndex={0}
                   onClick={() => onRowClick?.(row.id)}
                   onKeyDown={(e) => {
@@ -101,10 +109,10 @@ export function CustomerSitesTable({
                       onRowClick?.(row.id);
                     }
                   }}
-                  className="cursor-pointer border-t border-[#2D2D30] transition-colors hover:bg-white/[0.03]"
+                  className="group cursor-pointer border-t border-[#2D2D30] transition-colors hover:bg-white/[0.03]"
                 >
                   <td className="px-4 py-3.5 sm:px-5">
-                    <span className="font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                    <span className="font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]">
                       {row.name}
                     </span>
                   </td>
@@ -133,7 +141,7 @@ export function CustomerSitesTable({
                       {req.label}
                     </DashboardBadge>
                   </td>
-                  <td className="px-4 py-3.5 text-[#6F6F72] sm:px-5">
+                  <td className="px-3 py-3.5 text-[#6F6F72] transition-colors group-hover:text-[#FDFDFF] sm:px-4">
                     <ChevronRightIcon />
                   </td>
                 </tr>

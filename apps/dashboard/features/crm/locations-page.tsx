@@ -3,7 +3,6 @@
 import * as React from "react";
 import {
   DashboardExportMenu,
-  DashboardListToolbar,
   DashboardRowActionMenu,
   DashboardSaveNewViewModal,
   DashboardSaveViewsModal,
@@ -353,7 +352,7 @@ export function LocationsPage() {
   );
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [detailsId, setDetailsId] = React.useState<string | null>(null);
-  const [sortField, setSortField] = React.useState("name");
+  const [sortField, setSortField] = React.useState("customer");
   const [sortDirection, setSortDirection] =
     React.useState<DashboardSortDirection>("asc");
   const [filtersOpen, setFiltersOpen] = React.useState(false);
@@ -400,10 +399,21 @@ export function LocationsPage() {
     extraParams,
   });
 
-  const kpiCells = React.useMemo(
-    () => kpiCellsFromApi(LOCATIONS_KPI_SHELL, kpiData),
-    [kpiData],
-  );
+  const kpiCells = React.useMemo(() => {
+    const inactiveDetail =
+      typeof kpiData.inactiveDetail === "string"
+        ? kpiData.inactiveDetail
+        : undefined;
+    const counts: Record<string, number | string> = { ...kpiData };
+    delete counts.inactiveDetail;
+    const cells = kpiCellsFromApi(LOCATIONS_KPI_SHELL, counts);
+    if (!inactiveDetail) return cells;
+    return cells.map((cell) =>
+      cell.title.toLowerCase() === "inactive"
+        ? { ...cell, value: "", meta: inactiveDetail.toUpperCase() }
+        : cell,
+    );
+  }, [kpiData]);
 
   function currentViewPayload() {
     return {
@@ -452,40 +462,39 @@ export function LocationsPage() {
         const res = await crmApi.locationsMapPins();
         if (cancelled) return;
         setMapPins(
-          res.data.flatMap((pin) => {
+          res.data.map((pin) => {
+            const label = pin.label ?? pin.name ?? pin.id;
             const mapped = latLngToMapPin(
               pin.id,
-              pin.label ?? pin.name ?? pin.id,
+              label,
               pin.latitude,
               pin.longitude,
               pin.active ?? pin.status !== "INACTIVE",
             );
-            if (!mapped) return [];
+            if (!mapped) return null;
             const gpsMissing =
               pin.latitude == null ||
               pin.longitude == null ||
-              pin.gpsRequired === false;
+              /missing|not set|unset|offline/i.test(pin.gpsStatus ?? "");
             const status =
               pin.status === "INACTIVE"
                 ? ("inactive" as const)
                 : gpsMissing
                   ? ("gps-missing" as const)
                   : ("active" as const);
-            return [
-              {
-                id: mapped.id,
-                label: mapped.label,
-                x: pin.x ?? mapped.x,
-                y: pin.y ?? mapped.y,
-                status,
-                geofenced: Boolean(pin.geofenceRadius),
-                customer: pin.customer?.name ?? "",
-                openJobs: pin.openJobs ?? 0,
-                gpsSet: !gpsMissing,
-                geofenceRadius: pin.geofenceRadius ?? null,
-              },
-            ];
-          }),
+            return {
+              id: mapped.id,
+              label: mapped.label,
+              x: pin.x ?? mapped.x,
+              y: pin.y ?? mapped.y,
+              status,
+              geofenced: Boolean(pin.geofenceRadius) && status === "active",
+              customer: pin.customer?.name ?? "",
+              openJobs: pin.openJobs ?? 0,
+              gpsSet: !gpsMissing,
+              geofenceRadius: pin.geofenceRadius ?? null,
+            };
+          }).filter((pin): pin is NonNullable<typeof pin> => pin != null),
         );
       } catch (err) {
         toastApiError(err);
@@ -594,7 +603,6 @@ export function LocationsPage() {
     }
   }
 
-  void total;
   const listCards: CrmLocationCard[] = rows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -614,10 +622,14 @@ export function LocationsPage() {
     setDetailsId(id);
   }
 
+  function selectLocation(id: string) {
+    setSelectedId(id);
+  }
+
   function viewOnMap(id: string) {
     setDetailsId(null);
     setSelectedId(id);
-    setViewMode("map");
+    setViewMode((prev) => (prev === "list" ? "split" : prev));
   }
 
   return (
@@ -629,28 +641,25 @@ export function LocationsPage() {
       kpiCount={4}
     >
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
-      {viewMode !== "map" ? (
-        <DashboardStatGrid>
-          <DashboardStatRow columns={4}>
-            {kpiCells.map((cell) => (
-              <DashboardStatCell key={cell.title} {...cell} />
-            ))}
-          </DashboardStatRow>
-        </DashboardStatGrid>
-      ) : null}
+      <DashboardStatGrid>
+        <DashboardStatRow columns={4}>
+          {kpiCells.map((cell) => (
+            <DashboardStatCell key={cell.title} {...cell} />
+          ))}
+        </DashboardStatRow>
+      </DashboardStatGrid>
 
       <div className="space-y-3">
         <CrmViewModeToggle value={viewMode} onChange={setViewMode} />
-
-        <DashboardListToolbar
-          search={
-            <DashboardSearchInput
-              placeholder="Search Well"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          }
-          filters={
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1 sm:max-w-md">
+              <DashboardSearchInput
+                placeholder="Search Well"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
             <DashboardToolbarButton
               leftIcon={<DashboardToolbarIcons.Filter className="shrink-0" />}
               rightIcon={
@@ -663,41 +672,47 @@ export function LocationsPage() {
             >
               Filter
             </DashboardToolbarButton>
-          }
-          actions={
-            <>
-              <DashboardSortMenu
-                options={LOCATIONS_SORT_OPTIONS}
-                field={sortField}
-                direction={sortDirection}
-                onFieldChange={setSortField}
-                onDirectionChange={setSortDirection}
-                showDirectionInTrigger={false}
-              />
-              <DashboardExportMenu
-                items={[
-                  { id: "view-csv", label: "Export current view • CSV", onSelect: () => void handleExport() },
-                  { id: "all-csv", label: "Export all • CSV", onSelect: () => void handleExport() },
-                  {
-                    id: "xlsx",
-                    label: "Export as Excel",
-                    onSelect: () => void handleExportExcel(),
-                  },
-                  {
-                    id: "pdf",
-                    label: "Export as PDF",
-                    onSelect: () => void handleExportPdf(),
-                  },
-                  {
-                    id: "views",
-                    label: "Saved views…",
-                    onSelect: () => setSavedViewsOpen(true),
-                  },
-                ]}
-              />
-            </>
-          }
-        />
+          </div>
+          <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto lg:justify-end">
+            <DashboardSortMenu
+              options={LOCATIONS_SORT_OPTIONS}
+              field={sortField}
+              direction={sortDirection}
+              onFieldChange={setSortField}
+              onDirectionChange={setSortDirection}
+              showDirectionInTrigger={false}
+            />
+            <DashboardExportMenu
+              items={[
+                {
+                  id: "view-csv",
+                  label: "Export current view • CSV",
+                  onSelect: () => void handleExport(),
+                },
+                {
+                  id: "all-csv",
+                  label: "Export all • CSV",
+                  onSelect: () => void handleExport(),
+                },
+                {
+                  id: "xlsx",
+                  label: "Export as Excel",
+                  onSelect: () => void handleExportExcel(),
+                },
+                {
+                  id: "pdf",
+                  label: "Export as PDF",
+                  onSelect: () => void handleExportPdf(),
+                },
+                {
+                  id: "views",
+                  label: "Saved views…",
+                  onSelect: () => setSavedViewsOpen(true),
+                },
+              ]}
+            />
+          </div>
+        </div>
       </div>
 
       <div
@@ -717,6 +732,7 @@ export function LocationsPage() {
             onOpenSite={(id) => openDetails(id)}
             size={viewMode === "map" ? "full" : "default"}
             ringActive
+            className={viewMode === "map" ? "w-full" : undefined}
           />
         ) : null}
         {showList ? (
@@ -745,6 +761,7 @@ export function LocationsPage() {
                   r.city.toLowerCase().includes(q)
                 );
               })}
+              totalLabel={total || rows.length}
               onRowClick={openDetails}
             />
           ) : (
@@ -760,7 +777,7 @@ export function LocationsPage() {
               })}
               countLabel={`Locations · ${listCards.length} Wells`}
               selectedId={selectedId}
-              onCardClick={(id) => openDetails(id)}
+              onCardClick={selectLocation}
               renderCardActions={(card) => (
                 <DashboardRowActionMenu
                   items={[
@@ -768,6 +785,13 @@ export function LocationsPage() {
                       id: "details",
                       label: "View Details",
                       onSelect: () => openDetails(card.id),
+                    },
+                    {
+                      id: "map",
+                      label: "View on Map",
+                      onSelect: () => {
+                        setSelectedId(card.id);
+                      },
                     },
                     {
                       id: "archive",

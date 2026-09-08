@@ -35,6 +35,16 @@ export class PricingRuleListQueryDto extends ListQueryDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsDateString()
+  effectiveFrom?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  effectiveTo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsBoolean()
   @Type(() => Boolean)
   includeArchived?: boolean;

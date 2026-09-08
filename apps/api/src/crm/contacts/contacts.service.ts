@@ -92,17 +92,28 @@ export class ContactsService {
   }
 
   async kpi() {
-    const [total, active, archived, primary] = await Promise.all([
+    const [total, primary, missingEmail, missingPhone] = await Promise.all([
       this.prisma.contact.count({ where: { archivedAt: null } }),
-      this.prisma.contact.count({
-        where: { archivedAt: null, status: CrmRecordStatus.ACTIVE },
-      }),
-      this.prisma.contact.count({ where: { archivedAt: { not: null } } }),
       this.prisma.contact.count({
         where: { archivedAt: null, isPrimary: true },
       }),
+      this.prisma.contact.count({
+        where: {
+          archivedAt: null,
+          OR: [{ email: null }, { email: '' }],
+        },
+      }),
+      this.prisma.contact.count({
+        where: {
+          archivedAt: null,
+          AND: [
+            { OR: [{ mobile: null }, { mobile: '' }] },
+            { OR: [{ officePhone: null }, { officePhone: '' }] },
+          ],
+        },
+      }),
     ]);
-    return { data: { total, active, archived, primary } };
+    return { data: { total, primary, missingEmail, missingPhone } };
   }
 
   async getById(id: string) {

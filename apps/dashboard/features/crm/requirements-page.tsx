@@ -8,6 +8,7 @@ import {
   DashboardBulkSelectBar,
   DashboardDataTable,
   DashboardExportMenu,
+  DashboardFilterChips,
   DashboardListToolbar,
   DashboardPagination,
   DashboardPanel,
@@ -40,26 +41,79 @@ import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
 import { REQUIREMENTS_KPI_SHELL, REQUIREMENTS_SORT_OPTIONS } from "./crm-constants";
 import type { RequirementRow } from "./crm-types";
 
-type AffectedTech = { id: string; name: string; role: string };
-type AffectedWo = { id: string; workOrder: string; priority: string };
-type AffectedWell = {
+type AffectedTech = {
   id: string;
-  label: string;
+  name: string;
+  role: string;
   status: { label: string; variant: "success" | "warning" | "error" | "offline" | "neutral" };
 };
+type AffectedWo = {
+  id: string;
+  workOrder: string;
+  subtitle?: string;
+  blockedBy?: string | null;
+};
+type RequirementStatusItem = {
+  id: string;
+  label: string;
+  count: number;
+  variant: "success" | "warning" | "error" | "offline" | "neutral";
+};
+type EnforcementItem = {
+  id: string;
+  label: string;
+  enforcement: { label: string; variant: "success" | "warning" | "error" | "offline" | "neutral" };
+};
+type BlockedTech = { id: string; name: string; fails: string };
+type BlockedAction = {
+  id: string;
+  label: string;
+  level: { label: string; variant: "success" | "warning" | "error" | "offline" | "neutral" };
+};
 
-function wellStatusBadge(status: string): AffectedWell["status"] {
-  const upper = status.toUpperCase();
-  if (upper.includes("ACTIVE") || upper === "OK") {
-    return { label: status, variant: "success" };
+function asBadgeVariant(
+  value?: string,
+): "success" | "warning" | "error" | "offline" | "neutral" {
+  if (
+    value === "success" ||
+    value === "warning" ||
+    value === "error" ||
+    value === "offline" ||
+    value === "neutral"
+  ) {
+    return value;
   }
-  if (upper.includes("WARN") || upper.includes("PENDING")) {
-    return { label: status, variant: "warning" };
-  }
-  if (upper.includes("BLOCK") || upper.includes("INACTIVE") || upper.includes("FAIL")) {
-    return { label: status, variant: "error" };
-  }
-  return { label: status || "—", variant: "neutral" };
+  return "neutral";
+}
+
+function statusToneClass(
+  variant: "success" | "warning" | "error" | "offline" | "neutral",
+) {
+  if (variant === "success") return "text-[#4ADE80]";
+  if (variant === "error") return "text-[#FF6B7A]";
+  if (variant === "warning") return "text-[#F5A623]";
+  if (variant === "offline") return "text-[#F87171]";
+  return "text-[#959597]";
+}
+
+function statusCountBadgeClass(
+  variant: "success" | "warning" | "error" | "offline" | "neutral",
+) {
+  if (variant === "success") return "bg-[#1F3D2A] text-[#4ADE80]";
+  if (variant === "error") return "bg-[#3D1F24] text-[#FF6B7A]";
+  if (variant === "warning") return "bg-[#3D2F14] text-[#F5A623]";
+  if (variant === "offline") return "bg-[#3D1F24] text-[#F87171]";
+  return "bg-[#2A2A2A] text-[#959597]";
+}
+
+function statusDotClass(
+  variant: "success" | "warning" | "error" | "offline" | "neutral",
+) {
+  if (variant === "success") return "bg-[#4ADE80]";
+  if (variant === "error") return "bg-[#FF6B7A]";
+  if (variant === "warning") return "bg-[#F5A623]";
+  if (variant === "offline") return "bg-[#F87171]";
+  return "bg-[#959597]";
 }
 
 type RequirementFilters = {
@@ -92,35 +146,6 @@ function FilterCheckMarkIcon({ className }: { className?: string }) {
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ClipboardIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-      className={className}
-    >
-      <path
-        d="M9 5h6l1 2h3v13a1 1 0 01-1 1H6a1 1 0 01-1-1V7h3l1-2z"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
-      <rect
-        x="9"
-        y="3"
-        width="6"
-        height="3.5"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.75"
       />
     </svg>
   );
@@ -303,6 +328,46 @@ function RequirementsFiltersDrawer({
   );
 }
 
+function optionLabel(
+  options: { value: string; label: string }[],
+  value: string,
+) {
+  return options.find((o) => o.value === value)?.label ?? value;
+}
+
+function chipsFromFilters(
+  f: RequirementFilters,
+  opts: {
+    customers: { value: string; label: string }[];
+    types: { value: string; label: string }[];
+    enforcement: { value: string; label: string }[];
+    statuses: { value: string; label: string }[];
+  },
+) {
+  const chips: { id: string; label: string }[] = [];
+  if (f.customer)
+    chips.push({
+      id: "customer",
+      label: optionLabel(opts.customers, f.customer),
+    });
+  if (f.requirementType)
+    chips.push({
+      id: "requirementType",
+      label: optionLabel(opts.types, f.requirementType),
+    });
+  if (f.enforcement)
+    chips.push({
+      id: "enforcement",
+      label: optionLabel(opts.enforcement, f.enforcement),
+    });
+  if (f.status)
+    chips.push({
+      id: "status",
+      label: optionLabel(opts.statuses, f.status),
+    });
+  return chips;
+}
+
 function countTrailing(label: string) {
   return (
     <span className="font-sans text-[11px] font-normal uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
@@ -311,28 +376,9 @@ function countTrailing(label: string) {
   );
 }
 
-function WidgetRow({
-  left,
-  right,
-}: {
-  left: React.ReactNode;
-  right: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center gap-3 px-4 py-2.5 sm:px-5">
-      <span className="min-w-0 flex-1 truncate font-sans text-[11px] uppercase leading-[1.35] tracking-[-0.02em] text-[#959597]">
-        {left}
-      </span>
-      <span className="shrink-0 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-        {right}
-      </span>
-    </div>
-  );
-}
-
 export function RequirementsPage() {
   const router = useRouter();
-  const { askConfirm, askPick, dialogs } = useCrmDialogs();
+  const { askConfirm, askPick, askPrompt, dialogs } = useCrmDialogs();
 
   const [query, setQuery] = React.useState("");
   const [sortField, setSortField] = React.useState("customer");
@@ -350,17 +396,18 @@ export function RequirementsPage() {
   const [saveNewOpen, setSaveNewOpen] = React.useState(false);
   const [affectedTechs, setAffectedTechs] = React.useState<AffectedTech[]>([]);
   const [affectedWos, setAffectedWos] = React.useState<AffectedWo[]>([]);
-  const [affectedWells, setAffectedWells] = React.useState<AffectedWell[]>([]);
   const [affectedFocusLabel, setAffectedFocusLabel] = React.useState<string | null>(
     null,
   );
-  const [enforcementItems, setEnforcementItems] = React.useState<
-    { id: string; label: string; rate: string }[]
+  const [requirementStatusItems, setRequirementStatusItems] = React.useState<
+    RequirementStatusItem[]
   >([]);
-  const [blockedBy, setBlockedBy] = React.useState<
-    { id: string; name: string; initials: string }[]
-  >([]);
-  const [blockedProcesses, setBlockedProcesses] = React.useState<string[]>([]);
+  const [requirementStatusTotal, setRequirementStatusTotal] = React.useState(0);
+  const [enforcementItems, setEnforcementItems] = React.useState<EnforcementItem[]>(
+    [],
+  );
+  const [blockedTechs, setBlockedTechs] = React.useState<BlockedTech[]>([]);
+  const [blockedActions, setBlockedActions] = React.useState<BlockedAction[]>([]);
   const {
     savedViews,
     activeViewId,
@@ -373,6 +420,25 @@ export function RequirementsPage() {
   const typeOptions = lookupOptions(lookups, "requirementTypes");
   const enforcementOptions = lookupOptions(lookups, "enforcementLevels");
   const statusOptions = lookupOptions(lookups, "requirementStatuses");
+  const filterChips = React.useMemo(
+    () =>
+      filtersApplied
+        ? chipsFromFilters(appliedFilters, {
+            customers,
+            types: typeOptions,
+            enforcement: enforcementOptions,
+            statuses: statusOptions,
+          })
+        : [],
+    [
+      appliedFilters,
+      customers,
+      enforcementOptions,
+      filtersApplied,
+      statusOptions,
+      typeOptions,
+    ],
+  );
 
   const extraParams = React.useMemo(() => {
     if (!filtersApplied) return undefined;
@@ -446,42 +512,98 @@ export function RequirementsPage() {
     if (typeof p.query === "string") setQuery(p.query);
   }
 
+  function applyAffectedPayload(
+    data: {
+      technicians?: {
+        id: string;
+        name: string;
+        role: string;
+        status?: { label: string; variant: string };
+        fails?: string | null;
+      }[];
+      workOrders?: {
+        id: string;
+        workOrder: string;
+        subtitle?: string;
+        blockedBy?: string | null;
+      }[];
+      requirementStatus?: {
+        id: string;
+        label: string;
+        count: number;
+        variant: string;
+      }[];
+      enforcementItems?: {
+        id: string;
+        label: string;
+        enforcement: { label: string; variant: string };
+      }[];
+      blockedTechnicians?: { id: string; name: string; fails: string }[];
+      blockedActions?: {
+        id: string;
+        label: string;
+        level: { label: string; variant: string };
+      }[];
+    },
+    focusLabel: string | null,
+  ) {
+    const techs = (data.technicians ?? []).map((t) => ({
+      id: t.id,
+      name: t.name,
+      role: t.role,
+      status: {
+        label: t.status?.label ?? "MET",
+        variant: asBadgeVariant(t.status?.variant ?? "success"),
+      },
+    }));
+    setAffectedTechs(techs);
+    setAffectedWos(
+      (data.workOrders ?? []).map((w) => ({
+        id: w.id,
+        workOrder: w.workOrder,
+        subtitle: w.subtitle,
+        blockedBy: w.blockedBy,
+      })),
+    );
+    const statusItems = (data.requirementStatus ?? []).map((s) => ({
+      id: s.id,
+      label: s.label,
+      count: s.count,
+      variant: asBadgeVariant(s.variant),
+    }));
+    setRequirementStatusItems(statusItems);
+    setRequirementStatusTotal(statusItems.reduce((sum, s) => sum + s.count, 0));
+    setEnforcementItems(
+      (data.enforcementItems ?? []).map((e) => ({
+        id: e.id,
+        label: e.label,
+        enforcement: {
+          label: e.enforcement.label,
+          variant: asBadgeVariant(e.enforcement.variant),
+        },
+      })),
+    );
+    setBlockedTechs(data.blockedTechnicians ?? []);
+    setBlockedActions(
+      (data.blockedActions ?? []).map((a) => ({
+        id: a.id,
+        label: a.label,
+        level: {
+          label: a.level.label,
+          variant: asBadgeVariant(a.level.variant),
+        },
+      })),
+    );
+    setAffectedFocusLabel(focusLabel);
+  }
+
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const res = await crmApi.requirementsAffectedSummary();
         if (cancelled) return;
-        const techs = res.data.technicians ?? [];
-        const wos = res.data.workOrders ?? [];
-        setAffectedTechs(techs);
-        setAffectedWos(wos);
-        setAffectedWells(
-          (res.data.statusWells ?? []).map((w) => ({
-            id: w.id,
-            label: w.label,
-            status: {
-              label: w.status?.label ?? "—",
-              variant: (w.status?.variant as AffectedWell["status"]["variant"]) ?? "neutral",
-            },
-          })),
-        );
-        setAffectedFocusLabel(null);
-        setBlockedBy(
-          techs.map((t) => ({
-            id: t.id,
-            name: t.name,
-            initials: t.name
-              .split(/\s+/)
-              .map((p) => p[0])
-              .join("")
-              .slice(0, 2)
-              .toUpperCase(),
-          })),
-        );
-        setBlockedProcesses(
-          Array.from(new Set(wos.map((w) => w.priority || "Work Order"))),
-        );
+        applyAffectedPayload(res.data, null);
       } catch (err) {
         if (!cancelled) toastApiError(err);
       }
@@ -492,22 +614,6 @@ export function RequirementsPage() {
   }, []);
 
   React.useEffect(() => {
-    const counts = new Map<string, number>();
-    for (const row of rows) {
-      const key = row.enforcementLevel || "—";
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    const totalRows = rows.length || 1;
-    setEnforcementItems(
-      Array.from(counts.entries()).map(([label, count]) => ({
-        id: label,
-        label: label.replace(/_/g, " "),
-        rate: `${Math.round((count / totalRows) * 100)}%`,
-      })),
-    );
-  }, [rows]);
-
-  React.useEffect(() => {
     if (selectedIds.length !== 1) return;
     const id = selectedIds[0];
     const row = rows.find((r) => r.id === id);
@@ -516,26 +622,7 @@ export function RequirementsPage() {
       try {
         const res = await crmApi.requirementAffected(id);
         if (cancelled) return;
-        const techs = res.data.technicians ?? [];
-        const wos = res.data.workOrders ?? [];
-        setAffectedTechs(techs);
-        setAffectedWos(wos);
-        setAffectedFocusLabel(row?.requirement ?? row?.code ?? id);
-        setBlockedBy(
-          techs.map((t) => ({
-            id: t.id,
-            name: t.name,
-            initials: t.name
-              .split(/\s+/)
-              .map((p) => p[0])
-              .join("")
-              .slice(0, 2)
-              .toUpperCase(),
-          })),
-        );
-        setBlockedProcesses(
-          Array.from(new Set(wos.map((w) => w.priority || "Work Order"))),
-        );
+        applyAffectedPayload(res.data, row?.requirement ?? row?.code ?? id);
       } catch (err) {
         if (!cancelled) toastApiError(err);
       }
@@ -585,15 +672,15 @@ export function RequirementsPage() {
 
   async function handleArchive(id: string) {
     const ok = await askConfirm({
-      title: "Delete requirement",
-      description: "Delete this requirement? This cannot be undone.",
-      confirmLabel: "Delete",
+      title: "Remove requirement",
+      description: "Remove this requirement? This cannot be undone.",
+      confirmLabel: "Remove",
       destructive: true,
     });
     if (!ok) return;
     try {
       await crmApi.archiveRequirement(id);
-      toastSuccess("Requirement deleted");
+      toastSuccess("Requirement removed");
       reload();
     } catch (err) {
       toastApiError(err);
@@ -602,15 +689,15 @@ export function RequirementsPage() {
 
   async function handleBulkDelete() {
     const ok = await askConfirm({
-      title: "Delete requirements",
-      description: `Delete ${selectedIds.length} requirement(s)? This cannot be undone.`,
-      confirmLabel: "Delete",
+      title: "Remove requirements",
+      description: `Remove ${selectedIds.length} requirement(s)? This cannot be undone.`,
+      confirmLabel: "Remove",
       destructive: true,
     });
     if (!ok) return;
     try {
       await crmApi.bulkDeleteRequirements(selectedIds);
-      toastSuccess("Requirements deleted");
+      toastSuccess("Requirements removed");
       setSelectedIds([]);
       reload();
     } catch (err) {
@@ -624,8 +711,9 @@ export function RequirementsPage() {
       label: "Enforcement",
       confirmLabel: "Apply",
       options: [
-        { value: "SOFT_GATE", label: "Soft gate" },
-        { value: "ACTIVE", label: "Active" },
+        { value: "HARD_GATE", label: "Hard gate" },
+        { value: "SOFT_GATE", label: "Warning" },
+        { value: "ADVISORY", label: "Informational" },
       ],
     });
     if (!level) return;
@@ -633,10 +721,39 @@ export function RequirementsPage() {
       await crmApi.updateRequirement(id, {
         enforcementLevel: level,
       });
+      toastSuccess(`Enforcement set to ${level.replace(/_/g, " ")}`);
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleUploadEvidence(row: RequirementRow) {
+    const url = await askPrompt({
+      title: "Upload evidence",
+      label: "Evidence URL / reference",
+      placeholder: "https://… or file reference",
+      confirmLabel: "Save",
+    });
+    if (url == null) return;
+    const trimmed = url.trim();
+    try {
+      await crmApi.updateRequirement(row.id, {
+        evidenceRequired: true,
+        docsRequired: true,
+        ...(trimmed
+          ? {
+              notes: trimmed.startsWith("http")
+                ? `Evidence: ${trimmed}`
+                : trimmed,
+              status: "COMPLETE",
+            }
+          : {}),
+      });
       toastSuccess(
-        level === "SOFT_GATE"
-          ? "Enforcement set to SOFT_GATE"
-          : "Enforcement set to ACTIVE",
+        trimmed
+          ? `Evidence saved for ${row.requirement}`
+          : "Evidence marked required",
       );
       reload();
     } catch (err) {
@@ -644,39 +761,96 @@ export function RequirementsPage() {
     }
   }
 
+  async function handleRequestFromCustomer(row: RequirementRow) {
+    const ok = await askConfirm({
+      title: "Request from customer",
+      description: `Request "${row.requirement}" from ${row.customer}?`,
+      confirmLabel: "Send request",
+    });
+    if (!ok) return;
+    try {
+      await crmApi.updateRequirement(row.id, {
+        status: "NEEDS_REVIEW",
+        evidenceRequired: true,
+      });
+      toastSuccess(`Request sent to ${row.customer}`);
+      reload();
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  function handleOpenRequirement(row: RequirementRow) {
+    setSelectedIds([row.id]);
+    void handleViewAffected(row.id, row.requirement, "techs");
+    requestAnimationFrame(() => {
+      document
+        .getElementById("requirements-affected-panels")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   async function handleViewAffected(id: string, label: string, focus: "techs" | "wo") {
     try {
       const res = await crmApi.requirementAffected(id);
-      const techs = res.data.technicians ?? [];
-      const wos = res.data.workOrders ?? [];
-      setAffectedTechs(techs);
-      setAffectedWos(wos);
-      setAffectedFocusLabel(label);
-      setBlockedBy(
-        techs.map((t) => ({
-          id: t.id,
-          name: t.name,
-          initials: t.name
-            .split(/\s+/)
-            .map((p) => p[0])
-            .join("")
-            .slice(0, 2)
-            .toUpperCase(),
-        })),
-      );
-      setBlockedProcesses(
-        Array.from(new Set(wos.map((w) => w.priority || "Work Order"))),
-      );
-      const techCount = techs.length;
-      const woCount = wos.length;
+      applyAffectedPayload(res.data, label);
+      const techCount = res.data.technicians?.length ?? 0;
+      const woCount = res.data.workOrders?.length ?? 0;
       toastSuccess(
         focus === "techs"
           ? `${techCount} technician(s) affected · ${label}`
-          : `${woCount} work order(s) affected · ${label}`,
+          : `${woCount} blocked work order(s) · ${label}`,
       );
     } catch (err) {
       toastApiError(err);
     }
+  }
+
+  function requirementRowActions(row: RequirementRow) {
+    return [
+      {
+        id: "open",
+        label: "Open Requirement",
+        onSelect: () => handleOpenRequirement(row),
+      },
+      {
+        id: "edit",
+        label: "Edit Requirement",
+        onSelect: () => router.push(`/crm/requirements/${row.id}/edit`),
+      },
+      {
+        id: "techs",
+        label: "View Affected Technicians",
+        onSelect: () =>
+          void handleViewAffected(row.id, row.requirement, "techs"),
+      },
+      {
+        id: "wo",
+        label: "View Blocked Work Orders",
+        onSelect: () => void handleViewAffected(row.id, row.requirement, "wo"),
+      },
+      {
+        id: "level",
+        label: "Change Enforcement Level",
+        onSelect: () => void handleEnforcementLevel(row.id),
+      },
+      {
+        id: "upload",
+        label: "Upload Evidence",
+        onSelect: () => void handleUploadEvidence(row),
+      },
+      {
+        id: "request",
+        label: "Request from Customer",
+        onSelect: () => void handleRequestFromCustomer(row),
+      },
+      {
+        id: "delete",
+        label: "Remove Requirement",
+        destructive: true,
+        onSelect: () => void handleArchive(row.id),
+      },
+    ];
   }
 
   const columns: DashboardDataTableColumn<RequirementRow>[] = React.useMemo(
@@ -721,7 +895,7 @@ export function RequirementsPage() {
       },
       {
         id: "owner",
-        header: "Owner",
+        header: "Responsible",
         className: "hidden min-w-[110px] max-w-[140px] md:table-cell",
         cell: (row) => row.owner,
       },
@@ -732,30 +906,30 @@ export function RequirementsPage() {
         cell: (row) => row.due,
       },
       {
-        id: "review",
-        header: "Review",
+        id: "evidence",
+        header: "Evidence",
         className: "hidden min-w-[110px] max-w-[140px] lg:table-cell",
         cell: (row) => (
           <DashboardBadge
-            variant={row.review.variant}
+            variant={row.evidence.variant}
             pill
             className="max-w-full"
           >
-            {row.review.label}
+            {row.evidence.label}
           </DashboardBadge>
         ),
       },
       {
-        id: "docs",
-        header: "Docs",
-        className: "hidden min-w-[110px] max-w-[140px] xl:table-cell",
+        id: "enforcement",
+        header: "Enforcement",
+        className: "hidden min-w-[120px] max-w-[150px] xl:table-cell",
         cell: (row) => (
           <DashboardBadge
-            variant={row.docs.variant}
+            variant={row.enforcement.variant}
             pill
             className="max-w-full"
           >
-            {row.docs.label}
+            {row.enforcement.label}
           </DashboardBadge>
         ),
       },
@@ -764,43 +938,13 @@ export function RequirementsPage() {
         header: "",
         className: "w-12",
         cell: (row) => (
-          <DashboardRowActionMenu
-            items={[
-              {
-                id: "edit",
-                label: "Edit Requirement",
-                onSelect: () =>
-                  router.push(`/crm/requirements/${row.id}/edit`),
-              },
-              {
-                id: "techs",
-                label: "View Affected Technicians",
-                onSelect: () =>
-                  void handleViewAffected(row.id, row.requirement, "techs"),
-              },
-              {
-                id: "wo",
-                label: "View Affected Work Orders",
-                onSelect: () =>
-                  void handleViewAffected(row.id, row.requirement, "wo"),
-              },
-              {
-                id: "level",
-                label: "Change Enforcement Level",
-                onSelect: () => void handleEnforcementLevel(row.id),
-              },
-              {
-                id: "delete",
-                label: "Delete",
-                destructive: true,
-                onSelect: () => void handleArchive(row.id),
-              },
-            ]}
-          />
+          <DashboardRowActionMenu items={requirementRowActions(row)} />
         ),
       },
     ],
-    [router],
+    // handlers close over latest state via component scope
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [router, rows],
   );
 
   return (
@@ -899,7 +1043,7 @@ export function RequirementsPage() {
                 setFiltersOpen(true);
               }}
             >
-              Filter
+              {`Filter${filterChips.length > 0 ? ` (${filterChips.length})` : ""}`}
             </DashboardToolbarButton>
           }
           actions={
@@ -912,12 +1056,6 @@ export function RequirementsPage() {
                 onDirectionChange={setSortDir}
                 showDirectionInTrigger={false}
               />
-              <DashboardToolbarButton
-                leftIcon={<ClipboardIcon className="shrink-0" />}
-                onClick={() => setSavedViewsOpen(true)}
-              >
-                Payroll Review
-              </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
                   { id: "view-csv", label: "Export current view • CSV", onSelect: () => void runExport() },
@@ -936,6 +1074,30 @@ export function RequirementsPage() {
               />
             </>
           }
+          chips={
+            filterChips.length > 0 ? (
+              <DashboardFilterChips
+                chips={filterChips}
+                onRemove={(id) => {
+                  const next = { ...appliedFilters };
+                  if (id === "customer") next.customer = "";
+                  if (id === "requirementType") next.requirementType = "";
+                  if (id === "enforcement") next.enforcement = "";
+                  if (id === "status") next.status = "";
+                  setAppliedFilters(next);
+                  setDraftFilters(next);
+                  setFiltersApplied(
+                    Object.values(next).some((v) => Boolean(v)),
+                  );
+                }}
+                onClearAll={() => {
+                  setAppliedFilters(DEFAULT_FILTERS);
+                  setDraftFilters(DEFAULT_FILTERS);
+                  setFiltersApplied(false);
+                }}
+              />
+            ) : null
+          }
         />
       )}
 
@@ -946,7 +1108,7 @@ export function RequirementsPage() {
         emptyMessage={
           <CrmListEmptyState
             query={query}
-            filtersActive={Boolean(filtersApplied)}
+            filtersActive={Boolean(filtersApplied) || filterChips.length > 0}
             emptyDescription="Create your first requirement to get started."
             createLabel="+ New Requirement"
             createHref="/crm/requirements/new"
@@ -961,7 +1123,6 @@ export function RequirementsPage() {
         selectable
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
-        onRowClick={(row) => router.push(`/crm/requirements/${row.id}/edit`)}
       />
 
       <DashboardPagination
@@ -972,7 +1133,10 @@ export function RequirementsPage() {
         onPageSizeChange={setPageSize}
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div
+        id="requirements-affected-panels"
+        className="grid grid-cols-1 gap-4 lg:grid-cols-2"
+      >
         <DashboardPanel className="overflow-hidden">
           <div className="px-4 pt-4 pb-2 sm:px-5">
             <DashboardPanelTitle
@@ -981,22 +1145,31 @@ export function RequirementsPage() {
               trailing={countTrailing(
                 affectedFocusLabel
                   ? `${affectedTechs.length} Technicians · ${affectedFocusLabel}`
-                  : `${affectedTechs.length} Technicians`,
+                  : `${affectedTechs.length} Technicians · ${affectedTechs.filter((t) => t.status.label === "MET").length} Meet`,
               )}
             />
           </div>
-          <div className="pb-2">
+          <div className="divide-y divide-[#2D2D30] pb-1">
             {affectedTechs.length === 0 ? (
-              <p className="px-4 py-2.5 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
+              <p className="px-4 py-3 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
                 No affected technicians
               </p>
             ) : (
               affectedTechs.map((item) => (
-                <WidgetRow
+                <div
                   key={item.id}
-                  left={item.name}
-                  right={item.role}
-                />
+                  className="flex items-center justify-between gap-3 px-4 py-3.5 sm:px-5"
+                >
+                  <p className="min-w-0 truncate font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                    {item.name}
+                    <span className="text-[#959597]"> · {item.role}</span>
+                  </p>
+                  <span
+                    className={`shrink-0 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] ${statusToneClass(item.status.variant)}`}
+                  >
+                    {item.status.label}
+                  </span>
+                </div>
               ))
             )}
           </div>
@@ -1010,22 +1183,33 @@ export function RequirementsPage() {
               trailing={countTrailing(
                 affectedFocusLabel
                   ? `${affectedWos.length} Work Orders · ${affectedFocusLabel}`
-                  : `${affectedWos.length} Work Orders`,
+                  : `${affectedWos.filter((w) => w.blockedBy).length || affectedWos.length} Blocked`,
               )}
             />
           </div>
-          <div className="pb-2">
+          <div className="divide-y divide-[#2D2D30] pb-1">
             {affectedWos.length === 0 ? (
-              <p className="px-4 py-2.5 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
+              <p className="px-4 py-3 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
                 No affected work orders
               </p>
             ) : (
               affectedWos.map((item) => (
-                <WidgetRow
-                  key={item.id}
-                  left={item.workOrder}
-                  right={item.priority}
-                />
+                <div key={item.id} className="px-4 py-3.5 sm:px-5">
+                  <p className="font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                    {item.workOrder}
+                  </p>
+                  <p className="mt-1.5 font-sans text-[10px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+                    {[item.subtitle].filter(Boolean).join(" · ")}
+                    {item.blockedBy ? (
+                      <>
+                        {(item.subtitle ? " · " : "") + "Blocked by: "}
+                        <span className="font-[510] text-[#FF6B7A]">
+                          {item.blockedBy}
+                        </span>
+                      </>
+                    ) : null}
+                  </p>
+                </div>
               ))
             )}
           </div>
@@ -1037,31 +1221,29 @@ export function RequirementsPage() {
               icon="lightning"
               title="Requirement Status"
               trailing={countTrailing(
-                `${affectedWells.length} Wells · ${affectedWells.filter((w) => w.status.variant === "success").length} Active`,
+                `Across ${requirementStatusTotal || total} Requirements`,
               )}
             />
           </div>
-          <div className="pb-2">
-            {affectedWells.length === 0 ? (
-              <p className="px-4 py-2.5 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
-                No wells
+          <div className="divide-y divide-[#2D2D30] pb-1">
+            {requirementStatusItems.length === 0 ? (
+              <p className="px-4 py-3 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
+                No status data
               </p>
             ) : (
-              affectedWells.map((item) => (
+              requirementStatusItems.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center gap-3 px-4 py-2.5 sm:px-5"
+                  className="flex items-center justify-between gap-3 px-4 py-3.5 sm:px-5"
                 >
-                  <span className="min-w-0 flex-1 truncate font-sans text-[11px] uppercase leading-[1.35] tracking-[-0.02em] text-[#959597]">
+                  <span className="min-w-0 truncate font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
                     {item.label}
                   </span>
-                  <DashboardBadge
-                    variant={item.status.variant}
-                    pill
-                    className="shrink-0"
+                  <span
+                    className={`inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full px-2 font-sans text-[11px] font-[510] tabular-nums tracking-[-0.02em] ${statusCountBadgeClass(item.variant)}`}
                   >
-                    {item.status.label}
-                  </DashboardBadge>
+                    {item.count}
+                  </span>
                 </div>
               ))
             )}
@@ -1073,23 +1255,60 @@ export function RequirementsPage() {
             <DashboardPanelTitle
               icon="lightning"
               title="Enforcement Level"
-              trailing={countTrailing(
-                `${enforcementItems.length} Active Rules`,
-              )}
+              trailing={countTrailing("Per Requirement")}
             />
           </div>
-          <div className="pb-2">
+          <div className="divide-y divide-[#2D2D30] pb-1">
             {enforcementItems.length === 0 ? (
-              <p className="px-4 py-2.5 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
+              <p className="px-4 py-3 font-sans text-[11px] uppercase text-[#959597] sm:px-5">
                 No enforcement data
               </p>
             ) : (
               enforcementItems.map((item) => (
-                <WidgetRow
+                <div
                   key={item.id}
-                  left={item.label}
-                  right={item.rate}
-                />
+                  className="flex items-center gap-3 px-4 py-3.5 sm:px-5"
+                >
+                  <span className="min-w-0 flex-1 truncate font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                    {item.label}
+                  </span>
+                  <span
+                    className={`shrink-0 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] ${statusToneClass(item.enforcement.variant)}`}
+                  >
+                    {item.enforcement.label}
+                  </span>
+                  <DashboardRowActionMenu
+                    items={[
+                      {
+                        id: "open",
+                        label: "Open Requirement",
+                        onSelect: () => {
+                          const row = rows.find((r) => r.id === item.id);
+                          if (row) handleOpenRequirement(row);
+                          else
+                            router.push(`/crm/requirements/${item.id}/edit`);
+                        },
+                      },
+                      {
+                        id: "edit",
+                        label: "Edit Requirement",
+                        onSelect: () =>
+                          router.push(`/crm/requirements/${item.id}/edit`),
+                      },
+                      {
+                        id: "level",
+                        label: "Change Enforcement Level",
+                        onSelect: () => void handleEnforcementLevel(item.id),
+                      },
+                      {
+                        id: "delete",
+                        label: "Remove Requirement",
+                        destructive: true,
+                        onSelect: () => void handleArchive(item.id),
+                      },
+                    ]}
+                  />
+                </div>
               ))
             )}
           </div>
@@ -1100,47 +1319,68 @@ export function RequirementsPage() {
         <div className="px-4 pt-4 pb-2 sm:px-5">
           <DashboardPanelTitle
             icon="lightning"
-            title="Who Does This Block?"
+            title="Who / What This Blocks"
             trailing={countTrailing(
-              `${blockedBy.length} People · ${blockedProcesses.length} Processes`,
+              `${blockedTechs.length} Technicians · ${blockedActions.length} Actions`,
             )}
           />
         </div>
-        <div className="flex flex-col gap-4 px-4 pb-5 sm:flex-row sm:items-start sm:justify-between sm:px-5">
-          <ul className="flex list-none flex-col gap-3">
-            {blockedBy.length === 0 ? (
-              <li className="font-sans text-[11px] uppercase text-[#959597]">
-                No people blocked
-              </li>
-            ) : (
-              blockedBy.map((person) => (
-                <li key={person.id} className="flex items-center gap-2.5">
-                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#2A2A2A] font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                    {person.initials}
-                  </span>
-                  <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                    {person.name}
-                  </span>
+        <div className="grid grid-cols-1 gap-8 border-t border-[#2D2D30] px-4 py-4 sm:grid-cols-2 sm:px-5 sm:py-5">
+          <div>
+            <p className="mb-3 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#959597]">
+              Blocked Technicians · {blockedTechs.length}
+            </p>
+            <ul className="flex list-none flex-col gap-3.5">
+              {blockedTechs.length === 0 ? (
+                <li className="font-sans text-[11px] uppercase text-[#959597]">
+                  No technicians blocked
                 </li>
-              ))
-            )}
-          </ul>
-          <ul className="flex list-none flex-col gap-3 sm:items-end">
-            {blockedProcesses.length === 0 ? (
-              <li className="font-sans text-[11px] uppercase text-[#959597]">
-                No processes
-              </li>
-            ) : (
-              blockedProcesses.map((process) => (
-                <li
-                  key={process}
-                  className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]"
-                >
-                  {process}
+              ) : (
+                blockedTechs.map((person) => (
+                  <li
+                    key={person.id}
+                    className="font-sans text-[12px] uppercase tracking-[-0.02em]"
+                  >
+                    <span className="text-[#FDFDFF]">{person.name}</span>
+                    <span className="text-[#FF6B7A]">
+                      {" "}
+                      — {person.fails.replace(/^FAILS:\s*/i, "Fails: ")}
+                    </span>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+          <div>
+            <p className="mb-3 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#959597]">
+              Blocked Actions · Derived from enforcement level
+            </p>
+            <ul className="flex list-none flex-col gap-3.5">
+              {blockedActions.length === 0 ? (
+                <li className="font-sans text-[11px] uppercase text-[#959597]">
+                  No actions blocked
                 </li>
-              ))
-            )}
-          </ul>
+              ) : (
+                blockedActions.map((action) => (
+                  <li
+                    key={action.id}
+                    className="flex items-center gap-2.5"
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(action.level.variant)}`}
+                    />
+                    <p className="min-w-0 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                      {action.label}
+                      <span className="text-[#959597]"> · </span>
+                      <span className={statusToneClass(action.level.variant)}>
+                        {action.level.label}
+                      </span>
+                    </p>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
         </div>
       </DashboardPanel>
 

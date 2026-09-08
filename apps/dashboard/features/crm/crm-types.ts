@@ -74,6 +74,7 @@ export type MapPin = {
 export type PricingRuleRow = {
   id: string;
   customer: string;
+  customerId?: string;
   code: string;
   service: string;
   status: StatusBadge;
@@ -87,15 +88,15 @@ export type PricingRuleRow = {
 export type RequirementRow = {
   id: string;
   customer: string;
+  customerId?: string;
   code: string;
   requirement: string;
   status: StatusBadge;
   type: string;
-  enforcementLevel: string;
+  enforcement: StatusBadge;
   owner: string;
   due: string;
-  review: StatusBadge;
-  docs: StatusBadge;
+  evidence: StatusBadge;
 };
 
 export type FormRuleRow = {
@@ -107,10 +108,12 @@ export type FormRuleRow = {
   jobType: string;
   status: StatusBadge;
   trigger: string;
-  hardGate: string;
+  enforcement: StatusBadge;
   appliesTo: string;
   version: string;
   owner: string;
+  dueBy: string;
+  blocksPayroll: StatusBadge;
 };
 
 export type RouteRuleRow = {

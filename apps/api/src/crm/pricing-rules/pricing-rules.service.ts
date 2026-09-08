@@ -28,6 +28,34 @@ const SORT_MAP: Record<string, string> = {
   effectiveFrom: 'effectiveFrom',
 };
 
+function userShortLabel(
+  user?: {
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  } | null,
+) {
+  if (!user) return '—';
+  const first = user.firstName?.trim();
+  const last = user.lastName?.trim();
+  if (first && last) return `${first.charAt(0)}. ${last}`.toUpperCase();
+  return (first || last || user.email || '—').toUpperCase();
+}
+
+function isoDay(value?: Date | null) {
+  if (!value) return '—';
+  return value.toISOString().slice(0, 10);
+}
+
+function cycleLabel(value?: Date | null) {
+  if (!value) return '—';
+  const year = value.getUTCFullYear();
+  const start = Date.UTC(year, 0, 1);
+  const day = Math.floor((value.getTime() - start) / 86_400_000) + 1;
+  const week = Math.max(1, Math.ceil(day / 7));
+  return `Effective Cycle ${year}-${String(week).padStart(2, '0')}`;
+}
+
 @Injectable()
 export class PricingRulesService {
   constructor(
@@ -44,6 +72,12 @@ export class PricingRulesService {
       and.push({ serviceItem: containsCi(query.serviceItem) });
     if (query.rateType) and.push({ rateType: containsCi(query.rateType) });
     if (query.status) and.push({ status: query.status as CrmRecordStatus });
+    if (query.effectiveFrom || query.effectiveTo) {
+      const range: Prisma.DateTimeFilter = {};
+      if (query.effectiveFrom) range.gte = new Date(query.effectiveFrom);
+      if (query.effectiveTo) range.lte = new Date(query.effectiveTo);
+      and.push({ effectiveFrom: range });
+    }
     if (query.q?.trim()) {
       const q = query.q.trim();
       and.push({
@@ -51,10 +85,22 @@ export class PricingRulesService {
           { serviceItem: containsCi(q) },
           { code: containsCi(q) },
           { notes: containsCi(q) },
+          { customer: { name: containsCi(q) } },
         ],
       });
     }
     return and.length ? { AND: and } : {};
+  }
+
+  private listOrderBy(
+    sort?: string,
+    direction?: 'asc' | 'desc',
+  ): Prisma.PricingRuleOrderByWithRelationInput {
+    const dir = direction === 'asc' ? 'asc' : 'desc';
+    if (sort === 'customer') return { customer: { name: dir } };
+    return orderByFrom(sort, direction, SORT_MAP, {
+      createdAt: 'desc',
+    }) as Prisma.PricingRuleOrderByWithRelationInput;
   }
 
   async list(query: PricingRuleListQueryDto) {
@@ -66,9 +112,7 @@ export class PricingRulesService {
         where,
         skip,
         take,
-        orderBy: orderByFrom(query.sort, query.direction, SORT_MAP, {
-          createdAt: 'desc',
-        }),
+        orderBy: this.listOrderBy(query.sort, query.direction),
         include: {
           customer: { select: { id: true, name: true, code: true } },
           owner: {
@@ -81,17 +125,38 @@ export class PricingRulesService {
   }
 
   async kpi() {
-    const [total, active, archived, expired] = await Promise.all([
-      this.prisma.pricingRule.count({ where: { archivedAt: null } }),
+    const now = new Date();
+    const in30 = new Date();
+    in30.setDate(in30.getDate() + 30);
+
+    const [active, pricedGroups, customerTotal, expiring] = await Promise.all([
       this.prisma.pricingRule.count({
         where: { archivedAt: null, status: CrmRecordStatus.ACTIVE },
       }),
-      this.prisma.pricingRule.count({ where: { archivedAt: { not: null } } }),
+      this.prisma.pricingRule.groupBy({
+        by: ['customerId'],
+        where: { archivedAt: null },
+      }),
+      this.prisma.customer.count({ where: { archivedAt: null } }),
       this.prisma.pricingRule.count({
-        where: { archivedAt: null, status: CrmRecordStatus.EXPIRED },
+        where: {
+          archivedAt: null,
+          effectiveTo: { gte: now, lte: in30 },
+        },
       }),
     ]);
-    return { data: { total, active, archived, expired } };
+
+    const customersPriced = pricedGroups.length;
+    const missing = Math.max(0, customerTotal - customersPriced);
+
+    return {
+      data: {
+        active,
+        customersPriced,
+        missing,
+        expiring,
+      },
+    };
   }
 
   async getById(id: string) {
@@ -196,7 +261,7 @@ export class PricingRulesService {
     return { data: { updated: result.count } };
   }
 
-  async duplicate(id: string) {
+  async duplicate(id: string, customerId?: string) {
     const existing = await this.prisma.pricingRule.findUnique({
       where: { id },
     });
@@ -210,7 +275,7 @@ export class PricingRulesService {
     const copy = await this.prisma.pricingRule.create({
       data: {
         code,
-        customerId: existing.customerId,
+        customerId: customerId ?? existing.customerId,
         serviceItem: existing.serviceItem,
         rateType: existing.rateType,
         rate: existing.rate,
@@ -301,15 +366,24 @@ export class PricingRulesService {
       const n = Number(value);
       if (Number.isNaN(n)) return '—';
       return `$${n.toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
+        maximumFractionDigits: 0,
       })}`;
     };
 
-    const [recentRules, scheduledRules, hardGates] = await Promise.all([
+    const ownerSelect = {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+    } as const;
+
+    const [recentRules, scheduledRules] = await Promise.all([
       this.prisma.pricingRule.findMany({
         where: { archivedAt: null },
-        include: { customer: { select: { id: true, name: true } } },
+        include: {
+          customer: { select: { id: true, name: true } },
+          owner: { select: ownerSelect },
+        },
         orderBy: { updatedAt: 'desc' },
         take: 40,
       }),
@@ -317,54 +391,76 @@ export class PricingRulesService {
         where: {
           archivedAt: null,
           OR: [
-            { effectiveFrom: { not: null } },
-            { effectiveTo: { not: null } },
+            { effectiveFrom: { gt: new Date() } },
+            {
+              AND: [
+                { effectiveFrom: { not: null } },
+                { status: CrmRecordStatus.PENDING },
+              ],
+            },
+            {
+              AND: [
+                { effectiveFrom: { not: null } },
+                { effectiveTo: { not: null } },
+              ],
+            },
           ],
         },
-        include: { customer: { select: { id: true, name: true } } },
-        orderBy: [{ effectiveFrom: 'asc' }, { updatedAt: 'desc' }],
-        take: 20,
-      }),
-      this.prisma.customerRequirement.findMany({
-        where: {
-          archivedAt: null,
-          enforcementLevel: 'HARD_GATE' as const,
+        include: {
+          customer: { select: { id: true, name: true } },
+          owner: { select: ownerSelect },
         },
-        include: { customer: { select: { id: true, name: true } } },
-        orderBy: { updatedAt: 'desc' },
+        orderBy: [{ effectiveFrom: 'asc' }, { updatedAt: 'desc' }],
         take: 20,
       }),
     ]);
 
-    const rateChanges = recentRules
-      .filter((r) => r.updatedAt.getTime() !== r.createdAt.getTime())
-      .slice(0, 12)
-      .map((r) => ({
-        id: r.id,
-        label: `${r.customer.name} · ${r.serviceItem}`,
-        from:
-          r.minimumCharge != null
-            ? money(r.minimumCharge)
-            : r.rateType || r.unit || 'PRIOR',
-        to: `${money(r.rate)}${r.unit ? ` / ${r.unit}` : ''}`,
-      }));
+    const changed = recentRules.filter(
+      (r) => r.updatedAt.getTime() !== r.createdAt.getTime(),
+    );
+    const historySource =
+      changed.length > 0 ? changed : recentRules.slice(0, 8);
 
-    const scheduleChanges = scheduledRules.slice(0, 12).map((r) => {
-      const effective =
-        r.effectiveFrom?.toISOString().slice(0, 10) ??
-        r.effectiveTo?.toISOString().slice(0, 10) ??
-        '—';
+    const rateChanges = historySource.slice(0, 12).map((r) => {
+      const hasPrior =
+        r.minimumCharge != null && Number(r.minimumCharge) > 0;
       return {
         id: r.id,
-        customer: `${r.customer.name} · ${r.serviceItem}`,
-        effective,
+        label: `${r.customer.name} · ${r.serviceItem}`,
+        from: hasPrior ? money(r.minimumCharge) : '—',
+        to: money(r.rate),
+        cycle: cycleLabel(r.effectiveFrom ?? r.updatedAt),
+        changedBy: userShortLabel(r.owner),
+        date: isoDay(r.updatedAt),
+        reason: r.notes?.trim() || 'Rate update',
       };
     });
 
-    const permissionGates = hardGates.map((r) => ({
-      id: r.id,
-      customer: `${r.customer.name} · ${r.name}`,
-      status: r.status,
+    const scheduleChanges = scheduledRules.slice(0, 12).map((r) => {
+      const hasPrior =
+        r.minimumCharge != null && Number(r.minimumCharge) > 0;
+      return {
+        id: r.id,
+        customer: `${r.customer.name} · ${r.serviceItem}`,
+        from: hasPrior ? money(r.minimumCharge) : undefined,
+        to: money(r.rate),
+        cycle: cycleLabel(r.effectiveFrom),
+        scheduledBy: userShortLabel(r.owner),
+        effective: isoDay(r.effectiveFrom),
+      };
+    });
+
+    const gateRules = await this.prisma.formRule.findMany({
+      where: { archivedAt: null, hardGate: true },
+      include: { customer: { select: { name: true } } },
+      orderBy: { updatedAt: 'desc' },
+      take: 12,
+    });
+
+    const permissionGates = gateRules.map((g) => ({
+      id: g.id,
+      customer: `${g.customer.name} · ${g.formTemplate}`,
+      status: g.blocksToggle ? 'BLOCKS PAYROLL' : 'HARD GATE',
     }));
 
     return {

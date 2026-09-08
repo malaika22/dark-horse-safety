@@ -88,54 +88,351 @@ export class RouteRulesService {
   }
 
   async kpi() {
-    const [total, active, archived, gpsRequired] = await Promise.all([
-      this.prisma.routeRule.count({ where: { archivedAt: null } }),
-      this.prisma.routeRule.count({
-        where: { archivedAt: null, status: CrmRecordStatus.ACTIVE },
+    const cycleStart = new Date();
+    cycleStart.setDate(cycleStart.getDate() - 30);
+    cycleStart.setHours(0, 0, 0, 0);
+
+    const [locations, siteRules, customerRules, flags] = await Promise.all([
+      this.prisma.location.findMany({
+        where: { archivedAt: null },
+        select: {
+          id: true,
+          customerId: true,
+          latitude: true,
+          longitude: true,
+          status: true,
+          gpsStatus: true,
+        },
       }),
-      this.prisma.routeRule.count({ where: { archivedAt: { not: null } } }),
-      this.prisma.routeRule.count({
-        where: { archivedAt: null, gpsRequired: true },
+      this.prisma.routeRule.findMany({
+        where: { archivedAt: null, locationId: { not: null } },
+        select: { locationId: true },
+      }),
+      this.prisma.routeRule.findMany({
+        where: { archivedAt: null, locationId: null },
+        select: { customerId: true },
+      }),
+      this.prisma.gpsFlag.findMany({
+        where: { flaggedAt: { gte: cycleStart } },
+        select: {
+          locationId: true,
+          location: { select: { name: true } },
+        },
       }),
     ]);
-    return { data: { total, active, archived, gpsRequired } };
+
+    const siteOverrideIds = new Set(
+      siteRules.map((r) => r.locationId).filter(Boolean) as string[],
+    );
+    const customerDefaultIds = new Set(customerRules.map((r) => r.customerId));
+
+    let sitesWithRule = 0;
+    let usingSystemDefault = 0;
+    let sitesWithNoRule = 0;
+    for (const loc of locations) {
+      const hasSite = siteOverrideIds.has(loc.id);
+      const hasCustomer = customerDefaultIds.has(loc.customerId);
+      if (hasSite || hasCustomer) sitesWithRule += 1;
+      else usingSystemDefault += 1;
+      const needsSetup =
+        loc.latitude == null ||
+        loc.longitude == null ||
+        loc.status === CrmRecordStatus.NEEDS_REVIEW ||
+        /missing|unset|offline|fail/i.test(loc.gpsStatus ?? '');
+      if (needsSetup) sitesWithNoRule += 1;
+    }
+
+    const flagCounts = new Map<string, { name: string; count: number }>();
+    for (const f of flags) {
+      const existing = flagCounts.get(f.locationId) ?? {
+        name: f.location?.name ?? 'Site',
+        count: 0,
+      };
+      existing.count += 1;
+      flagCounts.set(f.locationId, existing);
+    }
+    const topFlagSite = Array.from(flagCounts.values()).sort(
+      (a, b) => b.count - a.count,
+    )[0];
+
+    return {
+      data: {
+        sitesWithRule,
+        usingSystemDefault,
+        gpsFlagsThisCycle: flags.length,
+        sitesWithNoRule,
+        flagsTopSite: topFlagSite?.name ?? null,
+      },
+    };
+  }
+
+  async overview() {
+    const cycleStart = new Date();
+    cycleStart.setDate(cycleStart.getDate() - 30);
+    cycleStart.setHours(0, 0, 0, 0);
+
+    const [rules, locations, flags, kpi] = await Promise.all([
+      this.prisma.routeRule.findMany({
+        where: { archivedAt: null },
+        include: {
+          customer: { select: { id: true, name: true } },
+          location: {
+            select: {
+              id: true,
+              name: true,
+              latitude: true,
+              longitude: true,
+              geofenceRadius: true,
+            },
+          },
+        },
+        orderBy: { updatedAt: 'desc' },
+      }),
+      this.prisma.location.findMany({
+        where: { archivedAt: null },
+        select: {
+          id: true,
+          name: true,
+          customerId: true,
+          latitude: true,
+          longitude: true,
+          geofenceRadius: true,
+          customer: { select: { name: true } },
+        },
+      }),
+      this.prisma.gpsFlag.findMany({
+        where: { flaggedAt: { gte: cycleStart } },
+        include: {
+          location: { select: { id: true, name: true } },
+          customer: { select: { id: true, name: true } },
+          technician: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          routeRule: { select: { id: true } },
+        },
+        orderBy: { flaggedAt: 'desc' },
+        take: 100,
+      }),
+      this.kpi(),
+    ]);
+
+    const customerDefaults = rules
+      .filter((r) => !r.locationId)
+      .map((r) => {
+        const sitesCount = locations.filter(
+          (l) => l.customerId === r.customerId,
+        ).length;
+        return {
+          id: r.id,
+          name: r.customer?.name ?? 'Customer',
+          geofenceRadius: r.geofenceRadius ?? '—',
+          gpsRequired: r.gpsRequired,
+          gpsLabel: r.gpsRequired ? 'GPS REQUIRED' : 'GPS OPTIONAL',
+          sitesCount,
+          detail: [
+            r.geofenceRadius,
+            r.gpsRequired ? 'GPS REQUIRED' : 'GPS OPTIONAL',
+          ]
+            .filter(Boolean)
+            .join(' · '),
+        };
+      });
+
+    const customerDefaultCustomerIds = new Set(
+      rules.filter((r) => !r.locationId).map((r) => r.customerId),
+    );
+
+    const siteOverrides = rules
+      .filter((r) => Boolean(r.locationId))
+      .map((r) => {
+        const gpsLabel = r.gpsRequired
+          ? 'GPS REQUIRED'
+          : r.clockInWindow?.trim()
+            ? `GPS NOT REQUIRED · ${r.clockInWindow}`
+            : 'GPS OPTIONAL';
+        return {
+          id: r.id,
+          name: r.location?.name ?? r.routeLabel ?? 'Site',
+          customer: r.customer?.name ?? '—',
+          locationId: r.locationId,
+          geofenceRadius: r.geofenceRadius ?? '—',
+          gpsRequired: r.gpsRequired,
+          gpsLabel,
+          detail: [r.geofenceRadius, gpsLabel].filter(Boolean).join(' · '),
+          overrides: customerDefaultCustomerIds.has(r.customerId)
+            ? 'OVERRIDES CUSTOMER DEFAULT'
+            : 'OVERRIDES SYSTEM DEFAULT',
+        };
+      });
+
+    const flagCountByLocation = new Map<string, number>();
+    for (const f of flags) {
+      flagCountByLocation.set(
+        f.locationId,
+        (flagCountByLocation.get(f.locationId) ?? 0) + 1,
+      );
+    }
+
+    const customerDefaultByCustomer = new Map(
+      customerDefaults.map((c) => {
+        const rule = rules.find((r) => r.id === c.id)!;
+        return [rule.customerId, rule] as const;
+      }),
+    );
+
+    const mapSites = locations
+      .filter((l) => l.latitude != null && l.longitude != null)
+      .map((loc) => {
+        const siteRule = rules.find((r) => r.locationId === loc.id);
+        const customerRule = customerDefaultByCustomer.get(loc.customerId);
+        const applied = siteRule ?? customerRule ?? null;
+        const ruleSource = siteRule
+          ? ('SITE_OVERRIDE' as const)
+          : customerRule
+            ? ('CUSTOMER_DEFAULT' as const)
+            : ('SYSTEM_DEFAULT' as const);
+        const gpsRequired = applied?.gpsRequired ?? true;
+        let gpsMode: 'required' | 'optional' | 'not_required' = 'required';
+        if (applied) {
+          if (applied.gpsRequired) gpsMode = 'required';
+          else if (/signal|not required/i.test(applied.clockInWindow ?? ''))
+            gpsMode = 'not_required';
+          else gpsMode = 'optional';
+        }
+        const radiusRaw =
+          siteRule?.geofenceRadius ??
+          customerRule?.geofenceRadius ??
+          loc.geofenceRadius ??
+          '1000 FT';
+        const radiusFt = this.parseRadiusFt(radiusRaw) || 1000;
+        return {
+          id: applied?.id ?? `system-${loc.id}`,
+          locationId: loc.id,
+          label: loc.name,
+          customer: loc.customer?.name ?? '—',
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          ruleSource,
+          gpsMode,
+          flagCount: flagCountByLocation.get(loc.id) ?? 0,
+          radiusFt,
+          radiusLabel: this.radiusMilesLabel(radiusFt),
+          geofenceRadius: radiusRaw,
+        };
+      });
+
+    const flagRows = flags.map((f) => ({
+      id: f.id,
+      site: f.location?.name ?? '—',
+      siteId: f.locationId,
+      customer: f.customer?.name ?? '—',
+      technician: this.shortTech(f.technician),
+      technicianInitials: this.techInitials(f.technician),
+      flaggedAt: f.flaggedAt.toISOString(),
+      flagType: f.flagType,
+      distanceOutside: f.distanceOutside,
+      radiusApplied: f.radiusApplied,
+      ruleSource: f.ruleSource,
+      outcome: f.outcome,
+      routeRuleId: f.routeRuleId,
+    }));
+
+    const siteFlagAgg = new Map<
+      string,
+      { site: string; locationId: string; count: number; accepted: number; ruleId: string | null }
+    >();
+    for (const f of flags) {
+      const cur = siteFlagAgg.get(f.locationId) ?? {
+        site: f.location?.name ?? 'Site',
+        locationId: f.locationId,
+        count: 0,
+        accepted: 0,
+        ruleId: f.routeRuleId,
+      };
+      cur.count += 1;
+      if (/accept/i.test(f.outcome)) cur.accepted += 1;
+      if (f.routeRuleId) cur.ruleId = f.routeRuleId;
+      siteFlagAgg.set(f.locationId, cur);
+    }
+    const topInsight = Array.from(siteFlagAgg.values()).sort(
+      (a, b) => b.count - a.count,
+    )[0];
+
+    const usingSystemDefault = kpi.data.usingSystemDefault ?? 0;
+    const uniqueSites = new Set(flags.map((f) => f.locationId)).size;
+
+    return {
+      data: {
+        kpi: kpi.data,
+        systemDefault: {
+          id: 'system-default',
+          name: 'ALL SITES',
+          detail: '1000 FT · ACCURACY 50M · GPS REQUIRED',
+          appliesTo: usingSystemDefault,
+        },
+        customerDefaults,
+        siteOverrides,
+        mapSites,
+        flags: flagRows,
+        flagsSummary: {
+          total: flags.length,
+          sites: uniqueSites,
+        },
+        insight: topInsight
+          ? {
+              site: topInsight.site,
+              locationId: topInsight.locationId,
+              message: `${topInsight.site} raised ${topInsight.count} flags in 30 days — ${topInsight.accepted} accepted. Consider increasing the radius.`,
+              routeRuleId: topInsight.ruleId,
+            }
+          : null,
+      },
+    };
+  }
+
+  private shortTech(
+    user?: { firstName?: string | null; lastName?: string | null } | null,
+  ) {
+    if (!user) return '—';
+    const first = (user.firstName ?? '').trim();
+    const last = (user.lastName ?? '').trim();
+    if (first && last) return `${first.charAt(0)}. ${last}`;
+    return first || last || '—';
+  }
+
+  private techInitials(
+    user?: { firstName?: string | null; lastName?: string | null } | null,
+  ) {
+    if (!user) return '?';
+    const first = (user.firstName ?? '').trim();
+    const last = (user.lastName ?? '').trim();
+    return `${first.charAt(0) || ''}${last.charAt(0) || ''}`.toUpperCase() || '?';
+  }
+
+  private radiusMilesLabel(radiusFt: number) {
+    const mi = radiusFt / 5280;
+    if (mi >= 0.1) return `${mi.toFixed(mi >= 1 ? 1 : 2)} MI`;
+    return `${radiusFt} FT`;
   }
 
   async mapPins() {
-    const rules = await this.prisma.routeRule.findMany({
-      where: {
-        archivedAt: null,
-        location: {
-          latitude: { not: null },
-          longitude: { not: null },
-        },
-      },
-      select: {
-        id: true,
-        routeLabel: true,
-        status: true,
-        customerId: true,
-        locationId: true,
-        location: {
-          select: {
-            id: true,
-            name: true,
-            latitude: true,
-            longitude: true,
-          },
-        },
-      },
-      take: 5000,
-    });
+    const overview = await this.overview();
     return {
-      data: rules.map((r) => ({
-        id: r.id,
-        name: r.routeLabel ?? r.location?.name ?? r.id,
-        latitude: r.location?.latitude ?? null,
-        longitude: r.location?.longitude ?? null,
-        status: r.status,
-        customerId: r.customerId,
-        locationId: r.locationId,
+      data: overview.data.mapSites.map((s) => ({
+        id: s.locationId,
+        name: s.label,
+        label: s.label,
+        latitude: s.latitude,
+        longitude: s.longitude,
+        status: s.gpsMode === 'not_required' ? 'INACTIVE' : 'ACTIVE',
+        customerId: undefined,
+        locationId: s.locationId,
+        ruleSource: s.ruleSource,
+        gpsMode: s.gpsMode,
+        flagCount: s.flagCount,
+        geofenceRadius: s.geofenceRadius,
+        radiusLabel: s.radiusLabel,
+        customer: s.customer,
       })),
     };
   }
@@ -395,18 +692,7 @@ export class RouteRulesService {
   async gpsFlags(id: string) {
     const rule = await this.prisma.routeRule.findUnique({
       where: { id },
-      include: {
-        location: {
-          select: {
-            id: true,
-            name: true,
-            latitude: true,
-            longitude: true,
-            gpsRequired: true,
-            gpsStatus: true,
-          },
-        },
-      },
+      select: { id: true, locationId: true, customerId: true },
     });
     if (!rule) {
       throw new NotFoundException({
@@ -414,95 +700,49 @@ export class RouteRulesService {
         message: 'Route rule not found',
       });
     }
-    const at = rule.updatedAt.toISOString();
-    const flags: {
-      id: string;
-      severity: string;
-      message: string;
-      at: string;
-    }[] = [];
 
-    if (rule.gpsRequired) {
-      flags.push({
-        id: `${id}-gps-required`,
-        severity: 'info',
-        message: 'GPS is required for clock-in on this route',
-        at,
-      });
-    } else {
-      flags.push({
-        id: `${id}-gps-optional`,
-        severity: 'info',
-        message: 'GPS is optional for this route rule',
-        at,
-      });
-    }
+    const cycleStart = new Date();
+    cycleStart.setDate(cycleStart.getDate() - 30);
 
-    if (!rule.locationId || !rule.location) {
-      flags.push({
-        id: `${id}-no-location`,
-        severity: 'warning',
-        message: 'Route rule has no linked location',
-        at,
-      });
-    } else if (
-      rule.location.latitude == null ||
-      rule.location.longitude == null
-    ) {
-      flags.push({
-        id: `${id}-missing-coords`,
-        severity: 'error',
-        message: `Location "${rule.location.name}" is missing coordinates`,
-        at,
-      });
-    }
+    const flags = await this.prisma.gpsFlag.findMany({
+      where: {
+        flaggedAt: { gte: cycleStart },
+        OR: [
+          { routeRuleId: id },
+          ...(rule.locationId ? [{ locationId: rule.locationId }] : []),
+        ],
+      },
+      include: {
+        location: { select: { name: true } },
+        technician: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: { flaggedAt: 'desc' },
+      take: 50,
+    });
 
-    if (!rule.geofenceRadius?.trim()) {
-      flags.push({
-        id: `${id}-no-radius`,
-        severity: 'warning',
-        message: 'No geofence radius configured',
-        at,
-      });
-    } else {
-      const radiusFt = this.parseRadiusFt(rule.geofenceRadius);
-      if (radiusFt <= 0) {
-        flags.push({
-          id: `${id}-bad-radius`,
-          severity: 'error',
-          message: `Could not parse geofence radius "${rule.geofenceRadius}"`,
-          at,
-        });
-      } else if (radiusFt < 100) {
-        flags.push({
-          id: `${id}-tight-radius`,
-          severity: 'warning',
-          message: `Geofence radius is very tight (${radiusFt} FT)`,
-          at,
-        });
-      } else {
-        flags.push({
-          id: `${id}-radius-ok`,
-          severity: 'info',
-          message: `Geofence radius set to ${radiusFt} FT`,
-          at,
-        });
-      }
-    }
-
-    if (rule.location?.gpsStatus) {
-      flags.push({
-        id: `${id}-gps-status`,
-        severity:
-          /fail|error|missing/i.test(rule.location.gpsStatus)
-            ? 'error'
-            : 'info',
-        message: `Location GPS status: ${rule.location.gpsStatus}`,
-        at,
-      });
-    }
-
-    return { data: { flags } };
+    return {
+      data: {
+        flags: flags.map((f) => ({
+          id: f.id,
+          severity:
+            f.outcome === 'REJECTED'
+              ? 'error'
+              : f.outcome === 'AWAITING'
+                ? 'warning'
+                : 'info',
+          message: f.flagType,
+          detail: [
+            f.distanceOutside,
+            f.radiusApplied ? `radius ${f.radiusApplied}` : null,
+            f.outcome,
+            this.shortTech(f.technician),
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          at: f.flaggedAt.toISOString(),
+        })),
+      },
+    };
   }
 
   private parseRadiusFt(raw?: string | null): number {

@@ -13,7 +13,7 @@ type ListFn<TItem> = (params: {
   direction?: "asc" | "desc";
 }) => Promise<{ data: Paginated<TItem> }>;
 
-type KpiFn = () => Promise<{ data: Record<string, number> }>;
+type KpiFn = () => Promise<{ data: Record<string, number | string> }>;
 
 /**
  * Shared CRM list loader — fetches paginated rows + optional KPI on param change.
@@ -45,7 +45,9 @@ export function useCrmList<TItem, TRow>(options: {
 
   const [rows, setRows] = React.useState<TRow[]>([]);
   const [total, setTotal] = React.useState(0);
-  const [kpiData, setKpiData] = React.useState<Record<string, number>>({});
+  const [kpiData, setKpiData] = React.useState<Record<string, number | string>>(
+    {},
+  );
   const [loading, setLoading] = React.useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
