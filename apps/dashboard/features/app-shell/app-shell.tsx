@@ -94,7 +94,7 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
   {
     path: "/crm/sales-summary",
     breadcrumb: "Sales / Sales Summary",
-    pageTitle: "Sales Summary",
+    pageTitle: null,
   },
   { path: "/crm", breadcrumb: "CRM / CRM Dashboard", pageTitle: null },
   {

@@ -407,13 +407,13 @@ export function CrmViewModeToggle({
     { id: "map", label: "Map" },
   ];
   return (
-    <div className="inline-flex shrink-0 overflow-hidden rounded-full border border-[#3E3E3E] bg-[#1A1A1A] p-0.5">
+    <div className="inline-flex shrink-0 overflow-hidden rounded-lg border border-[#3E3E3E] bg-[#1A1A1A] p-0.5">
       {modes.map((mode) => (
         <button
           key={mode.id}
           type="button"
           onClick={() => onChange(mode.id)}
-          className={`rounded-full px-4 py-2 font-sans text-[11px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors md:text-[12px] ${
+          className={`rounded-md px-4 py-2 font-sans text-[11px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors md:text-[12px] ${
             value === mode.id
               ? "bg-[#FDFDFF] text-[#0D0D0D]"
               : "bg-transparent text-[#959597] hover:text-[#FDFDFF]"

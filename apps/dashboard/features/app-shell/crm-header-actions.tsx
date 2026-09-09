@@ -15,7 +15,7 @@ import {
 } from "../crm/crm-constants";
 import { AddUserIcon } from "../crm/crm-list-page-shell";
 
-/** Shared Figma header CTA — white pill + person icon. */
+/** Shared Figma header CTA — primary toolbar button. */
 function AddHeaderButton({
   href,
   label,
@@ -31,7 +31,7 @@ function AddHeaderButton({
       <DashboardToolbarButton
         variant="primary"
         leftIcon={<AddUserIcon className="shrink-0" />}
-        className="!rounded-full !px-2.5 sm:!px-3"
+        className="!px-2.5 sm:!px-3"
       >
         <span className="hidden sm:inline">{label}</span>
         <span className="sm:hidden">{mobile}</span>
@@ -98,7 +98,7 @@ export function CrmDashboardHeaderActions() {
         <DashboardToolbarButton
           variant="primary"
           leftIcon={<AddUserIcon className="shrink-0" />}
-          className="!rounded-full !px-2.5 sm:!px-3"
+          className="!px-2.5 sm:!px-3"
         >
           <span className="hidden sm:inline">Add customer</span>
           <span className="sm:hidden">Add</span>
@@ -239,7 +239,7 @@ export function CreateWorkOrderHeaderButton() {
         variant="primary"
         leftIcon={<ClipboardCheckIcon className="shrink-0" />}
         showChevron
-        className="!rounded-full !px-2.5 sm:!px-3"
+        className="!px-2.5 sm:!px-3"
       >
         <span className="hidden sm:inline">Create Work Order</span>
         <span className="sm:hidden">Work Order</span>
@@ -305,7 +305,7 @@ export function DashboardHeaderActions() {
       <Link href="/hr/payroll-export" className="inline-flex max-w-full shrink-0">
         <DashboardToolbarButton
           variant="primary"
-          className="!rounded-full !px-2.5 sm:!px-3"
+          className="!px-2.5 sm:!px-3"
         >
           <span className="hidden sm:inline">Generate payroll</span>
           <span className="sm:hidden">Payroll</span>

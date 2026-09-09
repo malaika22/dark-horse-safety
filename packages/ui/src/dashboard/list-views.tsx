@@ -387,7 +387,6 @@ export function DashboardSaveViewsModal({
             </button>
             <DashboardToolbarButton
               variant="primary"
-              className="!rounded-full"
               onClick={() => {
                 onClose();
                 onSaveNewView();

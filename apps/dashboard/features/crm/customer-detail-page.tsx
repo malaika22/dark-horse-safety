@@ -103,7 +103,7 @@ function ToolbarBtn({ children, onClick, className }: { children: React.ReactNod
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-8 items-center gap-1.5 rounded-full border border-[#2D2D30] bg-[#1A1A1A] px-3.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-white/5 ${className ?? ""}`}
+      className={`inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-white/5 ${className ?? ""}`}
     >
       {children}
     </button>
@@ -1107,15 +1107,16 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
 
   useSetHeaderActions(
     apiDetail ? (
-      <>
-        <Link href="/crm/accounts">
-          <ToolbarBtn>Back</ToolbarBtn>
+      <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2">
+        <Link href="/crm/accounts" className="inline-flex shrink-0">
+          <DashboardToolbarButton>Back</DashboardToolbarButton>
         </Link>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Link
             href={`/operations/work-orders/new?customerId=${encodeURIComponent(customerId || c.id)}`}
+            className="inline-flex shrink-0"
           >
-            <ToolbarBtn>Create Work Order</ToolbarBtn>
+            <DashboardToolbarButton>Create Work Order</DashboardToolbarButton>
           </Link>
           <div className="relative">
             <DashboardToolbarButton
@@ -1123,7 +1124,6 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
               variant="primary"
               leftIcon={<QuoteGridIcon className="shrink-0" />}
               showChevron
-              className="!rounded-full"
               onClick={() => setQuoteMenuOpen((o) => !o)}
             >
               Create Quote
@@ -1163,7 +1163,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
             />
           </div>
         </div>
-      </>
+      </div>
     ) : null,
     [
       apiDetail,
@@ -1264,7 +1264,7 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
           <button
             type="button"
             onClick={() => router.push(`/crm/accounts/${customerId || c.id}/edit`)}
-            className="inline-flex h-8 items-center rounded-full border border-[#2D2D30] bg-[#1A1A1A] px-3.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-white/5"
+            className="inline-flex h-8 items-center rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-white/5"
           >
             Edit Details
           </button>

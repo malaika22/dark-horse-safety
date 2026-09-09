@@ -339,7 +339,14 @@ export function AppPageToolbar({
         </h1>
       ) : null}
       {actions ? (
-        <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 sm:justify-end">
+        <div
+          className={cn(
+            "flex min-w-0 flex-wrap items-center gap-2",
+            pageTitle
+              ? "justify-start sm:justify-end"
+              : "w-full",
+          )}
+        >
           {actions}
         </div>
       ) : null}

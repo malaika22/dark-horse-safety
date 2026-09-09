@@ -544,7 +544,7 @@ export function SalesCalendarPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex overflow-hidden rounded-full border border-[#3E3E3E] bg-[#1A1A1A] p-0.5">
+          <div className="inline-flex overflow-hidden rounded-lg border border-[#3E3E3E] bg-[#1A1A1A] p-0.5">
             {(["day", "week", "month"] as CalView[]).map((v) => (
               <button
                 key={v}
@@ -555,7 +555,7 @@ export function SalesCalendarPage() {
                   if (v === "month") setAnchor(startOfMonth(anchor));
                 }}
                 className={cn(
-                  "rounded-full px-3 py-1.5 font-sans text-[11px] uppercase tracking-[-0.02em] transition-colors",
+                  "rounded-md px-3 py-1.5 font-sans text-[11px] uppercase tracking-[-0.02em] transition-colors",
                   view === v
                     ? "bg-[#FDFDFF] text-[#0D0D0D]"
                     : "text-[#959597] hover:text-[#FDFDFF]",

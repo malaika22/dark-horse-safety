@@ -84,7 +84,6 @@ export function LinkToExistingContactModal({
           </button>
           <DashboardToolbarButton
             variant="primary"
-            className="!rounded-full"
             onClick={() => {
               if (selectedId) onConfirm?.(selectedId);
               onClose();

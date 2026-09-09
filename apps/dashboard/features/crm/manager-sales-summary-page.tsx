@@ -581,10 +581,7 @@ export function ManagerSalesSummaryPage() {
 
   return (
     <div className="space-y-5 overflow-x-hidden bg-shell p-3 sm:space-y-6 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-sans text-[18px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[22px]">
-          Manager sales summary
-        </h1>
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <ExportButton onExport={handleExportCsv} />
       </div>
 

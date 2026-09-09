@@ -96,7 +96,7 @@ function GlassBtn({
   className?: string;
 }) {
   const cls =
-    `inline-flex h-8 items-center rounded-md border border-[#2D2D30] bg-[#1A1A1A] px-3.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-white/5 disabled:pointer-events-none disabled:opacity-40 ${className ?? ""}`;
+    `inline-flex h-8 items-center rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-white/5 disabled:pointer-events-none disabled:opacity-40 ${className ?? ""}`;
   if (href) return <Link href={href} className={cls}>{children}</Link>;
   return (
     <button type="button" onClick={onClick} className={cls}>
@@ -711,7 +711,7 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
               Previous Contact
             </GlassBtn>
             {showingLabel ? (
-              <span className="inline-flex h-8 items-center rounded-md border border-[#2D2D30] bg-[#1A1A1A] px-3.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+              <span className="inline-flex h-8 items-center rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
                 {showingLabel}
               </span>
             ) : null}
@@ -823,7 +823,7 @@ export function ContactDetailPage({ contactId }: { contactId: string }) {
                   key={t.id}
                   type="button"
                   onClick={() => setTab(t.id)}
-                  className={`rounded-full px-3.5 py-2 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] transition-colors ${
+                  className={`rounded-lg px-3.5 py-2 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] transition-colors ${
                     active
                       ? "bg-[#FDFDFF] text-[#0D0D0D]"
                       : "border border-[#2D2D30] bg-[#1A1A1A] text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]"
