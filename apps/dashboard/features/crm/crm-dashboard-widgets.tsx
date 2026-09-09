@@ -81,8 +81,21 @@ export function CrmDashboardDataProvider({
 
   if (loading && !data) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center bg-shell p-6">
+      <div className="flex min-h-[50vh] w-full items-center justify-center bg-shell p-6">
         <BrandLoader label="Loading dashboard" />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-2 bg-shell p-6">
+        <p className="font-sans text-[13px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+          Could not load CRM dashboard
+        </p>
+        <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+          Check API connection and try again
+        </p>
       </div>
     );
   }

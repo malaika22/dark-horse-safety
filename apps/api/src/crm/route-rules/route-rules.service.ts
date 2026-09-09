@@ -13,6 +13,7 @@ import {
   parsePage,
 } from '../../common/utils/pagination.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { openWorkOrderWhere } from '../common/open-jobs.util';
 import {
   CreateRouteRuleDto,
   RouteRuleListQueryDto,
@@ -74,8 +75,16 @@ export class RouteRulesService {
               id: true,
               name: true,
               code: true,
+              city: true,
+              county: true,
+              state: true,
               latitude: true,
               longitude: true,
+              _count: {
+                select: {
+                  workOrders: { where: openWorkOrderWhere() },
+                },
+              },
             },
           },
           owner: {
@@ -84,7 +93,22 @@ export class RouteRulesService {
         },
       }),
     ]);
-    return { data: paginate(items, total, page, pageSize) };
+    const withLocationJobs = items.map((r) => {
+      if (!r.location) return r;
+      const { _count, ...loc } = r.location;
+      return {
+        ...r,
+        location: {
+          ...loc,
+          city:
+            loc.city?.trim() ||
+            [loc.county, loc.state].filter(Boolean).join(', ') ||
+            null,
+          openJobs: _count.workOrders,
+        },
+      };
+    });
+    return { data: paginate(withLocationJobs, total, page, pageSize) };
   }
 
   async kpi() {
@@ -359,6 +383,30 @@ export class RouteRulesService {
     )[0];
 
     const usingSystemDefault = kpi.data.usingSystemDefault ?? 0;
+
+    const radiusVotes = new Map<string, number>();
+    let gpsRequiredVotes = 0;
+    let gpsOptionalVotes = 0;
+    for (const r of customerDefaults) {
+      const radius = (r.geofenceRadius ?? '').trim() || '1000 FT';
+      radiusVotes.set(radius, (radiusVotes.get(radius) ?? 0) + 1);
+      if (r.gpsRequired) gpsRequiredVotes += 1;
+      else gpsOptionalVotes += 1;
+    }
+    let systemRadius = '1000 FT';
+    let bestVote = 0;
+    for (const [radius, vote] of radiusVotes) {
+      if (vote > bestVote) {
+        bestVote = vote;
+        systemRadius = radius;
+      }
+    }
+    const systemGpsRequired = gpsRequiredVotes >= gpsOptionalVotes;
+    const systemDetail = [
+      systemRadius,
+      systemGpsRequired ? 'GPS REQUIRED' : 'GPS OPTIONAL',
+    ].join(' · ');
+
     const uniqueSites = new Set(flags.map((f) => f.locationId)).size;
 
     return {
@@ -367,7 +415,7 @@ export class RouteRulesService {
         systemDefault: {
           id: 'system-default',
           name: 'ALL SITES',
-          detail: '1000 FT · ACCURACY 50M · GPS REQUIRED',
+          detail: systemDetail,
           appliesTo: usingSystemDefault,
         },
         customerDefaults,

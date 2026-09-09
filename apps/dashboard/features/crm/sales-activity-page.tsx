@@ -747,8 +747,8 @@ export function SalesActivityPage() {
           />
         </>
       ) : (
-        <div className="space-y-4 rounded-xl border border-divider bg-panel p-6">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="space-y-4 rounded-xl border border-divider bg-panel p-3 sm:p-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
             <div>
               <p className="font-sans text-[10px] uppercase text-[#959597]">Total activities</p>
               <p className="mt-1 font-sans text-[18px] uppercase text-[#FDFDFF]">{summaryStats.total}</p>

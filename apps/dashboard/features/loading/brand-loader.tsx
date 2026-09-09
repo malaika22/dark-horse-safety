@@ -3,7 +3,7 @@
 import * as React from "react";
 import { BrandMark, cn } from "@dark-horse-safety/ui";
 
-/** Pulsing brand logo used for global + listing loaders. */
+/** Pulsing brand logo used for page / listing loaders. */
 export function BrandLoader({
   size = "md",
   label = "Loading",
@@ -18,20 +18,23 @@ export function BrandLoader({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-3",
+        "mx-auto flex w-full max-w-xs flex-col items-center justify-center gap-3 text-center",
         className,
       )}
       role="status"
       aria-live="polite"
       aria-label={label}
     >
-      <div className="relative flex items-center justify-center">
+      <div
+        className="relative flex shrink-0 items-center justify-center"
+        style={{ width: px, height: px }}
+      >
         <span
-          className="absolute inset-[-10px] animate-ping rounded-full bg-[#FDFDFF]/[0.06]"
+          className="pointer-events-none absolute inset-[-10px] animate-ping rounded-full bg-[#FDFDFF]/[0.06]"
           aria-hidden
         />
         <span
-          className="absolute inset-[-4px] animate-pulse rounded-full border border-[#3E3E3E]"
+          className="pointer-events-none absolute inset-[-4px] animate-pulse rounded-full border border-[#3E3E3E]"
           aria-hidden
         />
         <BrandMark

@@ -664,36 +664,38 @@ export function CreateQuotePage({
                 {pricingHint}
               </p>
             ) : null}
-            <div className="overflow-hidden rounded-lg border border-[#2D2D30] bg-[#161618]">
-              <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_64px_72px_88px] gap-2 border-b border-[#2D2D30] px-3 py-2 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597]">
-                <span>Service</span>
-                <span>Description</span>
-                <span className="text-right">Qty</span>
-                <span className="text-right">Rate</span>
-                <span className="text-right">Total</span>
+            <div className="overflow-x-auto rounded-lg border border-[#2D2D30] bg-[#161618]">
+              <div className="min-w-[520px]">
+                <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_64px_72px_88px] gap-2 border-b border-[#2D2D30] px-3 py-2 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597]">
+                  <span>Service</span>
+                  <span>Description</span>
+                  <span className="text-right">Qty</span>
+                  <span className="text-right">Rate</span>
+                  <span className="text-right">Total</span>
+                </div>
+                {(lines[0] ? [lines[0]] : []).map((line) => {
+                  const qty = Number(line.qty) || 0;
+                  const rate = parseMoney(line.rate) ?? 0;
+                  return (
+                    <div
+                      key={`preview-${line.key}`}
+                      className="grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_64px_72px_88px] gap-2 px-3 py-2.5 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]"
+                    >
+                      <span className="truncate">{line.item || "—"}</span>
+                      <span className="truncate text-[#959597]">
+                        From pricing / template
+                      </span>
+                      <span className="text-right tabular-nums">{qty || "—"}</span>
+                      <span className="text-right tabular-nums">
+                        {rate ? money(rate) : "—"}
+                      </span>
+                      <span className="text-right tabular-nums">
+                        {rate ? money(qty * rate) : "—"}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-              {(lines[0] ? [lines[0]] : []).map((line) => {
-                const qty = Number(line.qty) || 0;
-                const rate = parseMoney(line.rate) ?? 0;
-                return (
-                  <div
-                    key={`preview-${line.key}`}
-                    className="grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_64px_72px_88px] gap-2 px-3 py-2.5 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]"
-                  >
-                    <span className="truncate">{line.item || "—"}</span>
-                    <span className="truncate text-[#959597]">
-                      From pricing / template
-                    </span>
-                    <span className="text-right tabular-nums">{qty || "—"}</span>
-                    <span className="text-right tabular-nums">
-                      {rate ? money(rate) : "—"}
-                    </span>
-                    <span className="text-right tabular-nums">
-                      {rate ? money(qty * rate) : "—"}
-                    </span>
-                  </div>
-                );
-              })}
             </div>
           </div>
 
@@ -776,7 +778,7 @@ export function CreateQuotePage({
         </div>
         <div className="divider-line-full w-full" aria-hidden />
         <div className="overflow-x-auto p-4 sm:p-5">
-          <table className="w-full min-w-[640px] border-collapse text-left">
+          <table className="w-full min-w-[520px] border-collapse text-left md:min-w-[640px]">
             <thead>
               <tr className="border-b border-divider">
                 {["Item", "Qty", "Rate", "Amount", ""].map((h) => (

@@ -77,7 +77,7 @@ export class RouteRulesController {
   }
 
   @Get(':id/gps-flags')
-  @ApiOperation({ summary: 'Synthetic GPS flags for a route rule' })
+  @ApiOperation({ summary: 'GPS flags for a route rule' })
   gpsFlags(@Param('id') id: string) {
     return this.routeRules.gpsFlags(id);
   }

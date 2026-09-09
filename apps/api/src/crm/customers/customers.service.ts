@@ -16,6 +16,7 @@ import {
   parsePage,
 } from '../../common/utils/pagination.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { openWorkOrderWhere } from '../common/open-jobs.util';
 import {
   CreateCustomerDto,
   CustomerListQueryDto,
@@ -121,18 +122,29 @@ export class CustomersService {
         },
       }),
     ]);
-    return { data: paginate(items, total, page, pageSize) };
+    const openJobsByCustomer = await this.prisma.workOrder.groupBy({
+      by: ['customerId'],
+      where: openWorkOrderWhere({
+        customerId: { in: items.map((c) => c.id) },
+      }),
+      _count: { _all: true },
+    });
+    const openJobsMap = new Map(
+      openJobsByCustomer.map((row) => [row.customerId, row._count._all]),
+    );
+    const withOpenJobs = items.map((c) => ({
+      ...c,
+      openJobs: openJobsMap.get(c.id) ?? 0,
+    }));
+    return { data: paginate(withOpenJobs, total, page, pageSize) };
   }
 
   async kpi() {
-    const [active, openJobsAgg, archived, needsReview] = await Promise.all([
+    const [active, openJobs, archived, needsReview] = await Promise.all([
       this.prisma.customer.count({
         where: { archivedAt: null, status: CrmRecordStatus.ACTIVE },
       }),
-      this.prisma.customer.aggregate({
-        where: { archivedAt: null },
-        _sum: { openJobs: true },
-      }),
+      this.prisma.workOrder.count({ where: openWorkOrderWhere() }),
       this.prisma.customer.count({ where: { archivedAt: { not: null } } }),
       this.prisma.customer.count({
         where: { archivedAt: null, status: CrmRecordStatus.NEEDS_REVIEW },
@@ -141,7 +153,7 @@ export class CustomersService {
     return {
       data: {
         active,
-        openJobs: openJobsAgg._sum.openJobs ?? 0,
+        openJobs,
         needsReview,
         archived,
       },
@@ -167,7 +179,10 @@ export class CustomersService {
       },
     });
     if (!customer) throw new NotFoundException({ code: 'NOT_FOUND', message: 'Customer not found' });
-    return { data: customer };
+    const openJobs = await this.prisma.workOrder.count({
+      where: openWorkOrderWhere({ customerId: id }),
+    });
+    return { data: { ...customer, openJobs } };
   }
 
   async create(dto: CreateCustomerDto) {

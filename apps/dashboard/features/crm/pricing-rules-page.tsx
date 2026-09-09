@@ -154,16 +154,16 @@ function FilterRangeRow({
   onToChange: (v: string) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
       <p className="min-w-0 shrink truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
         {label}
       </p>
-      <div className="flex min-w-0 items-center gap-1.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         <input
           type="date"
           value={from}
           onChange={(e) => onFromChange(e.target.value)}
-          className="h-8 w-[118px] rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
+          className="h-8 w-full min-w-0 flex-1 rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none sm:w-[118px] sm:flex-none"
         />
         <span className="font-sans text-[11px] text-[#FDFDFF]" aria-hidden>
           -
@@ -172,7 +172,7 @@ function FilterRangeRow({
           type="date"
           value={to}
           onChange={(e) => onToChange(e.target.value)}
-          className="h-8 w-[118px] rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
+          className="h-8 w-full min-w-0 flex-1 rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none sm:w-[118px] sm:flex-none"
         />
       </div>
     </div>

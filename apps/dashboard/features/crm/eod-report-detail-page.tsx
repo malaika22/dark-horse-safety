@@ -113,7 +113,7 @@ export function EodReportDetailPage({ reportId }: { reportId: string }) {
       </div>
 
       <DashboardPanel className="p-4 sm:p-5">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
           <Metric label="Activities" value={String(detail.activitiesCount ?? 0)} />
           <Metric label="Calls" value={String(detail.callsCount ?? 0)} />
           <Metric label="Visits" value={String(detail.visitsCount ?? 0)} />

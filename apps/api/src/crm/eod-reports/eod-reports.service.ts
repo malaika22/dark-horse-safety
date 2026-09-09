@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { CrmRecordStatus, Prisma } from '@prisma/client';
+import { CrmRecordStatus, Prisma, SalesActivityType } from '@prisma/client';
 import { MailService } from '../../auth/mail.service';
 import { CodeGeneratorService } from '../../common/services/code-generator.service';
 import {
@@ -14,6 +14,7 @@ import {
   parsePage,
 } from '../../common/utils/pagination.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { endOfDay, startOfDay } from '../common/open-jobs.util';
 import {
   CreateEodReportDto,
   EodReportListQueryDto,
@@ -78,26 +79,64 @@ export class EodReportsService {
           rep: {
             select: { id: true, firstName: true, lastName: true, email: true },
           },
+          _count: { select: { activityLines: true } },
         },
       }),
     ]);
-    return { data: paginate(items, total, page, pageSize) };
+    const enriched = await this.attachLiveActivityCounts(items);
+    return { data: paginate(enriched, total, page, pageSize) };
   }
 
   async kpi() {
-    const [total, submitted, pending, complete] = await Promise.all([
-      this.prisma.eodReport.count(),
-      this.prisma.eodReport.count({
-        where: { status: CrmRecordStatus.SUBMITTED },
-      }),
-      this.prisma.eodReport.count({
-        where: { status: CrmRecordStatus.PENDING },
-      }),
-      this.prisma.eodReport.count({
-        where: { status: CrmRecordStatus.COMPLETE },
-      }),
-    ]);
-    return { data: { total, submitted, pending, complete } };
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const [today, submitted, pending, activities, pipelineAgg] =
+      await Promise.all([
+        this.prisma.eodReport.count({
+          where: { reportDate: { gte: startOfToday } },
+        }),
+        this.prisma.eodReport.count({
+          where: {
+            submittedAt: { gte: weekAgo },
+            status: {
+              in: [CrmRecordStatus.SUBMITTED, CrmRecordStatus.COMPLETE],
+            },
+          },
+        }),
+        this.prisma.eodReport.count({
+          where: {
+            status: {
+              in: [CrmRecordStatus.PENDING, CrmRecordStatus.IN_PROGRESS],
+            },
+          },
+        }),
+        this.prisma.salesActivity.count({
+          where: { archivedAt: null, activityAt: { gte: weekAgo } },
+        }),
+        this.prisma.quote.aggregate({
+          where: {
+            archivedAt: null,
+            status: {
+              in: [
+                CrmRecordStatus.DRAFT,
+                CrmRecordStatus.SENT,
+                CrmRecordStatus.OPEN,
+                CrmRecordStatus.PENDING,
+              ],
+            },
+          },
+          _sum: { amount: true },
+        }),
+      ]);
+
+    const pipeline =
+      pipelineAgg._sum.amount == null
+        ? 0
+        : Number(pipelineAgg._sum.amount.toString());
+
+    return { data: { today, submitted, pending, activities, pipeline } };
   }
 
   async getById(id: string) {
@@ -116,7 +155,71 @@ export class EodReportsService {
         message: 'EOD report not found',
       });
     }
-    return { data: report };
+    const [enriched] = await this.attachLiveActivityCounts([report]);
+    return { data: enriched };
+  }
+
+  /** Prefer live SalesActivity totals for the report day; fall back to line count. */
+  private async attachLiveActivityCounts<
+    T extends {
+      id: string;
+      repId: string;
+      reportDate: Date;
+      activitiesCount: number;
+      callsCount: number;
+      visitsCount: number;
+      meetingsCount: number;
+      _count?: { activityLines: number };
+    },
+  >(items: T[]) {
+    if (items.length === 0) return items;
+
+    const dayKeys = items.map((r) => ({
+      id: r.id,
+      repId: r.repId,
+      from: startOfDay(r.reportDate),
+      to: endOfDay(r.reportDate),
+    }));
+    const minFrom = new Date(Math.min(...dayKeys.map((d) => d.from.getTime())));
+    const maxTo = new Date(Math.max(...dayKeys.map((d) => d.to.getTime())));
+    const repIds = [...new Set(items.map((r) => r.repId))];
+
+    const activities = await this.prisma.salesActivity.findMany({
+      where: {
+        archivedAt: null,
+        repId: { in: repIds },
+        activityAt: { gte: minFrom, lte: maxTo },
+      },
+      select: { repId: true, type: true, activityAt: true },
+    });
+
+    return items.map((report) => {
+      const from = startOfDay(report.reportDate).getTime();
+      const to = endOfDay(report.reportDate).getTime();
+      const dayActs = activities.filter(
+        (a) =>
+          a.repId === report.repId &&
+          a.activityAt.getTime() >= from &&
+          a.activityAt.getTime() <= to,
+      );
+      const lineFallback = report._count?.activityLines ?? 0;
+      const calls = dayActs.filter((a) => a.type === SalesActivityType.CALL)
+        .length;
+      const visits = dayActs.filter((a) => a.type === SalesActivityType.VISIT)
+        .length;
+      const meetings = dayActs.filter(
+        (a) => a.type === SalesActivityType.MEETING,
+      ).length;
+      const total = dayActs.length > 0 ? dayActs.length : lineFallback;
+      const { _count, ...rest } = report;
+      return {
+        ...rest,
+        activitiesCount: total || report.activitiesCount,
+        callsCount: dayActs.length > 0 ? calls : report.callsCount,
+        visitsCount: dayActs.length > 0 ? visits : report.visitsCount,
+        meetingsCount: dayActs.length > 0 ? meetings : report.meetingsCount,
+      };
+    });
   }
 
   async create(dto: CreateEodReportDto) {

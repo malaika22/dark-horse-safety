@@ -227,16 +227,16 @@ export function LogActivityFormPage({
 
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:p-6">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href={cancelHref} className="inline-flex shrink-0">
           <DashboardToolbarButton leftIcon={<ArrowLeftIcon className="shrink-0" />}>
             Cancel
           </DashboardToolbarButton>
         </Link>
-        <h1 className="font-sans text-[18px] font-normal uppercase leading-none tracking-[-0.02em] text-foreground md:text-[24px]">
+        <h1 className="order-first w-full text-center font-sans text-[18px] font-normal uppercase leading-none tracking-[-0.02em] text-foreground sm:order-none sm:w-auto sm:flex-1 md:text-[24px]">
           {isEdit ? "Edit Activity" : "Log Activity"}
         </h1>
-        <span className="w-[88px]" aria-hidden />
+        <span className="hidden w-[88px] sm:block" aria-hidden />
       </div>
 
       <DashboardPanel className="overflow-hidden">

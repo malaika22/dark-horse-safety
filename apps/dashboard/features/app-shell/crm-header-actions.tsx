@@ -14,24 +14,27 @@ import {
   formatCrmSyncLabel,
 } from "../crm/crm-constants";
 import { AddUserIcon } from "../crm/crm-list-page-shell";
-import { SYNC_LABEL as DASHBOARD_SYNC_LABEL } from "../dashboard/data/overview.mock";
 
 /** Shared Figma header CTA — white pill + person icon. */
 function AddHeaderButton({
   href,
   label,
+  shortLabel,
 }: {
   href: string;
   label: string;
+  shortLabel?: string;
 }) {
+  const mobile = shortLabel ?? label.split(" ").slice(-1)[0] ?? label;
   return (
-    <Link href={href} className="inline-flex shrink-0">
+    <Link href={href} className="inline-flex max-w-full shrink-0">
       <DashboardToolbarButton
         variant="primary"
         leftIcon={<AddUserIcon className="shrink-0" />}
-        className="!rounded-full"
+        className="!rounded-full !px-2.5 sm:!px-3"
       >
-        {label}
+        <span className="hidden sm:inline">{label}</span>
+        <span className="sm:hidden">{mobile}</span>
       </DashboardToolbarButton>
     </Link>
   );
@@ -106,43 +109,93 @@ export function CrmDashboardHeaderActions() {
 }
 
 export function AddCustomerHeaderButton() {
-  return <AddHeaderButton href="/crm/accounts/new" label="Add customer" />;
+  return (
+    <AddHeaderButton
+      href="/crm/accounts/new"
+      label="Add customer"
+      shortLabel="Add"
+    />
+  );
 }
 
 export function AddContactHeaderButton() {
-  return <AddHeaderButton href="/crm/contacts/new" label="Add Contact" />;
+  return (
+    <AddHeaderButton
+      href="/crm/contacts/new"
+      label="Add Contact"
+      shortLabel="Add"
+    />
+  );
 }
 
 export function AddLocationHeaderButton() {
-  return <AddHeaderButton href="/crm/locations/new" label="Add Location" />;
+  return (
+    <AddHeaderButton
+      href="/crm/locations/new"
+      label="Add Location"
+      shortLabel="Add"
+    />
+  );
 }
 
 export function AddPricingRuleHeaderButton() {
   return (
-    <AddHeaderButton href="/crm/pricing-rules/new" label="Add Pricing Rule" />
+    <AddHeaderButton
+      href="/crm/pricing-rules/new"
+      label="Add Pricing Rule"
+      shortLabel="Add"
+    />
   );
 }
 
 export function AddRequirementHeaderButton() {
   return (
-    <AddHeaderButton href="/crm/requirements/new" label="Add Requirement" />
+    <AddHeaderButton
+      href="/crm/requirements/new"
+      label="Add Requirement"
+      shortLabel="Add"
+    />
   );
 }
 
 export function AddFormRuleHeaderButton() {
-  return <AddHeaderButton href="/crm/form-rules/new" label="Add Form Rule" />;
+  return (
+    <AddHeaderButton
+      href="/crm/form-rules/new"
+      label="Add Form Rule"
+      shortLabel="Add"
+    />
+  );
 }
 
 export function AddRouteRuleHeaderButton() {
-  return <AddHeaderButton href="/crm/route-rules/new" label="Add Route Rule" />;
+  return (
+    <AddHeaderButton
+      href="/crm/route-rules/new"
+      label="Add Route Rule"
+      shortLabel="Add"
+    />
+  );
 }
 
 export function CreateQuoteHeaderButton() {
-  return <AddHeaderButton href="/crm/quotes/new" label="Create Quote" />;
+  return (
+    <AddHeaderButton
+      href="/crm/quotes/new"
+      label="Create Quote"
+      shortLabel="Quote"
+    />
+  );
 }
 
 export function LogActivityHeaderButton() {
-  return <AddHeaderButton href="/crm/sales/new" label="Log Activity" />;
+  return (
+    <AddHeaderButton
+      href="/crm/sales/new"
+      label="Log Activity"
+      shortLabel="Log"
+    />
+  );
 }
 
 /** Figma EOD list header — Create Work Order (clipboard + chevron). */
@@ -181,14 +234,15 @@ function ClipboardCheckIcon({ className }: { className?: string }) {
 
 export function CreateWorkOrderHeaderButton() {
   return (
-    <Link href="/operations/work-orders/new" className="inline-flex shrink-0">
+    <Link href="/operations/work-orders/new" className="inline-flex max-w-full shrink-0">
       <DashboardToolbarButton
         variant="primary"
         leftIcon={<ClipboardCheckIcon className="shrink-0" />}
         showChevron
-        className="!rounded-full"
+        className="!rounded-full !px-2.5 sm:!px-3"
       >
-        Create Work Order
+        <span className="hidden sm:inline">Create Work Order</span>
+        <span className="sm:hidden">Work Order</span>
       </DashboardToolbarButton>
     </Link>
   );
@@ -196,8 +250,24 @@ export function CreateWorkOrderHeaderButton() {
 
 /** Main /dashboard header row-2 — last synced + Run sync + Generate payroll. */
 export function DashboardHeaderActions() {
-  const [syncLabel, setSyncLabel] = React.useState(DASHBOARD_SYNC_LABEL);
+  const [syncLabel, setSyncLabel] = React.useState(CRM_SYNC_LABEL_FALLBACK);
   const [syncing, setSyncing] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const overview = await crmApi.dashboardOverview();
+        if (cancelled) return;
+        setSyncLabel(formatCrmSyncLabel(overview.data.syncedAt));
+      } catch {
+        /* keep fallback */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleRunSync() {
     setSyncing(true);
@@ -232,9 +302,13 @@ export function DashboardHeaderActions() {
         </span>
         <span className="sm:hidden">Sync</span>
       </DashboardToolbarButton>
-      <Link href="/hr/payroll-export" className="inline-flex shrink-0">
-        <DashboardToolbarButton variant="primary" className="!rounded-full">
-          Generate payroll
+      <Link href="/hr/payroll-export" className="inline-flex max-w-full shrink-0">
+        <DashboardToolbarButton
+          variant="primary"
+          className="!rounded-full !px-2.5 sm:!px-3"
+        >
+          <span className="hidden sm:inline">Generate payroll</span>
+          <span className="sm:hidden">Payroll</span>
         </DashboardToolbarButton>
       </Link>
     </div>

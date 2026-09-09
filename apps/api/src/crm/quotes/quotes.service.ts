@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { CrmRecordStatus, Prisma } from '@prisma/client';
+import { CrmRecordStatus, Prisma, QuoteApprovalStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -120,8 +120,7 @@ export class QuotesService {
   }
 
   async kpi() {
-    const [total, draft, sent, won, lost] = await Promise.all([
-      this.prisma.quote.count({ where: { archivedAt: null } }),
+    const [draft, sent, approved, expired, converted] = await Promise.all([
       this.prisma.quote.count({
         where: { archivedAt: null, status: CrmRecordStatus.DRAFT },
       }),
@@ -129,13 +128,22 @@ export class QuotesService {
         where: { archivedAt: null, status: CrmRecordStatus.SENT },
       }),
       this.prisma.quote.count({
-        where: { archivedAt: null, status: CrmRecordStatus.WON },
+        where: {
+          archivedAt: null,
+          OR: [
+            { status: CrmRecordStatus.OPEN },
+            { approvalStatus: QuoteApprovalStatus.APPROVED },
+          ],
+        },
       }),
       this.prisma.quote.count({
-        where: { archivedAt: null, status: CrmRecordStatus.LOST },
+        where: { archivedAt: null, status: CrmRecordStatus.EXPIRED },
+      }),
+      this.prisma.quote.count({
+        where: { archivedAt: null, status: CrmRecordStatus.WON },
       }),
     ]);
-    return { data: { total, draft, sent, won, lost } };
+    return { data: { draft, sent, approved, expired, converted } };
   }
 
   async getById(id: string) {

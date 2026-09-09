@@ -103,7 +103,7 @@ function MapPinPopover({
 
   return (
     <div
-      className="absolute z-40 w-[240px] rounded-2xl border border-[#2D2D30] bg-[#161616] p-4 shadow-2xl"
+      className="absolute z-40 w-[min(240px,calc(100vw-2rem))] max-w-[calc(100%-1rem)] rounded-2xl border border-[#2D2D30] bg-[#161616] p-4 shadow-2xl"
       style={{
         left: `${leftPct}%`,
         top: placeBelow ? `${pin.y}%` : `${pin.y}%`,
@@ -195,8 +195,8 @@ export function CrmMapPanel({
 
   const isFull = size === "full";
   const mapMinH = isFull
-    ? "min-h-[560px] md:min-h-[680px]"
-    : "min-h-[400px] md:min-h-[520px]";
+    ? "min-h-[280px] sm:min-h-[420px] md:min-h-[680px]"
+    : "min-h-[240px] sm:min-h-[360px] md:min-h-[520px]";
 
   const selectedPin = selectedId
     ? pins.find((p) => p.id === selectedId)

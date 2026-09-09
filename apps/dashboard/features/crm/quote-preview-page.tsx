@@ -85,42 +85,44 @@ export function QuotePreviewPage({ quoteId }: { quoteId: string }) {
         </p>
       </section>
 
-      <section className="rounded-xl bg-panel p-5">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b border-[#2D2D30]">
-              <th className="pb-2 font-sans text-[10px] uppercase text-[#959597]">Item</th>
-              <th className="pb-2 font-sans text-[10px] uppercase text-[#959597]">Qty</th>
-              <th className="pb-2 text-right font-sans text-[10px] uppercase text-[#959597]">
-                Amount
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="py-4 font-sans text-[12px] uppercase text-[#959597]">
-                  No line items
-                </td>
+      <section className="rounded-xl bg-panel p-4 sm:p-5">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[320px] text-left">
+            <thead>
+              <tr className="border-b border-[#2D2D30]">
+                <th className="pb-2 font-sans text-[10px] uppercase text-[#959597]">Item</th>
+                <th className="pb-2 font-sans text-[10px] uppercase text-[#959597]">Qty</th>
+                <th className="pb-2 text-right font-sans text-[10px] uppercase text-[#959597]">
+                  Amount
+                </th>
               </tr>
-            ) : (
-              lines.map((line) => (
-                <tr key={line.id} className="border-b border-[#2D2D30]">
-                  <td className="py-3 font-sans text-[12px] uppercase text-[#FDFDFF]">
-                    {line.item}
-                  </td>
-                  <td className="py-3 font-sans text-[12px] uppercase text-[#FDFDFF]">
-                    {line.quantity}
-                  </td>
-                  <td className="py-3 text-right font-sans text-[12px] uppercase text-[#FDFDFF]">
-                    {money(line.amount)}
+            </thead>
+            <tbody>
+              {lines.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="py-4 font-sans text-[12px] uppercase text-[#959597]">
+                    No line items
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-        <div className="mt-4 flex justify-between font-sans text-[13px] uppercase text-[#FDFDFF]">
+              ) : (
+                lines.map((line) => (
+                  <tr key={line.id} className="border-b border-[#2D2D30]">
+                    <td className="py-3 pr-3 font-sans text-[12px] uppercase text-[#FDFDFF]">
+                      {line.item}
+                    </td>
+                    <td className="py-3 pr-3 font-sans text-[12px] uppercase text-[#FDFDFF]">
+                      {line.quantity}
+                    </td>
+                    <td className="py-3 text-right font-sans text-[12px] uppercase text-[#FDFDFF]">
+                      {money(line.amount)}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-4 flex justify-between gap-3 font-sans text-[13px] uppercase text-[#FDFDFF]">
           <span>Total</span>
           <span>{money(quote.amount)}</span>
         </div>

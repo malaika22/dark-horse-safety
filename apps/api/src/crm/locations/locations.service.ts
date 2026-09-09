@@ -12,6 +12,7 @@ import {
   parsePage,
 } from '../../common/utils/pagination.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import { openWorkOrderWhere } from '../common/open-jobs.util';
 import {
   CreateLocationDto,
   LocationListQueryDto,
@@ -83,7 +84,7 @@ export class LocationsService {
         include: {
           customer: { select: { id: true, name: true, code: true } },
           workOrders: {
-            where: { archivedAt: null },
+            where: openWorkOrderWhere(),
             take: 1,
             orderBy: [{ serviceDate: 'desc' }, { createdAt: 'desc' }],
             select: { serviceDate: true, createdAt: true },
@@ -94,10 +95,19 @@ export class LocationsService {
             orderBy: { createdAt: 'desc' },
             select: { id: true, code: true, routeLabel: true },
           },
+          _count: {
+            select: {
+              workOrders: { where: openWorkOrderWhere() },
+            },
+          },
         },
       }),
     ]);
-    return { data: paginate(items, total, page, pageSize) };
+    const withOpenJobs = items.map(({ _count, ...loc }) => ({
+      ...loc,
+      openJobs: _count.workOrders,
+    }));
+    return { data: paginate(withOpenJobs, total, page, pageSize) };
   }
 
   async kpi() {
@@ -168,12 +178,21 @@ export class LocationsService {
         gpsRequired: true,
         gpsStatus: true,
         geofenceRadius: true,
-        openJobs: true,
         customer: { select: { id: true, name: true } },
+        _count: {
+          select: {
+            workOrders: { where: openWorkOrderWhere() },
+          },
+        },
       },
       take: 5000,
     });
-    return { data: pins };
+    return {
+      data: pins.map(({ _count, ...pin }) => ({
+        ...pin,
+        openJobs: _count.workOrders,
+      })),
+    };
   }
 
   async getById(id: string) {
@@ -194,7 +213,7 @@ export class LocationsService {
           },
         },
         workOrders: {
-          where: { archivedAt: null },
+          where: openWorkOrderWhere(),
           take: 5,
           orderBy: [{ serviceDate: 'desc' }, { createdAt: 'desc' }],
           select: {
@@ -205,6 +224,11 @@ export class LocationsService {
             status: true,
           },
         },
+        _count: {
+          select: {
+            workOrders: { where: openWorkOrderWhere() },
+          },
+        },
       },
     });
     if (!location) {
@@ -213,7 +237,8 @@ export class LocationsService {
         message: 'Location not found',
       });
     }
-    return { data: location };
+    const { _count, ...rest } = location;
+    return { data: { ...rest, openJobs: _count.workOrders } };
   }
 
   async create(dto: CreateLocationDto) {

@@ -6,6 +6,7 @@ import {
   SalesActivityType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { openWorkOrderWhere } from '../common/open-jobs.util';
 
 function startOfDay(d: Date) {
   const x = new Date(d);
@@ -78,7 +79,7 @@ export class DashboardService {
       openPipeline,
       msaCustomers,
       weekActivitiesByRep,
-      customersOpenJobsAgg,
+      customersOpenJobs,
     ] = await Promise.all([
       this.prisma.crmSyncState.findUnique({ where: { id: 'crm' } }),
       this.prisma.customer.count({ where: { archivedAt: null } }),
@@ -203,10 +204,7 @@ export class DashboardService {
           rep: { select: { id: true, firstName: true, lastName: true } },
         },
       }),
-      this.prisma.customer.aggregate({
-        where: { archivedAt: null },
-        _sum: { openJobs: true },
-      }),
+      this.prisma.workOrder.count({ where: openWorkOrderWhere() }),
     ]);
 
     const pipelineSum = openPipeline._sum.amount;
@@ -274,7 +272,7 @@ export class DashboardService {
         customers: {
           total: customersTotal,
           active: customersActive,
-          openJobs: customersOpenJobsAgg._sum.openJobs ?? 0,
+          openJobs: customersOpenJobs,
           archived: customersArchived,
           needsReview: customersNeedsReview,
         },
@@ -713,10 +711,7 @@ export class DashboardService {
     const pipelineTarget =
       pipeline <= 0
         ? 100_000
-        : Math.max(
-            100_000,
-            Math.ceil((pipeline * 1.25) / 10_000) * 10_000,
-          );
+        : Math.max(pipeline, 100_000);
     const pipelinePct =
       pipelineTarget <= 0
         ? 0

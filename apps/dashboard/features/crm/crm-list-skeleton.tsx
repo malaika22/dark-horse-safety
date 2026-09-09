@@ -162,7 +162,7 @@ export function CrmListLoadGate({
       ) : null}
       {children}
       {loading && hasData ? (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-start justify-center bg-[#0C0C0C]/35 pt-40">
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-[#0C0C0C]/35">
           <BrandLoader size="sm" label="Updating" />
         </div>
       ) : null}

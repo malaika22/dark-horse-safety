@@ -103,22 +103,30 @@ export class SalesActivitiesService {
   }
 
   async kpi() {
-    const [total, calls, visits, meetings, withFollowUp] = await Promise.all([
-      this.prisma.salesActivity.count({ where: { archivedAt: null } }),
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const weekBase = { archivedAt: null, activityAt: { gte: weekAgo } };
+
+    const [thisWeek, calls, visits, meetings, followUps] = await Promise.all([
+      this.prisma.salesActivity.count({ where: weekBase }),
       this.prisma.salesActivity.count({
-        where: { archivedAt: null, type: SalesActivityType.CALL },
+        where: { ...weekBase, type: SalesActivityType.CALL },
       }),
       this.prisma.salesActivity.count({
-        where: { archivedAt: null, type: SalesActivityType.VISIT },
+        where: { ...weekBase, type: SalesActivityType.VISIT },
       }),
       this.prisma.salesActivity.count({
-        where: { archivedAt: null, type: SalesActivityType.MEETING },
+        where: { ...weekBase, type: SalesActivityType.MEETING },
       }),
       this.prisma.salesActivity.count({
-        where: { archivedAt: null, followUpAt: { not: null } },
+        where: {
+          archivedAt: null,
+          followUpAt: { not: null, gte: startOfToday },
+        },
       }),
     ]);
-    return { data: { total, calls, visits, meetings, withFollowUp } };
+    return { data: { thisWeek, calls, visits, meetings, followUps } };
   }
 
   async getById(id: string) {

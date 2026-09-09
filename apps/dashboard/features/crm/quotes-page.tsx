@@ -177,19 +177,19 @@ function QuotesFiltersDrawer({
   );
 
   const RangePair = ({ minKey, maxKey }: { minKey: keyof QuoteFilters; maxKey: keyof QuoteFilters }) => (
-    <div className="flex items-center gap-1.5">
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
       <input
         type="text"
         value={value[minKey] as string}
         onChange={(e) => range(minKey, maxKey, e.target.value, value[maxKey] as string)}
-        className="h-8 w-[72px] rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
+        className="h-8 w-full min-w-0 flex-1 rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none sm:w-[72px] sm:flex-none"
       />
       <span className="text-[#FDFDFF]" aria-hidden>-</span>
       <input
         type="text"
         value={value[maxKey] as string}
         onChange={(e) => range(minKey, maxKey, value[minKey] as string, e.target.value)}
-        className="h-8 w-[72px] rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
+        className="h-8 w-full min-w-0 flex-1 rounded-md border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none sm:w-[72px] sm:flex-none"
       />
     </div>
   );

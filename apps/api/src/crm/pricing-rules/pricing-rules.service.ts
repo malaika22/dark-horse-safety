@@ -421,34 +421,26 @@ export class PricingRulesService {
     const historySource =
       changed.length > 0 ? changed : recentRules.slice(0, 8);
 
-    const rateChanges = historySource.slice(0, 12).map((r) => {
-      const hasPrior =
-        r.minimumCharge != null && Number(r.minimumCharge) > 0;
-      return {
-        id: r.id,
-        label: `${r.customer.name} · ${r.serviceItem}`,
-        from: hasPrior ? money(r.minimumCharge) : '—',
-        to: money(r.rate),
-        cycle: cycleLabel(r.effectiveFrom ?? r.updatedAt),
-        changedBy: userShortLabel(r.owner),
-        date: isoDay(r.updatedAt),
-        reason: r.notes?.trim() || 'Rate update',
-      };
-    });
+    const rateChanges = historySource.slice(0, 12).map((r) => ({
+      id: r.id,
+      label: `${r.customer.name} · ${r.serviceItem}`,
+      from: '—',
+      to: money(r.rate),
+      cycle: cycleLabel(r.effectiveFrom ?? r.updatedAt),
+      changedBy: userShortLabel(r.owner),
+      date: isoDay(r.updatedAt),
+      reason: r.notes?.trim() || 'Current rate',
+    }));
 
-    const scheduleChanges = scheduledRules.slice(0, 12).map((r) => {
-      const hasPrior =
-        r.minimumCharge != null && Number(r.minimumCharge) > 0;
-      return {
-        id: r.id,
-        customer: `${r.customer.name} · ${r.serviceItem}`,
-        from: hasPrior ? money(r.minimumCharge) : undefined,
-        to: money(r.rate),
-        cycle: cycleLabel(r.effectiveFrom),
-        scheduledBy: userShortLabel(r.owner),
-        effective: isoDay(r.effectiveFrom),
-      };
-    });
+    const scheduleChanges = scheduledRules.slice(0, 12).map((r) => ({
+      id: r.id,
+      customer: `${r.customer.name} · ${r.serviceItem}`,
+      from: undefined,
+      to: money(r.rate),
+      cycle: cycleLabel(r.effectiveFrom),
+      scheduledBy: userShortLabel(r.owner),
+      effective: isoDay(r.effectiveFrom),
+    }));
 
     const gateRules = await this.prisma.formRule.findMany({
       where: { archivedAt: null, hardGate: true },

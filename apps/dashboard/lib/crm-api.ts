@@ -883,7 +883,12 @@ export type CrmRouteRule = {
   customerId: string;
   locationId?: string | null;
   customer?: { id: string; name: string } | null;
-  location?: { id: string; name: string } | null;
+  location?: {
+    id: string;
+    name: string;
+    city?: string | null;
+    openJobs?: number;
+  } | null;
   owner?: CrmUserRef | null;
   createdAt: string;
 };

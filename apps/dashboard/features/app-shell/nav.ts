@@ -62,6 +62,11 @@ export const APP_NAV: NavItem[] = [
         label: "Sales Calendar",
         href: "/crm/sales-calendar",
       },
+      {
+        id: "sales-summary",
+        label: "Sales Summary",
+        href: "/crm/sales-summary",
+      },
     ],
   },
   {

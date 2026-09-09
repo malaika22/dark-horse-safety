@@ -12,6 +12,7 @@ import {
   useHeaderActionsSlot,
 } from "./header-actions-context";
 import { SessionProvider, useSession } from "./session-context";
+import { BrandLoader } from "@/features/loading/brand-loader";
 
 export type HeaderMeta = {
   breadcrumb: string;
@@ -96,6 +97,11 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
     pageTitle: "Sales Summary",
   },
   { path: "/crm", breadcrumb: "CRM / CRM Dashboard", pageTitle: null },
+  {
+    path: "/crm/rep-dashboard",
+    breadcrumb: "Sales / My Dashboard",
+    pageTitle: null,
+  },
   {
     path: "/hr/pay-cycle",
     breadcrumb: "Employees & HR",
@@ -342,8 +348,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex h-dvh items-center justify-center bg-shell px-4 text-center text-xs font-semibold uppercase tracking-[0.1em] text-foreground-muted">
-        Loading session…
+      <div className="flex h-dvh w-full items-center justify-center bg-shell p-6">
+        <BrandLoader label="Loading" />
       </div>
     );
   }

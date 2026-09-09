@@ -1333,7 +1333,16 @@ async function main() {
     });
   }
 
-  // ─── Sales activities ─────────────────────────────────────────────────────
+  // ─── Sales activities (relative to today so dashboards stay live) ─────────
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const day = (offset: number, hour = 12) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + offset);
+    d.setHours(hour, 0, 0, 0);
+    return d;
+  };
+
   const activityDefs = [
     {
       activityCode: 'ACT-000001',
@@ -1345,7 +1354,8 @@ async function main() {
       customerId: c1.id,
       contactId: contacts[0].id,
       repId: admin.id,
-      activityAt: new Date('2026-09-02T15:00:00Z'),
+      activityAt: day(-1, 10),
+      followUpAt: day(0, 15),
     },
     {
       activityCode: 'ACT-000002',
@@ -1357,7 +1367,7 @@ async function main() {
       customerId: c1.id,
       contactId: contacts[0].id,
       repId: admin.id,
-      activityAt: new Date('2026-09-03T18:00:00Z'),
+      activityAt: day(0, 9),
     },
     {
       activityCode: 'ACT-000003',
@@ -1369,7 +1379,8 @@ async function main() {
       customerId: c2.id,
       contactId: contacts[1].id,
       repId: torres.id,
-      activityAt: new Date('2026-09-04T16:30:00Z'),
+      activityAt: day(-2, 14),
+      followUpAt: day(1, 11),
     },
     {
       activityCode: 'ACT-000004',
@@ -1381,7 +1392,8 @@ async function main() {
       customerId: c3.id,
       contactId: contacts[2].id,
       repId: admin.id,
-      activityAt: new Date('2026-09-05T14:00:00Z'),
+      activityAt: day(-1, 16),
+      followUpAt: day(-2, 10),
     },
     {
       activityCode: 'ACT-000005',
@@ -1393,7 +1405,7 @@ async function main() {
       customerId: c5.id,
       contactId: contacts[5].id,
       repId: nguyen.id,
-      activityAt: new Date('2026-09-03T20:00:00Z'),
+      activityAt: day(-3, 11),
     },
     {
       activityCode: 'ACT-000006',
@@ -1405,7 +1417,7 @@ async function main() {
       customerId: c5.id,
       contactId: contacts[5].id,
       repId: nguyen.id,
-      activityAt: new Date('2026-09-04T19:00:00Z'),
+      activityAt: day(-2, 13),
     },
     {
       activityCode: 'ACT-000007',
@@ -1417,7 +1429,8 @@ async function main() {
       customerId: c7.id,
       contactId: contacts[7].id,
       repId: nguyen.id,
-      activityAt: new Date('2026-09-02T17:00:00Z'),
+      activityAt: day(-4, 15),
+      followUpAt: day(0, 16),
     },
     {
       activityCode: 'ACT-000008',
@@ -1429,7 +1442,7 @@ async function main() {
       customerId: c8.id,
       contactId: contacts[8].id,
       repId: torres.id,
-      activityAt: new Date('2026-08-25T15:00:00Z'),
+      activityAt: day(-6, 12),
     },
     {
       activityCode: 'ACT-000009',
@@ -1441,7 +1454,8 @@ async function main() {
       customerId: c4.id,
       contactId: contacts[3].id,
       repId: torres.id,
-      activityAt: new Date('2026-09-01T16:00:00Z'),
+      activityAt: day(-1, 11),
+      followUpAt: day(0, 14),
     },
     {
       activityCode: 'ACT-000010',
@@ -1453,7 +1467,8 @@ async function main() {
       customerId: c6.id,
       contactId: contacts[6].id,
       repId: admin.id,
-      activityAt: new Date('2026-09-05T13:00:00Z'),
+      activityAt: day(0, 11),
+      followUpAt: day(0, 17),
     },
   ];
 
@@ -1465,21 +1480,18 @@ async function main() {
         outcome: data.outcome,
         status: data.status,
         customerId: data.customerId,
+        contactId: data.contactId,
         repId: data.repId,
+        activityAt: data.activityAt,
+        followUpAt: data.followUpAt ?? null,
+        type: data.type,
+        duration: data.duration,
       },
       create: data,
     });
   }
 
   // ─── EOD reports ──────────────────────────────────────────────────────────
-  const today = new Date();
-  today.setUTCHours(12, 0, 0, 0);
-  const day = (offset: number) => {
-    const d = new Date(today);
-    d.setUTCDate(d.getUTCDate() + offset);
-    return d;
-  };
-
   const eodDefs = [
     {
       reportCode: 'EOD-SEED-001',

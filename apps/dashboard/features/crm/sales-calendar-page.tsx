@@ -703,7 +703,7 @@ export function SalesCalendarPage() {
         <div className="overflow-hidden rounded-xl border border-divider bg-panel">
           <div className="overflow-x-auto [-ms-overflow-style:auto] [scrollbar-width:thin]">
             <div
-              className="min-w-[880px]"
+              className="min-w-[640px] md:min-w-[880px]"
               style={{
                 display: "grid",
                 gridTemplateColumns: `120px repeat(${days.length}, minmax(140px, 1fr))`,

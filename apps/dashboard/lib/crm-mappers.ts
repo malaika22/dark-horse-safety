@@ -396,8 +396,8 @@ export function mapRouteLocationCard(r: CrmRouteRule): RouteLocationCard {
     customerId: r.customerId,
     locationId: r.locationId ?? r.location?.id ?? undefined,
     geofenceRadius: r.geofenceRadius ?? undefined,
-    city: "—",
-    openJobs: 0,
+    city: r.location?.city?.trim() || "—",
+    openJobs: r.location?.openJobs ?? 0,
     gpsStatus: r.gpsRequired ? "GPS Set" : "Not set",
     status: statusBadge(r.status),
   };

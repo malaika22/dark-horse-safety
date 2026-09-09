@@ -82,7 +82,7 @@ function BreadcrumbTrail({ breadcrumb }: { breadcrumb: string }) {
   if (parts.length === 0) return null;
 
   return (
-    <p className="min-w-0 truncate font-sans text-[18px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[22px]">
+    <p className="min-w-0 truncate font-sans text-[15px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] sm:text-[18px] md:text-[22px]">
       {parts.map((part, i) => (
         <Fragment key={`${part}-${i}`}>
           {i > 0 ? <span className="text-[#FDFDFF]"> / </span> : null}
@@ -332,21 +332,17 @@ export function AppPageToolbar({
   if (!pageTitle && !actions) return null;
 
   return (
-    <div className="flex w-full flex-wrap items-center justify-between gap-3 bg-shell px-3 py-3 sm:gap-4 sm:px-6 sm:py-3.5">
+    <div className="flex w-full flex-col gap-3 bg-shell px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-3.5">
       {pageTitle ? (
         <h1 className="min-w-0 flex-1 font-sans text-[18px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[22px]">
           {pageTitle}
         </h1>
       ) : null}
-      {pageTitle ? (
-        actions ? (
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            {actions}
-          </div>
-        ) : null
-      ) : (
-        actions
-      )}
+      {actions ? (
+        <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 sm:justify-end">
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }

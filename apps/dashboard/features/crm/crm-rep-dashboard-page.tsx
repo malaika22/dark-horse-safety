@@ -294,7 +294,7 @@ function Panel({
 }) {
   return (
     <section className="overflow-hidden rounded-xl border border-[#2D2D30] bg-[#121212]">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#2D2D30] px-4 py-3.5 sm:px-5">
+      <div className="flex flex-col gap-1 border-b border-[#2D2D30] px-4 py-3.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2 sm:px-5">
         <div className="min-w-0 font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
           {title}
         </div>
@@ -352,7 +352,7 @@ export function CrmRepDashboardPage() {
 
   if (loading && !data) {
     return (
-      <div className="flex min-h-[320px] items-center justify-center bg-shell p-6">
+      <div className="flex min-h-[calc(100dvh-10rem)] w-full items-center justify-center bg-shell p-6">
         <BrandLoader label="Loading dashboard" />
       </div>
     );
@@ -434,14 +434,14 @@ export function CrmRepDashboardPage() {
         />
       </div>
 
-      <div className="relative inline-flex">
+      <div className="relative inline-flex max-w-full">
         <button
           ref={rangeRef}
           type="button"
           onClick={() => setRangeOpen((v) => !v)}
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#3E3E3E] bg-[#1A1A1A] px-3 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] hover:bg-[#222]"
+          className="inline-flex h-9 max-w-full items-center gap-2 truncate rounded-lg border border-[#3E3E3E] bg-[#1A1A1A] px-3 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] hover:bg-[#222]"
         >
-          {formatRangeLabel(from, to)}
+          <span className="min-w-0 truncate">{formatRangeLabel(from, to)}</span>
           <ChevronDown />
         </button>
         <DashboardMenuPopover

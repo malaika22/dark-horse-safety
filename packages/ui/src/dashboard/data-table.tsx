@@ -118,7 +118,7 @@ export function DashboardDataTable<T>({
       )}
     >
       <div className="overflow-x-auto [-ms-overflow-style:auto] [scrollbar-width:thin] sm:scrollbar-hidden">
-        <table className="dashboard-data-table w-full min-w-[640px] border-collapse text-left lg:min-w-[900px]">
+        <table className="dashboard-data-table w-full min-w-0 border-collapse text-left md:min-w-[640px] xl:min-w-[900px]">
           <thead>
             <tr>
               {selectable ? (
