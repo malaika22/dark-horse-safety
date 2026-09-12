@@ -68,11 +68,16 @@ export const ROUTE_RULES_KPI_SHELL: KpiCell[] = [
 ];
 
 export const EOD_KPI_SHELL: KpiCell[] = [
-  { title: "Today", value: "—", icon: "lightning" },
-  { title: "Submitted", value: "—", icon: "document" },
-  { title: "Pending", value: "—", icon: "time" },
-  { title: "Team Activities", value: "—", icon: "customers" },
-  { title: "Pipeline", value: "—", icon: "folder" },
+  { title: "Due Today", value: "—", meta: "Reports Due", icon: "lightning" },
+  { title: "Submitted", value: "—", meta: "Today", icon: "document" },
+  { title: "Missing", value: "—", meta: "Not Submitted", icon: "time" },
+  {
+    title: "Team Activities",
+    value: "—",
+    meta: "Team · This Week",
+    icon: "document",
+  },
+  { title: "Team Pipeline", value: "—", meta: "This Week", icon: "folder" },
 ];
 
 export const SALES_KPI_SHELL: KpiCell[] = [
@@ -84,11 +89,11 @@ export const SALES_KPI_SHELL: KpiCell[] = [
 ];
 
 export const QUOTES_KPI_SHELL: KpiCell[] = [
-  { title: "Draft", value: "—", icon: "lightning" },
-  { title: "Sent", value: "—", icon: "document" },
-  { title: "Approved", value: "—", icon: "folder" },
-  { title: "Expired", value: "—", icon: "document" },
-  { title: "Converted", value: "—", icon: "document" },
+  { title: "Draft", value: "—", meta: "Open Drafts", icon: "lightning" },
+  { title: "Sent", value: "—", meta: "Awaiting Response", icon: "document" },
+  { title: "Approved", value: "—", meta: "Ready to Convert", icon: "folder" },
+  { title: "Expired", value: "—", meta: "Need Renewal", icon: "document" },
+  { title: "Converted", value: "—", meta: "Won", icon: "document" },
 ];
 
 export const CUSTOMERS_SORT_OPTIONS: SortOption[] = [
@@ -148,7 +153,9 @@ export const ROUTE_RULES_SORT_OPTIONS: SortOption[] = [
 
 export const EOD_SORT_OPTIONS: SortOption[] = [
   { id: "reportDate", label: "Date" },
-  { id: "reportCode", label: "Report ID" },
+  { id: "rep", label: "Rep" },
+  { id: "activities", label: "Activities" },
+  { id: "pipelineAdded", label: "Pipeline Added" },
   { id: "status", label: "Status" },
 ];
 
@@ -159,9 +166,13 @@ export const SALES_SORT_OPTIONS: SortOption[] = [
 ];
 
 export const QUOTES_SORT_OPTIONS: SortOption[] = [
-  { id: "createdAt", label: "Created" },
   { id: "quoteNumber", label: "Quote #" },
+  { id: "customer", label: "Customer" },
+  { id: "amount", label: "Value" },
   { id: "status", label: "Status" },
+  { id: "createdAt", label: "Created" },
+  { id: "expiresAt", label: "Expires" },
+  { id: "owner", label: "Rep" },
 ];
 
 export const CONTACT_DETAIL_TABS = [

@@ -73,6 +73,11 @@ export class CreateRequirementDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  evidenceUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   renewalPeriod?: string;
 
   @ApiPropertyOptional()

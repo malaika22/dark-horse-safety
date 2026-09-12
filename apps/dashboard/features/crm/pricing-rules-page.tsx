@@ -685,6 +685,25 @@ export function PricingRulesPage() {
                 onSelect: () =>
                   router.push(`/crm/pricing-rules/${row.id}/edit`),
               },
+              ...(row.approvalStatus?.toUpperCase() === "PENDING"
+                ? [
+                    {
+                      id: "approve",
+                      label: "Approve Rate",
+                      onSelect: () => {
+                        void (async () => {
+                          try {
+                            await crmApi.approvePricingRule(row.id);
+                            toastSuccess("Pricing rule approved");
+                            reload();
+                          } catch (err) {
+                            toastApiError(err);
+                          }
+                        })();
+                      },
+                    },
+                  ]
+                : []),
               {
                 id: "dup-customer",
                 label: "Duplicate to Another Customer",

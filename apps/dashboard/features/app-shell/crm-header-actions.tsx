@@ -178,13 +178,51 @@ export function AddRouteRuleHeaderButton() {
   );
 }
 
+function QuoteDocIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={className}
+    >
+      <path
+        d="M8 3.5h5.5L18 8v12.5a1 1 0 01-1 1H8a1 1 0 01-1-1v-16a1 1 0 011-1z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M13.5 3.5V8H18"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 12v5M9.5 14.5h5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function CreateQuoteHeaderButton() {
   return (
-    <AddHeaderButton
-      href="/crm/quotes/new"
-      label="Create Quote"
-      shortLabel="Quote"
-    />
+    <Link href="/crm/quotes/new" className="inline-flex max-w-full shrink-0">
+      <DashboardToolbarButton
+        variant="primary"
+        leftIcon={<QuoteDocIcon className="shrink-0" />}
+        showChevron
+        className="!px-2.5 sm:!px-3"
+      >
+        <span className="hidden sm:inline">Create Quote</span>
+        <span className="sm:hidden">Quote</span>
+      </DashboardToolbarButton>
+    </Link>
   );
 }
 
@@ -315,11 +353,26 @@ export function DashboardHeaderActions() {
   );
 }
 
+export function LinkExistingContactHeaderButton() {
+  return (
+    <DashboardToolbarButton
+      className="!px-2.5 sm:!px-3"
+      onClick={() => {
+        window.dispatchEvent(new CustomEvent("crm:link-existing-contact"));
+      }}
+    >
+      <span className="hidden sm:inline">Link to Existing Contact</span>
+      <span className="sm:hidden">Link</span>
+    </DashboardToolbarButton>
+  );
+}
+
 /** Listing-page header CTAs keyed by exact path (no trailing slash). */
 export const CRM_LIST_HEADER_ACTIONS: Record<string, () => ReactElement> = {
   "/dashboard": DashboardHeaderActions,
   "/crm/accounts": AddCustomerHeaderButton,
   "/crm/contacts": AddContactHeaderButton,
+  "/crm/contacts/new": LinkExistingContactHeaderButton,
   "/crm/locations": AddLocationHeaderButton,
   "/crm/pricing-rules": AddPricingRuleHeaderButton,
   "/crm/requirements": AddRequirementHeaderButton,

@@ -36,14 +36,17 @@ export function DashboardField({
   className,
   children,
 }: DashboardFieldProps) {
+  const showLabel = Boolean(label.trim());
   return (
     <label
       htmlFor={htmlFor}
-      className={cn("flex min-w-0 flex-col gap-2", className)}
+      className={cn("flex min-w-0 flex-col", showLabel ? "gap-2" : "gap-0", className)}
     >
-      <span className="font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]">
-        <FieldLabelText label={label} />
-      </span>
+      {showLabel ? (
+        <span className="font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]">
+          <FieldLabelText label={label} />
+        </span>
+      ) : null}
       {children}
     </label>
   );
@@ -52,10 +55,35 @@ export function DashboardField({
 const controlClass =
   "h-10 w-full rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] px-3 font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] outline-none transition-colors placeholder:text-[#959597] focus:border-[#5A5A5A] disabled:cursor-not-allowed disabled:opacity-50 md:text-[13px]";
 
+const errorControlClass =
+  "border-[#E5484D] bg-[#2A1515] focus:border-[#E5484D] focus:bg-[#2A1515]";
+
+function FieldError({ error }: { error?: string | null }) {
+  if (!error) return null;
+  return (
+    <span className="font-sans text-[11px] font-normal uppercase tracking-[-0.02em] text-[#E5484D]">
+      {error}
+    </span>
+  );
+}
+
+function FieldHint({ hint }: { hint?: string | null }) {
+  if (!hint) return null;
+  return (
+    <span className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#6F6F72]">
+      {hint}
+    </span>
+  );
+}
+
 export interface DashboardTextFieldProps
   extends React.InputHTMLAttributes<HTMLInputElement> {
   label: string;
   containerClassName?: string;
+  /** Field-level validation message (red). */
+  error?: string | null;
+  /** Optional helper under the control. */
+  hint?: string | null;
 }
 
 export function DashboardTextField({
@@ -63,12 +91,57 @@ export function DashboardTextField({
   id,
   containerClassName,
   className,
+  error,
+  hint,
   ...props
 }: DashboardTextFieldProps) {
   const fieldId = id ?? React.useId();
   return (
     <DashboardField label={label} htmlFor={fieldId} className={containerClassName}>
-      <input id={fieldId} className={cn(controlClass, className)} {...props} />
+      <input
+        id={fieldId}
+        aria-invalid={Boolean(error)}
+        className={cn(controlClass, error && errorControlClass, className)}
+        {...props}
+      />
+      {error ? <FieldError error={error} /> : <FieldHint hint={hint} />}
+    </DashboardField>
+  );
+}
+
+export interface DashboardTextAreaFieldProps
+  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label: string;
+  containerClassName?: string;
+  error?: string | null;
+  hint?: string | null;
+}
+
+export function DashboardTextAreaField({
+  label,
+  id,
+  containerClassName,
+  className,
+  error,
+  hint,
+  rows = 4,
+  ...props
+}: DashboardTextAreaFieldProps) {
+  const fieldId = id ?? React.useId();
+  return (
+    <DashboardField label={label} htmlFor={fieldId} className={containerClassName}>
+      <textarea
+        id={fieldId}
+        rows={rows}
+        aria-invalid={Boolean(error)}
+        className={cn(
+          "min-h-[96px] w-full rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] px-3 py-2.5 font-sans text-[12px] font-normal uppercase leading-relaxed tracking-[-0.02em] text-[#FDFDFF] outline-none transition-colors placeholder:text-[#959597] focus:border-[#5A5A5A] disabled:cursor-not-allowed disabled:opacity-50 md:text-[13px]",
+          error && errorControlClass,
+          className,
+        )}
+        {...props}
+      />
+      {error ? <FieldError error={error} /> : <FieldHint hint={hint} />}
     </DashboardField>
   );
 }
@@ -88,6 +161,8 @@ export interface DashboardSelectFieldProps
   /** Shown inside the open list when `options` is empty (and not loading). */
   emptyMessage?: string;
   loading?: boolean;
+  error?: string | null;
+  hint?: string | null;
 }
 
 export function DashboardSelectField({
@@ -99,6 +174,8 @@ export function DashboardSelectField({
   loading = false,
   containerClassName,
   className,
+  error,
+  hint,
   ...props
 }: DashboardSelectFieldProps) {
   const fieldId = id ?? React.useId();
@@ -108,7 +185,13 @@ export function DashboardSelectField({
       <div className="relative">
         <select
           id={fieldId}
-          className={cn(controlClass, "appearance-none pr-9", className)}
+          aria-invalid={Boolean(error)}
+          className={cn(
+            controlClass,
+            "appearance-none pr-9",
+            error && errorControlClass,
+            className,
+          )}
           {...props}
         >
           {loading && !hasOptions ? (
@@ -130,6 +213,7 @@ export function DashboardSelectField({
         </select>
         <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-white" />
       </div>
+      {error ? <FieldError error={error} /> : <FieldHint hint={hint} />}
     </DashboardField>
   );
 }

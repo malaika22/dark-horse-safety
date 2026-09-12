@@ -2,13 +2,18 @@ import { PartialType } from '@nestjs/swagger';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsDateString,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
+  Min,
+  ValidateIf,
 } from 'class-validator';
 import { ListQueryDto } from '../../../common/dto/list-query.dto';
 
@@ -52,21 +57,24 @@ export class PricingRuleListQueryDto extends ListQueryDto {
 
 export class CreatePricingRuleDto {
   @ApiProperty()
-  @IsUUID()
+  @IsUUID('4', { message: 'Select a customer.' })
+  @IsNotEmpty({ message: 'Select a customer.' })
   customerId!: string;
 
   @ApiProperty()
   @IsString()
+  @IsNotEmpty({ message: 'Select a service / item.' })
   serviceItem!: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
+  @ApiProperty()
   @IsString()
-  rateType?: string;
+  @IsNotEmpty({ message: 'Select a rate type.' })
+  rateType!: string;
 
   @ApiProperty()
-  @IsNumber()
   @Type(() => Number)
+  @IsNumber({}, { message: 'Enter a rate.' })
+  @Min(0, { message: 'Enter a rate.' })
   rate!: number;
 
   @ApiPropertyOptional()
@@ -87,18 +95,72 @@ export class CreatePricingRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsDateString()
-  effectiveFrom?: string;
+  @IsString()
+  overtimeThreshold?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsDateString()
+  @IsNumber()
+  @Type(() => Number)
+  halfDayRate?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  minimumQuantity?: number;
+
+  @ApiProperty()
+  @IsNotEmpty({ message: 'Select effective from.' })
+  @IsDateString({}, { message: 'Select effective from.' })
+  effectiveFrom!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString({}, { message: 'Enter a valid effective to date.' })
   effectiveTo?: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty({ message: 'Enter notes / justification.' })
+  @MaxLength(500, { message: 'Max 500 characters.' })
+  notes!: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  notes?: string;
+  netsuiteItem?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  appliesTo?: string;
+
+  @ApiPropertyOptional()
+  @ValidateIf((o: CreatePricingRuleDto) =>
+    (o.appliesTo ?? '').toUpperCase() === 'SPECIFIC_WELLS',
+  )
+  @IsArray({ message: 'Add at least one well, or set Applies To to All Sites.' })
+  @ArrayMinSize(1, {
+    message: 'Add at least one well, or set Applies To to All Sites.',
+  })
+  @IsString({ each: true })
+  appliesToWells?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  approvalStatus?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  approvedBy?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  approvedAt?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

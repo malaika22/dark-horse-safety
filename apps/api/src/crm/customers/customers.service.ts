@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,6 +11,7 @@ import {
   isoDate,
   userLabel,
 } from '../../common/services/export.service';
+import { UploadsService } from '../../common/services/uploads.service';
 import {
   containsCi,
   orderByFrom,
@@ -18,8 +21,10 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { openWorkOrderWhere } from '../common/open-jobs.util';
 import {
+  CreateCustomerDocumentDto,
   CreateCustomerDto,
   CustomerListQueryDto,
+  UpdateCustomerDocumentDto,
   UpdateCustomerDto,
 } from './dto/customer.dto';
 
@@ -42,6 +47,7 @@ export class CustomersService {
     private readonly prisma: PrismaService,
     private readonly codes: CodeGeneratorService,
     private readonly exportService: ExportService,
+    private readonly uploads: UploadsService,
   ) {}
 
   private where(query: CustomerListQueryDto): Prisma.CustomerWhereInput {
@@ -167,6 +173,9 @@ export class CustomersService {
         assignedRep: {
           select: { id: true, firstName: true, lastName: true, email: true },
         },
+        parentCompany: {
+          select: { id: true, name: true, code: true },
+        },
         contacts: { where: { archivedAt: null }, take: 50, orderBy: { fullName: 'asc' } },
         locations: { where: { archivedAt: null }, take: 50, orderBy: { name: 'asc' } },
         pricingRules: { where: { archivedAt: null }, take: 20 },
@@ -185,12 +194,74 @@ export class CustomersService {
     return { data: { ...customer, openJobs } };
   }
 
+  private async assertUniqueName(name: string, excludeId?: string) {
+    const existing = await this.prisma.customer.findFirst({
+      where: {
+        name: { equals: name.trim(), mode: 'insensitive' },
+        archivedAt: null,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true, code: true },
+    });
+    if (existing) {
+      throw new ConflictException({
+        code: 'DUPLICATE_NAME',
+        message: 'A customer with this name already exists.',
+        details: {
+          name: [
+            `A customer with this name already exists. Open existing record →`,
+          ],
+          existingId: [existing.id],
+        },
+      });
+    }
+  }
+
+  private assertExpiryNotPast(field: string, value?: string | null) {
+    if (!value) return;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (d < today) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          [field]: ['This date has already passed.'],
+        },
+      });
+    }
+  }
+
+  private assertCreateRequired(dto: CreateCustomerDto) {
+    const details: Record<string, string[]> = {};
+    if (!dto.name?.trim()) details.name = ['Required.'];
+    if (!dto.status?.trim()) details.status = ['Required.'];
+    if (!dto.assignedRepId) details.assignedRepId = ['Required.'];
+    if (!dto.customerType?.trim()) details.customerType = ['Required.'];
+    if (!dto.billingAddress?.trim()) details.billingAddress = ['Required.'];
+    if (!dto.paymentTerms?.trim()) details.paymentTerms = ['Required.'];
+    if (Object.keys(details).length) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details,
+      });
+    }
+  }
+
   async create(dto: CreateCustomerDto) {
+    this.assertCreateRequired(dto);
+    await this.assertUniqueName(dto.name);
+    this.assertExpiryNotPast('msaExpiry', dto.msaExpiry);
+    this.assertExpiryNotPast('coiExpiry', dto.coiExpiry);
+
     const code = await this.codes.next('customer');
     const customer = await this.prisma.customer.create({
       data: {
         code,
-        name: dto.name,
+        name: dto.name.trim(),
         legalEntityName: dto.legalEntityName,
         status: (dto.status as CrmRecordStatus) ?? CrmRecordStatus.ACTIVE,
         assignedRepId: dto.assignedRepId,
@@ -198,6 +269,11 @@ export class CustomersService {
         website: dto.website,
         phone: dto.phone,
         email: dto.email,
+        customerType: dto.customerType,
+        source: dto.source,
+        accountNotes: dto.accountNotes,
+        logoUrl: dto.logoUrl,
+        parentCompanyId: dto.parentCompanyId,
         billingAddress: dto.billingAddress,
         mailingAddress: dto.mailingAddress,
         paymentTerms: dto.paymentTerms,
@@ -224,10 +300,14 @@ export class CustomersService {
 
   async update(id: string, dto: UpdateCustomerDto) {
     await this.ensureExists(id);
+    if (dto.name?.trim()) await this.assertUniqueName(dto.name, id);
+    this.assertExpiryNotPast('msaExpiry', dto.msaExpiry);
+    this.assertExpiryNotPast('coiExpiry', dto.coiExpiry);
+
     const customer = await this.prisma.customer.update({
       where: { id },
       data: {
-        ...(dto.name !== undefined ? { name: dto.name } : {}),
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
         ...(dto.legalEntityName !== undefined
           ? { legalEntityName: dto.legalEntityName }
           : {}),
@@ -241,6 +321,17 @@ export class CustomersService {
         ...(dto.website !== undefined ? { website: dto.website } : {}),
         ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
         ...(dto.email !== undefined ? { email: dto.email } : {}),
+        ...(dto.customerType !== undefined
+          ? { customerType: dto.customerType }
+          : {}),
+        ...(dto.source !== undefined ? { source: dto.source } : {}),
+        ...(dto.accountNotes !== undefined
+          ? { accountNotes: dto.accountNotes }
+          : {}),
+        ...(dto.logoUrl !== undefined ? { logoUrl: dto.logoUrl } : {}),
+        ...(dto.parentCompanyId !== undefined
+          ? { parentCompanyId: dto.parentCompanyId }
+          : {}),
         ...(dto.billingAddress !== undefined
           ? { billingAddress: dto.billingAddress }
           : {}),
@@ -285,6 +376,14 @@ export class CustomersService {
           ? { defaultRequiredForms: dto.defaultRequiredForms }
           : {}),
       },
+      include: {
+        assignedRep: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+        parentCompany: {
+          select: { id: true, name: true, code: true },
+        },
+      },
     });
     return { data: customer };
   }
@@ -320,6 +419,31 @@ export class CustomersService {
       data,
     });
     return { data: { updated: result.count } };
+  }
+
+  async createDocument(customerId: string, dto: CreateCustomerDocumentDto) {
+    await this.ensureExists(customerId);
+    let url = dto.url?.trim() || undefined;
+
+    if (dto.contentBase64?.trim()) {
+      const saved = await this.uploads.saveBase64({
+        folder: `customers/${customerId}`,
+        fileName: dto.name,
+        contentBase64: dto.contentBase64,
+      });
+      url = saved.url;
+    }
+
+    const doc = await this.prisma.crmDocument.create({
+      data: {
+        customerId,
+        name: dto.name.trim(),
+        kind: dto.kind?.trim() || null,
+        url: url ?? null,
+        expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+      },
+    });
+    return { data: doc };
   }
 
   async updateDocument(
@@ -392,6 +516,11 @@ export class CustomersService {
         website: existing.website,
         phone: existing.phone,
         email: existing.email,
+        customerType: existing.customerType,
+        source: existing.source,
+        accountNotes: existing.accountNotes,
+        logoUrl: existing.logoUrl,
+        parentCompanyId: existing.parentCompanyId,
         billingAddress: existing.billingAddress,
         mailingAddress: existing.mailingAddress,
         paymentTerms: existing.paymentTerms,

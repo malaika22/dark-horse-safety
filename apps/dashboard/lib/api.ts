@@ -71,3 +71,17 @@ export function googleOAuthStartUrl() {
   const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002";
   return `${base.replace(/\/$/, "")}/auth/google`;
 }
+
+/** Resolve API-hosted file paths (`/uploads/...`) to absolute URLs for <img src>. */
+export function assetUrl(path?: string | null) {
+  if (!path) return "";
+  if (
+    path.startsWith("data:") ||
+    path.startsWith("blob:") ||
+    /^https?:\/\//i.test(path)
+  ) {
+    return path;
+  }
+  const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002";
+  return `${base.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+}

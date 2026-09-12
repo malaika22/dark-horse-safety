@@ -26,6 +26,7 @@ import {
   type DashboardSortDirection,
 } from "@dark-horse-safety/ui";
 import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
+import { assetUrl } from "@/lib/api";
 import { mapContactRow } from "@/lib/crm-mappers";
 import { kpiCellsFromApi } from "@/lib/crm-ui";
 import { useCrmList } from "@/lib/use-crm-list";
@@ -561,7 +562,27 @@ export function ContactsPage() {
       header: "Contact",
       className: "min-w-[180px] max-w-[240px]",
       cell: (row) => (
-        <DashboardTablePrimaryCell title={row.name} subtitle={row.code} underline />
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#3E3E3E] bg-[#1E3A5F] font-sans text-[10px] font-[590] text-[#7EB6FF]">
+            {row.photoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={assetUrl(row.photoUrl)}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              row.name
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((p) => p[0])
+                .join("")
+                .toUpperCase() || "CT"
+            )}
+          </div>
+          <DashboardTablePrimaryCell title={row.name} subtitle={row.code} underline />
+        </div>
       ),
     },
     {

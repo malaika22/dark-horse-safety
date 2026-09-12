@@ -238,6 +238,8 @@ export interface DashboardModalProps {
   open: boolean;
   onClose: () => void;
   title: string;
+  /** Optional icon/node rendered before the title (e.g. success/error status). */
+  titleLeading?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
   className?: string;
@@ -249,6 +251,7 @@ export function DashboardModal({
   open,
   onClose,
   title,
+  titleLeading,
   children,
   footer,
   className,
@@ -278,20 +281,23 @@ export function DashboardModal({
         )}
       >
         <div className="mb-5 flex items-center justify-between gap-3">
-          <h2 className="font-sans text-[16px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[18px]">
-            {title}
-          </h2>
+          <div className="flex min-w-0 items-center gap-2.5">
+            {titleLeading}
+            <h2 className="font-sans text-[16px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[18px]">
+              {title}
+            </h2>
+          </div>
           <button
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#959597] transition-colors hover:bg-white/5 hover:text-[#FDFDFF]"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#959597] transition-colors hover:bg-white/5 hover:text-[#FDFDFF]"
           >
             <CloseIcon />
           </button>
         </div>
         {children}
-        {footer ? <div className="mt-6 flex items-center justify-end gap-3">{footer}</div> : null}
+        {footer ? <div className="mt-6 flex flex-wrap items-center justify-end gap-3">{footer}</div> : null}
       </div>
     </div>,
     document.body,

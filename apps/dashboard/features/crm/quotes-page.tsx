@@ -26,7 +26,7 @@ import {
 } from "@dark-horse-safety/ui";
 import { ApiError } from "@dark-horse-safety/api-client";
 import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
-import { mapQuoteRow } from "@/lib/crm-mappers";
+import { mapQuoteRow, assignQuoteVersions } from "@/lib/crm-mappers";
 import { kpiCellsFromApi } from "@/lib/crm-ui";
 import { useCrmList } from "@/lib/use-crm-list";
 import { useCrmLookups, lookupOptions, optionLabel } from "@/lib/use-crm-lookups";
@@ -37,7 +37,28 @@ import { CrmListEmptyState } from "@/features/crm/crm-states";
 import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
 import { QUOTES_KPI_SHELL, QUOTES_SORT_OPTIONS } from "./crm-constants";
 import type { QuoteRow } from "./crm-types";
-import { SendQuoteModal, type SendQuotePayload } from "./send-quote-modal";
+import {
+  QuoteCompareVersionsModal,
+  QuoteVersionHistoryModal,
+  ResendQuoteModal,
+  WorkOrderCreatedModal,
+  type CompareVersionRow,
+  type QuoteVersionListItem,
+  type ResendQuotePayload,
+} from "./quote-flow-modals";
+
+function formatOpenQuotesSummary(amount: number, count: number) {
+  if (!count) return "Total — Across — Open Quotes";
+  const compact =
+    amount >= 1000
+      ? `$${Math.round(amount / 1000)}K`
+      : new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          maximumFractionDigits: 0,
+        }).format(amount);
+  return `Total ${compact} Across ${count} Open Quotes`;
+}
 
 async function fileToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
@@ -278,13 +299,43 @@ export function QuotesPage() {
   const [draftFilters, setDraftFilters] = React.useState<QuoteFilters>(DEFAULT_FILTERS);
   const [appliedFilters, setAppliedFilters] = React.useState<QuoteFilters>(DEFAULT_FILTERS);
   const [chips, setChips] = React.useState<{ id: string; label: string }[]>(DEFAULT_CHIPS);
-  const [sortField, setSortField] = React.useState("createdAt");
+  const [sortField, setSortField] = React.useState("quoteNumber");
   const [sortDirection, setSortDirection] = React.useState<DashboardSortDirection>("desc");
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [sendOpen, setSendOpen] = React.useState(false);
   const [sendQuoteId, setSendQuoteId] = React.useState<string | null>(null);
+  const [sendMeta, setSendMeta] = React.useState<{
+    recipient: string;
+    versionLabel: string;
+    warning: string | null;
+    message: string;
+  }>({ recipient: "", versionLabel: "Quote V1", warning: null, message: "" });
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [historyQuoteId, setHistoryQuoteId] = React.useState<string | null>(null);
+  const [historyMeta, setHistoryMeta] = React.useState<{
+    quoteNumber: string;
+    customer: string;
+    versions: QuoteVersionListItem[];
+  }>({ quoteNumber: "", customer: "", versions: [] });
+  const [compareOpen, setCompareOpen] = React.useState(false);
+  const [compareMeta, setCompareMeta] = React.useState<{
+    leftLabel: string;
+    rightLabel: string;
+    rows: CompareVersionRow[];
+  }>({ leftLabel: "V2", rightLabel: "V3", rows: [] });
+  const [woCreatedOpen, setWoCreatedOpen] = React.useState(false);
+  const [woCreated, setWoCreated] = React.useState<{
+    quoteId: string;
+    quoteNumber: string;
+    workOrderId: string;
+    workOrderCode: string;
+    customer: string;
+    value: string;
+    scheduled: string;
+    createdBy: string;
+  } | null>(null);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
   const {
@@ -303,10 +354,17 @@ export function QuotesPage() {
     if (appliedFilters.status) params.status = appliedFilters.status;
     if (appliedFilters.customer) params.customerId = appliedFilters.customer;
     if (appliedFilters.rep) params.ownerId = appliedFilters.rep;
+    if (appliedFilters.valueMin) params.valueMin = appliedFilters.valueMin;
+    if (appliedFilters.valueMax) params.valueMax = appliedFilters.valueMax;
+    if (appliedFilters.createdMin) params.createdMin = appliedFilters.createdMin;
+    if (appliedFilters.createdMax) params.createdMax = appliedFilters.createdMax;
+    if (appliedFilters.expiresMin) params.expiresMin = appliedFilters.expiresMin;
+    if (appliedFilters.expiresMax) params.expiresMax = appliedFilters.expiresMax;
+    if (appliedFilters.hasPo) params.hasPo = "true";
     return Object.keys(params).length ? params : undefined;
-  }, [appliedFilters.status, appliedFilters.customer, appliedFilters.rep]);
+  }, [appliedFilters]);
 
-  const { rows, total, kpiData, loading, initialLoading, error, reload } = useCrmList({
+  const { rows: rawRows, total, kpiData, loading, initialLoading, error, reload } = useCrmList({
     list: (p) => crmApi.listQuotes(p),
     mapRow: mapQuoteRow,
     kpi: () => crmApi.quotesKpi(),
@@ -318,10 +376,21 @@ export function QuotesPage() {
     extraParams,
   });
 
+  const rows = React.useMemo(() => assignQuoteVersions(rawRows), [rawRows]);
+
   const kpiCells = React.useMemo(
     () => kpiCellsFromApi(QUOTES_KPI_SHELL, kpiData),
     [kpiData],
   );
+
+  const openQuotesSummary = React.useMemo(() => {
+    const count = Number(kpiData.openCount ?? 0);
+    const amount = Number(kpiData.openAmount ?? 0);
+    return formatOpenQuotesSummary(
+      Number.isFinite(amount) ? amount : 0,
+      Number.isFinite(count) ? count : 0,
+    );
+  }, [kpiData.openAmount, kpiData.openCount]);
 
   const bulkOpen = selectedIds.length > 0;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -469,22 +538,37 @@ export function QuotesPage() {
 
   async function handleConvertToWorkOrder(id: string) {
     try {
-      if (typeof crmApi.convertQuoteToWorkOrder === "function") {
-        const res = await crmApi.convertQuoteToWorkOrder(id);
-        const wo = res.data;
-        toastSuccess("Converted to work order");
-        if (wo?.id) {
-          router.push(`/operations/work-orders/${wo.id}`);
-        } else {
-          router.push(
-            `/operations/work-orders/new?quoteId=${encodeURIComponent(id)}`,
-          );
-        }
-        return;
-      }
-      router.push(
-        `/operations/work-orders/new?quoteId=${encodeURIComponent(id)}`,
-      );
+      const res = await crmApi.convertQuoteToWorkOrder(id);
+      const wo = res.data;
+      const scheduled = wo.scheduled
+        ? new Date(wo.scheduled)
+            .toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })
+            .toUpperCase()
+        : "—";
+      const value =
+        wo.value != null
+          ? Number(wo.value).toLocaleString("en-US", {
+              style: "currency",
+              currency: "USD",
+              maximumFractionDigits: 0,
+            })
+          : "—";
+      setWoCreated({
+        quoteId: id,
+        quoteNumber: wo.quoteNumber ?? wo.quote?.quoteNumber ?? "—",
+        workOrderId: wo.id,
+        workOrderCode: wo.code ?? "—",
+        customer: wo.customer?.name ?? "—",
+        value,
+        scheduled,
+        createdBy: wo.createdBy ?? "—",
+      });
+      setWoCreatedOpen(true);
+      reload();
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         router.push(
@@ -496,25 +580,84 @@ export function QuotesPage() {
     }
   }
 
-  async function handleSendConfirm(payload: SendQuotePayload) {
+  async function openSendQuote(row: QuoteRow) {
+    try {
+      const res = await crmApi.getQuote(row.id);
+      const q = res.data;
+      const recipient =
+        q.contact?.email?.trim() ||
+        "";
+      const rev = q.revision ?? (Number(row.version.replace(/\D/g, "")) || 1);
+      const versions = await crmApi.listQuoteVersions(row.id).catch(() => null);
+      const prev = versions?.data.versions.find((v) => v.revision === rev - 1);
+      const firstName =
+        q.contact?.fullName?.trim().split(/\s+/)[0] ?? "there";
+      setSendQuoteId(row.id);
+      setSendMeta({
+        recipient: recipient.toUpperCase(),
+        versionLabel: `Quote V${rev}`,
+        warning: prev
+          ? `Re-sending V${rev}. The customer previously received V${prev.revision} on ${new Date(
+              prev.sentAt ?? prev.createdAt,
+            )
+              .toLocaleDateString("en-US", { month: "short", day: "numeric" })
+              .toUpperCase()}.`
+          : q.sentAt
+            ? `Re-sending V${rev}. This quote was previously sent.`
+            : null,
+        message: `Hi ${firstName} — attaching the revised quote (V${rev}). Let me know if you have questions.`,
+      });
+      setSendOpen(true);
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function openVersionHistory(row: QuoteRow) {
+    try {
+      const res = await crmApi.listQuoteVersions(row.id);
+      setHistoryQuoteId(row.id);
+      setHistoryMeta({
+        quoteNumber: res.data.quoteNumber,
+        customer: res.data.customer,
+        versions: res.data.versions,
+      });
+      setHistoryOpen(true);
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function openCompare(quoteId: string) {
+    try {
+      const res = await crmApi.compareQuoteVersions(quoteId);
+      const leftDate = new Date(res.data.left.date)
+        .toLocaleDateString("en-US", { month: "short", day: "numeric" })
+        .toUpperCase();
+      const rightDate = new Date(res.data.right.date)
+        .toLocaleDateString("en-US", { month: "short", day: "numeric" })
+        .toUpperCase();
+      setCompareMeta({
+        leftLabel: `${res.data.left.label} · ${leftDate}`,
+        rightLabel: `${res.data.right.label} · ${rightDate}${
+          res.data.right.isCurrent ? " · Current" : ""
+        }`,
+        rows: res.data.rows,
+      });
+      setCompareOpen(true);
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function handleSendConfirm(payload: ResendQuotePayload) {
     if (!sendQuoteId) return;
     try {
-      const attachmentIds: string[] = [];
-      for (const file of payload.files ?? []) {
-        const data = await fileToBase64(file);
-        const uploaded = await crmApi.uploadQuoteAttachment(sendQuoteId, {
-          fileName: file.name,
-          mimeType: file.type || undefined,
-          contentBase64: data,
-        });
-        if (uploaded.data?.id) attachmentIds.push(uploaded.data.id);
-      }
       await crmApi.sendQuote(sendQuoteId, {
         to: payload.recipient,
-        subject: payload.subject,
+        subject: payload.versionLabel,
         message: payload.message,
-        schedule: payload.schedule,
-        attachmentIds: attachmentIds.length ? attachmentIds : undefined,
+        attachPdf: payload.attachPdf,
       });
       toastSuccess("Quote sent");
       setSendQuoteId(null);
@@ -546,20 +689,38 @@ export function QuotesPage() {
         header: "Quote #",
         className: "min-w-[110px] max-w-[140px]",
         cell: (row) => (
-          <DashboardTablePrimaryCell title={row.quoteNumber} subtitle={row.createdDate} underline />
+          <DashboardTablePrimaryCell
+            title={row.quoteNumber}
+            subtitle={row.createdDate}
+            underline
+          />
         ),
+      },
+      {
+        id: "version",
+        header: "Version",
+        className: "min-w-[70px] hidden sm:table-cell",
+        cell: (row) => row.version,
       },
       {
         id: "customer",
         header: "Customer",
         className: "min-w-[120px] max-w-[160px]",
-        cell: (row) => row.customer,
+        cell: (row) => (
+          <span className="block truncate underline underline-offset-2">
+            {row.customer}
+          </span>
+        ),
       },
       {
         id: "contact",
         header: "Contact",
         className: "min-w-[110px] hidden md:table-cell",
-        cell: (row) => row.contact,
+        cell: (row) => (
+          <span className="block truncate underline underline-offset-2">
+            {row.contact}
+          </span>
+        ),
       },
       {
         id: "amount",
@@ -570,22 +731,34 @@ export function QuotesPage() {
       {
         id: "created",
         header: "Created",
-        className: "min-w-[80px] hidden md:table-cell",
+        className: "min-w-[100px] hidden md:table-cell",
         cell: (row) => (
           <div>
             <div>{row.created}</div>
-            <div className="text-[10px] uppercase text-muted-foreground">{row.createdDetail}</div>
+            {row.createdDetail ? (
+              <div className="mt-0.5 text-[10px] uppercase text-[#959597]">
+                {row.createdDetail}
+              </div>
+            ) : null}
           </div>
         ),
       },
       {
         id: "expires",
         header: "Expires",
-        className: "min-w-[110px] hidden lg:table-cell",
+        className: "min-w-[120px] hidden lg:table-cell",
         cell: (row) => (
-          <div>
+          <div className={row.expiresExpired ? "text-[#FF6B6B]" : undefined}>
             <div>{row.expires}</div>
-            <div className="text-[10px] text-muted-foreground">{row.expiresDetail}</div>
+            {row.expiresDetail ? (
+              <div
+                className={`mt-0.5 text-[10px] uppercase ${
+                  row.expiresExpired ? "text-[#FF6B6B]" : "text-[#959597]"
+                }`}
+              >
+                {row.expiresDetail}
+              </div>
+            ) : null}
           </div>
         ),
       },
@@ -594,26 +767,13 @@ export function QuotesPage() {
         header: "Owner",
         className: "min-w-[110px] hidden lg:table-cell",
         cell: (row) => (
-          <span className="underline underline-offset-2 cursor-pointer">{row.owner}</span>
+          <span className="underline underline-offset-2">{row.owner}</span>
         ),
-      },
-      {
-        id: "sent",
-        header: "Sent",
-        className: "min-w-[90px] hidden xl:table-cell",
-        cell: (row) =>
-          row.sent ? (
-            <DashboardBadge variant={row.sent.variant} pill className="max-w-full">
-              {row.sent.label}
-            </DashboardBadge>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          ),
       },
       {
         id: "status",
         header: "Status",
-        className: "min-w-[90px]",
+        className: "min-w-[100px]",
         cell: (row) => (
           <DashboardBadge variant={row.status.variant} pill className="max-w-full">
             {row.status.label}
@@ -623,15 +783,28 @@ export function QuotesPage() {
       {
         id: "approval",
         header: "Approval",
-        className: "min-w-[80px] hidden xl:table-cell",
-        cell: (row) =>
-          row.approval ? (
-            <DashboardBadge variant={row.approval.variant} pill className="max-w-full">
-              {row.approval.label}
-            </DashboardBadge>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          ),
+        className: "min-w-[90px] hidden xl:table-cell",
+        cell: (row) => (
+          <span
+            className={
+              row.approval === "—"
+                ? "text-[#959597]"
+                : "uppercase text-[#FDFDFF]"
+            }
+          >
+            {row.approval}
+          </span>
+        ),
+      },
+      {
+        id: "approvedOn",
+        header: "Approved On",
+        className: "min-w-[100px] hidden xl:table-cell",
+        cell: (row) => (
+          <span className={row.approvedOn === "—" ? "text-[#959597]" : undefined}>
+            {row.approvedOn}
+          </span>
+        ),
       },
       {
         id: "actions",
@@ -646,10 +819,12 @@ export function QuotesPage() {
               {
                 id: "send",
                 label: "Send to Customer",
-                onSelect: () => {
-                  setSendQuoteId(row.id);
-                  setSendOpen(true);
-                },
+                onSelect: () => void openSendQuote(row),
+              },
+              {
+                id: "versions",
+                label: "Version History",
+                onSelect: () => void openVersionHistory(row),
               },
               { id: "pdf",     label: "Download PDF",            onSelect: () => void handleDownloadPdf(row.id) },
               {
@@ -725,7 +900,7 @@ export function QuotesPage() {
         <DashboardListToolbar
           search={
             <DashboardSearchInput
-              placeholder="Search WO, Customer, Loca..."
+              placeholder="Search Quote Number · Customer..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -735,14 +910,18 @@ export function QuotesPage() {
               leftIcon={<DashboardToolbarIcons.Filter className="shrink-0" />}
               onClick={() => { setDraftFilters(appliedFilters); setFiltersOpen(true); }}
             >
-              {`Filter (${chips.length > 0 ? chips.length : "-"})`}
+              Filter
             </DashboardToolbarButton>
           }
           actions={
             <>
-              <DashboardToolbarButton onClick={() => setSavedViewsOpen(true)}>
-                Review Exceptions
-              </DashboardToolbarButton>
+              <DashboardSortMenu
+                options={QUOTES_SORT_OPTIONS}
+                field={sortField}
+                direction={sortDirection}
+                onFieldChange={setSortField}
+                onDirectionChange={setSortDirection}
+              />
               <DashboardExportMenu
                 items={[
                   { id: "view-csv", label: "Export current view • CSV", onSelect: () => void runExport() },
@@ -759,13 +938,9 @@ export function QuotesPage() {
                   },
                 ]}
               />
-              <DashboardSortMenu
-                options={QUOTES_SORT_OPTIONS}
-                field={sortField}
-                direction={sortDirection}
-                onFieldChange={setSortField}
-                onDirectionChange={setSortDirection}
-              />
+              <DashboardToolbarButton onClick={() => setSavedViewsOpen(true)}>
+                Saved Views
+              </DashboardToolbarButton>
             </>
           }
           chips={
@@ -792,6 +967,10 @@ export function QuotesPage() {
           }
         />
       )}
+
+      <p className="font-sans text-[11px] font-normal uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
+        {openQuotesSummary}
+      </p>
 
       <DashboardDataTable
         columns={columns}
@@ -884,13 +1063,69 @@ export function QuotesPage() {
           void createView(name, currentViewPayload());
         }}
       />
-      <SendQuoteModal
+      <ResendQuoteModal
         open={sendOpen}
         onClose={() => {
           setSendOpen(false);
           setSendQuoteId(null);
         }}
-        onConfirm={(payload) => handleSendConfirm(payload)}
+        defaultRecipient={sendMeta.recipient}
+        versionLabel={sendMeta.versionLabel}
+        warning={sendMeta.warning}
+        defaultMessage={sendMeta.message}
+        onPreview={() => {
+          if (sendQuoteId) router.push(`/crm/quotes/${sendQuoteId}/preview`);
+        }}
+        onSend={(payload) => handleSendConfirm(payload)}
+      />
+      <QuoteVersionHistoryModal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        quoteNumber={historyMeta.quoteNumber}
+        customer={historyMeta.customer}
+        versions={historyMeta.versions}
+        onCompare={() => {
+          if (historyQuoteId) {
+            setHistoryOpen(false);
+            void openCompare(historyQuoteId);
+          }
+        }}
+        onOpenCurrent={() => {
+          if (historyQuoteId) {
+            setHistoryOpen(false);
+            router.push(`/crm/quotes/${historyQuoteId}`);
+          }
+        }}
+      />
+      <QuoteCompareVersionsModal
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        leftLabel={compareMeta.leftLabel}
+        rightLabel={compareMeta.rightLabel}
+        rows={compareMeta.rows}
+        onKeepLeft={() => setCompareOpen(false)}
+        onSendRight={() => {
+          setCompareOpen(false);
+          if (historyQuoteId) {
+            const row = rows.find((r) => r.id === historyQuoteId);
+            if (row) void openSendQuote(row);
+          }
+        }}
+      />
+      <WorkOrderCreatedModal
+        open={woCreatedOpen && Boolean(woCreated)}
+        onClose={() => {
+          setWoCreatedOpen(false);
+          setWoCreated(null);
+        }}
+        quoteNumber={woCreated?.quoteNumber ?? "—"}
+        workOrderCode={woCreated?.workOrderCode ?? "—"}
+        customer={woCreated?.customer ?? "—"}
+        value={woCreated?.value ?? "—"}
+        scheduled={woCreated?.scheduled ?? "—"}
+        createdBy={woCreated?.createdBy ?? "—"}
+        quoteId={woCreated?.quoteId}
+        workOrderId={woCreated?.workOrderId}
       />
       {dialogs}
     </div>

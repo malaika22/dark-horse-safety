@@ -57,6 +57,21 @@ export const crmApi = {
       `/crm/customers/${customerId}/documents/${documentId}`,
       body,
     ),
+  createCustomerDocument: (
+    customerId: string,
+    body: {
+      name: string;
+      kind?: string;
+      url?: string;
+      mimeType?: string;
+      contentBase64?: string;
+      expiresAt?: string | null;
+    },
+  ) =>
+    api.post<ApiData<CrmCustomerDocument>>(
+      `/crm/customers/${customerId}/documents`,
+      body,
+    ),
   deleteCustomerDocument: (customerId: string, documentId: string) =>
     api.delete<ApiData<{ deleted: boolean; id: string }>>(
       `/crm/customers/${customerId}/documents/${documentId}`,
@@ -139,6 +154,23 @@ export const crmApi = {
       `/crm/locations/export${q(params)}`,
     ),
 
+  /** Store a file on the API disk and return a public `/uploads/...` URL. */
+  uploadFile: (body: {
+    folder: string;
+    fileName: string;
+    mimeType?: string;
+    contentBase64: string;
+  }) =>
+    api.post<
+      ApiData<{
+        url: string;
+        storagePath: string;
+        sizeBytes: number;
+        fileName: string;
+        mimeType: string | null;
+      }>
+    >("/crm/uploads", body),
+
   // ── Pricing rules ────────────────────────────────────────────────────────
   listPricingRules: (params?: CrmListParams) =>
     api.get<ApiList<CrmPricingRule>>(`/crm/pricing-rules${q(params)}`),
@@ -169,6 +201,10 @@ export const crmApi = {
         permissionGates: { id: string; customer: string; status: string }[];
       }>
     >("/crm/pricing-rules/side-panels"),
+  pricingRuleImpact: (params: { customerId: string; serviceItem: string }) =>
+    api.get<ApiData<{ openQuotes: number }>>(
+      `/crm/pricing-rules/impact${q(params)}`,
+    ),
   getPricingRule: (id: string) =>
     api.get<ApiData<CrmPricingRule>>(`/crm/pricing-rules/${id}`),
   createPricingRule: (body: Record<string, unknown>) =>
@@ -481,14 +517,61 @@ export const crmApi = {
     api.post<ApiData<CrmEodReport>>("/crm/eod-reports", body),
   updateEodReport: (id: string, body: Record<string, unknown>) =>
     api.patch<ApiData<CrmEodReport>>(`/crm/eod-reports/${id}`, body),
-  remindEodReport: (id: string) =>
-    api.post<ApiData<{ sent: boolean; id?: string }>>(
+  remindEodReport: (
+    id: string,
+    body?: { message?: string; viaEmail?: boolean; viaPush?: boolean },
+  ) =>
+    api.post<ApiData<{ sent: boolean; emailed?: boolean; pushed?: boolean; id?: string }>>(
       `/crm/eod-reports/${id}/remind`,
+      body ?? {},
     ),
-  bulkRemindEodReports: (ids: string[]) =>
+  bulkRemindEodReports: (
+    ids: string[],
+    body?: { message?: string; viaEmail?: boolean; viaPush?: boolean },
+  ) =>
     api.post<ApiData<{ sent: number; ids: string[] }>>(
       "/crm/eod-reports/bulk/remind",
-      { ids },
+      { ids, ...body },
+    ),
+  listEodAttention: () =>
+    api.get<
+      ApiData<{
+        items: {
+          id: string;
+          reportCode: string;
+          reportDate: string;
+          submittedAt?: string | null;
+          status: string;
+          kind: "missing" | "late";
+          detail: string;
+          selectedByDefault?: boolean;
+          rep?: CrmUserRef | null;
+        }[];
+      }>
+    >("/crm/eod-reports/attention"),
+  requestEodDetail: (
+    id: string,
+    body: {
+      missing?: string[];
+      note?: string;
+      dueBackBy?: string;
+      viaEmail?: boolean;
+      viaPush?: boolean;
+    },
+  ) =>
+    api.post<
+      ApiData<{
+        report: CrmEodReport;
+        emailed: boolean;
+        pushed: boolean;
+        missing: string[];
+        dueBackBy: string | null;
+      }>
+    >(`/crm/eod-reports/${id}/request-detail`, body),
+  acknowledgeEodReport: (id: string, body?: { by?: string; note?: string }) =>
+    api.post<ApiData<CrmEodReport>>(
+      `/crm/eod-reports/${id}/acknowledge`,
+      body ?? {},
     ),
   exportEodReports: (params?: CrmListParams) =>
     api.get<ApiData<{ csv?: string; pdf?: string; xlsx?: string; filename: string }>>(
@@ -534,10 +617,74 @@ export const crmApi = {
       to?: string;
       subject?: string;
       message?: string;
-      schedule?: string;
+      schedule?: "now" | "later";
+      scheduledAt?: string;
       attachmentIds?: string[];
+      attachPdf?: boolean;
     },
   ) => api.post<ApiData<CrmQuote>>(`/crm/quotes/${id}/send`, body ?? {}),
+  sendDueQuotes: () =>
+    api.post<
+      ApiData<{
+        processed: number;
+        results: { id: string; ok: boolean; error?: string }[];
+      }>
+    >("/crm/quotes/send-due"),
+  approvePricingRule: (id: string) =>
+    api.post<ApiData<CrmPricingRule>>(`/crm/pricing-rules/${id}/approve`),
+  requestRequirementEvidence: (id: string) =>
+    api.post<
+      ApiData<{ emailed?: boolean; to?: string } & Record<string, unknown>>
+    >(`/crm/requirements/${id}/request`),
+  listQuoteVersions: (id: string) =>
+    api.get<
+      ApiData<{
+        quoteId: string;
+        quoteNumber: string;
+        customer: string;
+        currentRevision: number;
+        versions: {
+          id: string;
+          revision: number;
+          label: string;
+          badge: "CURRENT" | "SUPERSEDED" | "DRAFT";
+          amount: number;
+          sentAt?: string | null;
+          createdAt: string;
+          author: string;
+          status: string;
+          isCurrent?: boolean;
+        }[];
+      }>
+    >(`/crm/quotes/${id}/versions`),
+  compareQuoteVersions: (
+    id: string,
+    params?: { left?: number; right?: number },
+  ) =>
+    api.get<
+      ApiData<{
+        quoteId: string;
+        quoteNumber: string;
+        left: { revision: number; label: string; date: string };
+        right: {
+          revision: number;
+          label: string;
+          date: string;
+          isCurrent?: boolean;
+        };
+        rows: {
+          field: string;
+          left: string | null;
+          right: string | null;
+          change: "same" | "changed" | "added" | "removed";
+        }[];
+      }>
+    >(
+      `/crm/quotes/${id}/versions/compare${q({
+        left: params?.left,
+        right: params?.right,
+      })}`,
+    ),
   listQuoteAttachments: (quoteId: string) =>
     api.get<ApiData<CrmQuoteAttachment[]>>(
       `/crm/quotes/${quoteId}/attachments`,
@@ -555,7 +702,16 @@ export const crmApi = {
       `/crm/quotes/${quoteId}/attachments/${attachmentId}`,
     ),
   convertQuoteToWorkOrder: (id: string) =>
-    api.post<ApiData<CrmWorkOrder>>(`/crm/quotes/${id}/convert-to-work-order`),
+    api.post<
+      ApiData<
+        CrmWorkOrder & {
+          value?: number;
+          scheduled?: string | null;
+          createdBy?: string;
+          quoteNumber?: string;
+        }
+      >
+    >(`/crm/quotes/${id}/convert-to-work-order`),
   duplicateQuote: (id: string) =>
     api.post<ApiData<CrmQuote>>(`/crm/quotes/${id}/duplicate`),
   markQuoteWon: (id: string) =>
@@ -651,11 +807,17 @@ export type CrmCustomer = {
   industry?: string | null;
   phone?: string | null;
   email?: string | null;
+  customerType?: string | null;
+  source?: string | null;
+  accountNotes?: string | null;
+  logoUrl?: string | null;
+  parentCompanyId?: string | null;
   openJobs?: number;
   msaExpiry?: string | null;
   lastActivityAt?: string | null;
   createdAt: string;
   assignedRep?: CrmUserRef | null;
+  parentCompany?: { id: string; name: string; code?: string } | null;
   _count?: { contacts?: number; locations?: number };
 };
 
@@ -730,6 +892,11 @@ export type CrmContact = {
   isPrimary?: boolean;
   notes?: string | null;
   linkedFromScan?: string | null;
+  photoUrl?: string | null;
+  linkedIn?: string | null;
+  timeZone?: string | null;
+  doNotContact?: boolean;
+  howWeMet?: string | null;
   status: string;
   locationLabel?: string | null;
   lastActivityAt?: string | null;
@@ -741,6 +908,7 @@ export type CrmContact = {
     code?: string;
     openJobs?: number;
   } | null;
+  assignedRepId?: string | null;
   assignedRep?: CrmUserRef | null;
   customers?: {
     customerId?: string;
@@ -766,14 +934,27 @@ export type CrmLocation = {
   status: string;
   accessNotes?: string | null;
   siteContact?: string | null;
+  siteContactId?: string | null;
   geofenceRadius?: string | null;
+  geofenceOverride?: boolean;
   gpsRequired?: boolean;
   nearestHospital?: string | null;
+  hospitalPhone?: string | null;
+  hospitalAddress?: string | null;
+  hospitalDriveTime?: string | null;
+  fireEmergency?: string | null;
+  fireNonEmergency?: string | null;
+  policeEmergency?: string | null;
+  policeNonEmergency?: string | null;
+  ambulance?: string | null;
+  musterPoint?: string | null;
+  sitePhotos?: unknown;
+  evacuationMapUrl?: string | null;
   openJobs?: number;
   gpsStatus?: string | null;
   city?: string | null;
   customerId: string;
-  customer?: { id: string; name: string; code?: string } | null;
+  customer?: { id: string; name: string; code?: string; clockInRadius?: string | null } | null;
   createdAt: string;
   updatedAt?: string;
   workOrders?: {
@@ -788,7 +969,13 @@ export type CrmLocation = {
     code?: string;
     routeLabel?: string | null;
     geofenceRadius?: string | null;
+    gpsRequired?: boolean;
+    clockInWindow?: string | null;
+    routeFrom?: string | null;
+    expectedTravelTime?: string | null;
     status?: string;
+    locationId?: string | null;
+    customerId?: string;
   }[];
 };
 
@@ -819,9 +1006,18 @@ export type CrmPricingRule = {
   unit?: string | null;
   minimumCharge?: string | number | null;
   overtimeMultiplier?: string | null;
+  overtimeThreshold?: string | null;
+  halfDayRate?: string | number | null;
+  minimumQuantity?: string | number | null;
   effectiveFrom?: string | null;
   effectiveTo?: string | null;
   notes?: string | null;
+  netsuiteItem?: string | null;
+  appliesTo?: string | null;
+  appliesToWells?: unknown;
+  approvalStatus?: string | null;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
   status: string;
   customerId: string;
   customer?: { id: string; name: string } | null;
@@ -837,6 +1033,7 @@ export type CrmRequirement = {
   appliesTo?: string | null;
   enforcementLevel?: string;
   evidenceRequired?: boolean;
+  evidenceUrl?: string | null;
   renewalPeriod?: string | null;
   notes?: string | null;
   dueDate?: string | null;
@@ -844,7 +1041,7 @@ export type CrmRequirement = {
   docsRequired?: boolean;
   status: string;
   customerId: string;
-  customer?: { id: string; name: string } | null;
+  customer?: { id: string; name: string; email?: string | null } | null;
   owner?: CrmUserRef | null;
   createdAt: string;
 };
@@ -949,12 +1146,32 @@ export type CrmQuote = {
   amount: string | number;
   status: string;
   approvalStatus?: string;
+  revision?: number;
+  currentRevision?: number;
+  hasPo?: boolean;
+  poNumber?: string | null;
   expiresAt?: string | null;
   sentAt?: string | null;
+  scheduledSendAt?: string | null;
+  scheduledTo?: string | null;
   terms?: string | null;
   notes?: string | null;
-  customer?: { id: string; name: string } | null;
-  contact?: { id: string; fullName: string } | null;
+  customer?: {
+    id: string;
+    name: string;
+    code?: string;
+    email?: string | null;
+    phone?: string | null;
+    billingAddress?: string | null;
+  } | null;
+  contact?: {
+    id: string;
+    fullName: string;
+    email?: string | null;
+    roleTitle?: string | null;
+    officePhone?: string | null;
+    mobile?: string | null;
+  } | null;
   owner?: CrmUserRef | null;
   lineItems?: {
     id: string;
@@ -963,7 +1180,17 @@ export type CrmQuote = {
     rate: string | number;
     amount: string | number;
   }[];
+  versions?: {
+    id: string;
+    revision: number;
+    status: string;
+    createdAt: string;
+    sentAt?: string | null;
+  }[];
+  convertedWorkOrder?: { id: string; code?: string | null; status?: string } | null;
+  workOrders?: { id: string; code?: string | null; status?: string }[];
   createdAt: string;
+  updatedAt?: string;
 };
 
 export type CrmWorkOrder = {
@@ -985,6 +1212,7 @@ export type CrmWorkOrder = {
   createdAt?: string;
   customer?: { id: string; name: string; code?: string } | null;
   location?: { id: string; name: string; code?: string } | null;
+  quote?: { id: string; quoteNumber?: string; amount?: string | number } | null;
 };
 
 export type CrmQuoteAttachment = {

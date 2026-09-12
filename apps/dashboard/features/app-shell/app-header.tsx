@@ -344,7 +344,7 @@ export function AppPageToolbar({
             "flex min-w-0 flex-wrap items-center gap-2",
             pageTitle
               ? "justify-start sm:justify-end"
-              : "w-full",
+              : "ml-auto w-full justify-end sm:w-auto",
           )}
         >
           {actions}

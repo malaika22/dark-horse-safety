@@ -84,6 +84,12 @@ export class RequirementsController {
     return this.requirements.update(id, dto);
   }
 
+  @Post(':id/request')
+  @ApiOperation({ summary: 'Email customer requesting requirement evidence' })
+  requestFromCustomer(@Param('id') id: string) {
+    return this.requirements.requestFromCustomer(id);
+  }
+
   @Post(':id/archive')
   @ApiOperation({ summary: 'Archive requirement' })
   archive(@Param('id') id: string) {

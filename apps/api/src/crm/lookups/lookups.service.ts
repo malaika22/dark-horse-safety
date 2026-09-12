@@ -39,6 +39,7 @@ export class LookupsService {
         locationStatuses: [
           opt('ACTIVE', 'Active'),
           opt('INACTIVE', 'Inactive'),
+          opt('NEEDS_REVIEW', 'Needs review'),
         ],
         pricingStatuses: [
           opt('ACTIVE', 'Active'),
@@ -75,6 +76,25 @@ export class LookupsService {
           labelOpt('Construction'),
           labelOpt('Utilities'),
         ],
+        customerTypes: [
+          labelOpt('Operator'),
+          labelOpt('Contractor'),
+          labelOpt('Vendor'),
+          labelOpt('Partner'),
+        ],
+        leadSources: [
+          labelOpt('Referral'),
+          labelOpt('Inbound'),
+          labelOpt('Field'),
+          labelOpt('Trade Show'),
+          labelOpt('Other'),
+        ],
+        requiredForms: [
+          labelOpt('JSA'),
+          labelOpt('Permit To Work'),
+          labelOpt('Equipment Inspection'),
+          labelOpt('Job Safety Analysis'),
+        ],
         paymentTerms: [
           labelOpt('Net 15'),
           labelOpt('Net 30'),
@@ -104,21 +124,43 @@ export class LookupsService {
           labelOpt('Facility'),
         ],
         serviceItems: [
+          labelOpt('H2S Monitoring'),
+          labelOpt('Site Safety Technician'),
           labelOpt('Wireline Logging'),
           labelOpt('Pump Down'),
           labelOpt('Perforating'),
           labelOpt('Slickline'),
+          labelOpt('Standby'),
+          labelOpt('Equipment Day Rate'),
         ],
         rateTypes: [
+          labelOpt('Per Hour'),
+          labelOpt('Per Day'),
           labelOpt('Per Job'),
-          labelOpt('Per HR'),
-          labelOpt('Per Run'),
+          labelOpt('Per Unit'),
         ],
         units: [
-          labelOpt('Job'),
           labelOpt('Hour'),
-          labelOpt('Run'),
           labelOpt('Day'),
+          labelOpt('Job'),
+          labelOpt('Unit'),
+          labelOpt('Run'),
+        ],
+        netsuiteItems: [
+          opt('NS-ITEM-4821', 'NS-ITEM-4821 · H2S Monitoring (Standard)'),
+          opt('NS-ITEM-4902', 'NS-ITEM-4902 · Site Safety Tech'),
+          opt('NS-ITEM-5010', 'NS-ITEM-5010 · Wireline Logging'),
+        ],
+        pricingAppliesTo: [
+          opt('ALL_SITES', 'All Sites'),
+          opt('SPECIFIC_WELLS', 'Specific Wells'),
+        ],
+        payCycles: [] as { value: string; label: string }[],
+        timezones: [
+          opt('CT', 'Central (CT)'),
+          opt('ET', 'Eastern (ET)'),
+          opt('MT', 'Mountain (MT)'),
+          opt('PT', 'Pacific (PT)'),
         ],
         requirementTypes: [
           labelOpt('Certification'),
@@ -142,6 +184,43 @@ export class LookupsService {
           labelOpt('Monthly'),
           labelOpt('Quarterly'),
           labelOpt('Annually'),
+        ],
+        formTriggers: [
+          labelOpt('On Dispatch'),
+          labelOpt('On Start'),
+          labelOpt('Per Shift'),
+        ],
+        formDueOptions: [
+          labelOpt('Before Dispatch'),
+          labelOpt('Before Closeout'),
+          labelOpt('Before Job Start'),
+        ],
+        formVersions: [
+          labelOpt('V1'),
+          labelOpt('V2'),
+          labelOpt('V3'),
+        ],
+        activitySubjects: [
+          opt('quote', 'Quote'),
+          opt('call', 'Call'),
+          opt('follow-up', 'Follow-up'),
+        ],
+        eodMissingFields: [
+          opt('ACTIVITY_OUTCOMES', 'Activity Outcomes'),
+          opt('NEXT_STEPS', 'Next Steps'),
+          opt('PIPELINE_FIGURES', 'Pipeline Figures'),
+          opt('OTHER', 'Other → Free Text'),
+        ],
+        eodDuePresets: [
+          opt('tomorrow-9', 'Tomorrow · 9:00 AM'),
+          opt('tomorrow-17', 'Tomorrow · 5:00 PM'),
+          opt('in-2-days', 'In 2 Days · 9:00 AM'),
+          opt('end-of-week', 'End Of Week · 5:00 PM'),
+        ],
+        autoFlagNoShow: [
+          opt('AFTER 15MINS', 'After 15 mins'),
+          opt('AFTER 30MINS', 'After 30 mins'),
+          opt('AFTER 60MINS', 'After 60 mins'),
         ],
         formTemplates: [
           labelOpt('JSA'),
@@ -211,6 +290,162 @@ export class LookupsService {
           opt('PENDING', 'Pending'),
           opt('OPEN', 'Open'),
         ],
+      },
+    };
+  }
+
+  /** Biweekly pay cycles fallback when PayCycle table is empty. */
+  private buildPayCycles(count = 24) {
+    const start = new Date(2026, 8, 7); // Sep 7, 2026
+    const out: { value: string; label: string }[] = [];
+    for (let i = 0; i < count; i++) {
+      const from = new Date(start);
+      from.setDate(start.getDate() + i * 14);
+      const to = new Date(from);
+      to.setDate(from.getDate() + 13);
+      const cycle = 18 + i;
+      const fmt = (d: Date) =>
+        d.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        });
+      const iso = from.toISOString().slice(0, 10);
+      out.push({
+        value: iso,
+        label: `Cycle ${cycle} · ${fmt(from)} – ${fmt(to)}`,
+      });
+    }
+    return out;
+  }
+
+  async loadPayCycles() {
+    const rows = await this.prisma.payCycle.findMany({
+      orderBy: { startDate: 'asc' },
+      take: 48,
+    });
+    if (!rows.length) return this.buildPayCycles(24);
+    return rows.map((r) => ({
+      value: r.startDate.toISOString().slice(0, 10),
+      label: r.label,
+    }));
+  }
+
+  /** Merge static catalogs with distinct values already stored in DB. */
+  async allLive() {
+    const base = this.all().data;
+    const [
+      countiesDb,
+      siteTypesDb,
+      serviceItemsDb,
+      rateTypesDb,
+      unitsDb,
+      netsuiteDb,
+      industriesDb,
+      contactRolesDb,
+      payCycles,
+    ] = await Promise.all([
+      this.prisma.location.findMany({
+        where: { archivedAt: null, county: { not: null } },
+        select: { county: true },
+        distinct: ['county'],
+        take: 200,
+      }),
+      this.prisma.location.findMany({
+        where: { archivedAt: null, siteType: { not: null } },
+        select: { siteType: true },
+        distinct: ['siteType'],
+        take: 100,
+      }),
+      this.prisma.pricingRule.findMany({
+        where: { archivedAt: null },
+        select: { serviceItem: true },
+        distinct: ['serviceItem'],
+        take: 200,
+      }),
+      this.prisma.pricingRule.findMany({
+        where: { archivedAt: null, rateType: { not: null } },
+        select: { rateType: true },
+        distinct: ['rateType'],
+        take: 50,
+      }),
+      this.prisma.pricingRule.findMany({
+        where: { archivedAt: null, unit: { not: null } },
+        select: { unit: true },
+        distinct: ['unit'],
+        take: 50,
+      }),
+      this.prisma.pricingRule.findMany({
+        where: { archivedAt: null, netsuiteItem: { not: null } },
+        select: { netsuiteItem: true },
+        distinct: ['netsuiteItem'],
+        take: 100,
+      }),
+      this.prisma.customer.findMany({
+        where: { archivedAt: null, industry: { not: null } },
+        select: { industry: true },
+        distinct: ['industry'],
+        take: 100,
+      }),
+      this.prisma.contact.findMany({
+        where: { archivedAt: null, roleTitle: { not: null } },
+        select: { roleTitle: true },
+        distinct: ['roleTitle'],
+        take: 100,
+      }),
+      this.loadPayCycles(),
+    ]);
+
+    const merge = (
+      existing: { value: string; label: string }[],
+      extras: (string | null | undefined)[],
+    ) => {
+      const map = new Map(existing.map((o) => [o.value.toLowerCase(), o]));
+      for (const raw of extras) {
+        const v = raw?.trim();
+        if (!v) continue;
+        const key = v.toLowerCase();
+        if (!map.has(key)) map.set(key, labelOpt(v));
+      }
+      return [...map.values()];
+    };
+
+    return {
+      data: {
+        ...base,
+        payCycles,
+        counties: merge(
+          base.counties,
+          countiesDb.map((r) => r.county),
+        ),
+        siteTypes: merge(
+          base.siteTypes,
+          siteTypesDb.map((r) => r.siteType),
+        ),
+        serviceItems: merge(
+          base.serviceItems,
+          serviceItemsDb.map((r) => r.serviceItem),
+        ),
+        rateTypes: merge(
+          base.rateTypes,
+          rateTypesDb.map((r) => r.rateType),
+        ),
+        units: merge(
+          base.units,
+          unitsDb.map((r) => r.unit),
+        ),
+        netsuiteItems: merge(
+          base.netsuiteItems,
+          netsuiteDb.map((r) => r.netsuiteItem),
+        ),
+        industries: merge(
+          base.industries,
+          industriesDb.map((r) => r.industry),
+        ),
+        contactRoles: merge(
+          base.contactRoles,
+          contactRolesDb.map((r) => r.roleTitle),
+        ),
       },
     };
   }

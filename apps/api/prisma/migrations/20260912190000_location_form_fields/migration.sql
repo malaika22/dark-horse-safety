@@ -1,0 +1,13 @@
+-- AlterTable
+ALTER TABLE "Location" ADD COLUMN IF NOT EXISTS "geofenceOverride" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Location" ADD COLUMN IF NOT EXISTS "hospitalPhone" TEXT;
+ALTER TABLE "Location" ADD COLUMN IF NOT EXISTS "hospitalAddress" TEXT;
+ALTER TABLE "Location" ADD COLUMN IF NOT EXISTS "hospitalDriveTime" TEXT;
+ALTER TABLE "Location" ADD COLUMN IF NOT EXISTS "fireEmergency" TEXT;
+ALTER TABLE "Location" ADD COLUMN IF NOT EXISTS "fireNonEmergency" TEXT;
+ALTER TABLE "Location" ADD COLUMN IF NOT EXISTS "policeEmergency" TEXT;
+ALTER TABLE "Location" ADD COLUMN IF NOT EXISTS "policeNonEmergency" TEXT;
+ALTER TABLE "Location" ADD COLUMN IF NOT EXISTS "ambulance" TEXT;
+ALTER TABLE "Location" ADD COLUMN IF NOT EXISTS "musterPoint" TEXT;
+ALTER TABLE "Location" ADD COLUMN IF NOT EXISTS "sitePhotos" JSONB;
+ALTER TABLE "Location" ADD COLUMN IF NOT EXISTS "evacuationMapUrl" TEXT;

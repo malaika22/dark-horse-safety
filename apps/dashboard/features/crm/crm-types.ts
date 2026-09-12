@@ -38,6 +38,7 @@ export type ContactRow = {
   assignedRep: string;
   hasEmail: boolean;
   hasPhone: boolean;
+  photoUrl?: string | null;
 };
 
 export type LocationCard = {
@@ -83,6 +84,7 @@ export type PricingRuleRow = {
   effective: string;
   expires: string;
   owner: string;
+  approvalStatus?: string | null;
 };
 
 export type RequirementRow = {
@@ -159,16 +161,20 @@ export type EodReportRow = {
   submittedTime: string;
   date: string;
   rep: string;
+  repId: string | null;
   activities: number;
   calls: string;
   callsDetail: string;
   visits: string;
   visitsDetail: string;
   meetings: string;
-  meetingsBadge: BadgeCell;
-  quotes: BadgeCell;
-  pipeline: BadgeCell;
+  meetingsMissing: boolean;
+  quotesLabel: string;
+  pipelineLabel: string;
   status: StatusBadge;
+  reviewed: { state: "reviewed" | "awaiting"; detail: string };
+  rawStatus: string;
+  submittedAt: string | null;
 };
 
 export type SalesActivityRow = {
@@ -188,19 +194,24 @@ export type SalesActivityRow = {
 
 export type QuoteRow = {
   id: string;
+  customerId: string | null;
   quoteNumber: string;
+  version: string;
+  createdAt: string;
   createdDate: string;
   customer: string;
   contact: string;
   amount: string;
+  amountValue: number;
   created: string;
   createdDetail: string;
   expires: string;
   expiresDetail: string;
+  expiresExpired: boolean;
   owner: string;
-  sent: StatusBadge | null;
   status: StatusBadge;
-  approval: StatusBadge | null;
+  approval: string;
+  approvedOn: string;
 };
 
 export type CustomerDetail = {

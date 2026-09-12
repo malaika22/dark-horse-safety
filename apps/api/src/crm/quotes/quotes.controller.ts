@@ -60,6 +60,12 @@ export class QuotesController {
     return this.quotes.bulkArchive(body.ids ?? []);
   }
 
+  @Post('send-due')
+  @ApiOperation({ summary: 'Send quotes whose scheduledSendAt is due' })
+  sendDue() {
+    return this.quotes.sendDueScheduled();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Quote detail' })
   get(@Param('id') id: string) {
@@ -76,6 +82,26 @@ export class QuotesController {
   @ApiOperation({ summary: 'Send quote by email and mark as sent' })
   send(@Param('id') id: string, @Body() dto: SendQuoteDto) {
     return this.quotes.send(id, dto);
+  }
+
+  @Get(':id/versions')
+  @ApiOperation({ summary: 'Quote version history' })
+  listVersions(@Param('id') id: string) {
+    return this.quotes.listVersions(id);
+  }
+
+  @Get(':id/versions/compare')
+  @ApiOperation({ summary: 'Compare two quote versions' })
+  compareVersions(
+    @Param('id') id: string,
+    @Query('left') left?: string,
+    @Query('right') right?: string,
+  ) {
+    return this.quotes.compareVersions(
+      id,
+      left ? Number(left) : undefined,
+      right ? Number(right) : undefined,
+    );
   }
 
   @Post(':id/duplicate')

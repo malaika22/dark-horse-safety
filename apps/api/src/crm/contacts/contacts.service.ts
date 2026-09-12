@@ -251,6 +251,12 @@ export class ContactsService {
 
   async create(dto: CreateContactDto) {
     const code = await this.codes.next('contact');
+    const links = this.resolveCustomerLinks(dto);
+    const primaryCustomerId =
+      dto.primaryCustomerId ??
+      links.find((l) => l.isPrimary)?.customerId ??
+      links[0]?.customerId;
+
     const contact = await this.prisma.contact.create({
       data: {
         code,
@@ -263,33 +269,30 @@ export class ContactsService {
         isPrimary: dto.isPrimary ?? false,
         notes: dto.notes,
         linkedFromScan: dto.linkedFromScan,
-        primaryCustomerId: dto.primaryCustomerId,
+        photoUrl: dto.photoUrl,
+        linkedIn: dto.linkedIn,
+        timeZone: dto.timeZone,
+        doNotContact: dto.doNotContact ?? false,
+        howWeMet: dto.howWeMet,
+        primaryCustomerId,
         assignedRepId: dto.assignedRepId,
         locationLabel: dto.locationLabel,
         status: (dto.status as CrmRecordStatus) ?? CrmRecordStatus.ACTIVE,
-        ...(dto.primaryCustomerId || dto.customerIds?.length
+        ...(links.length
           ? {
               customers: {
-                create: [
-                  ...(dto.primaryCustomerId
-                    ? [
-                        {
-                          customerId: dto.primaryCustomerId,
-                          isPrimary: true,
-                        },
-                      ]
-                    : []),
-                  ...(dto.customerIds ?? [])
-                    .filter((id) => id !== dto.primaryCustomerId)
-                    .map((customerId) => ({ customerId, isPrimary: false })),
-                ],
+                create: links.map((l) => ({
+                  customerId: l.customerId,
+                  isPrimary: Boolean(l.isPrimary),
+                  roleAtCustomer: l.roleAtCustomer?.trim() || null,
+                })),
               },
             }
           : {}),
       },
       include: {
         primaryCustomer: { select: { id: true, name: true, code: true } },
-        customers: true,
+        customers: { include: { customer: { select: { id: true, name: true, code: true } } } },
       },
     });
     return { data: contact };
@@ -297,6 +300,33 @@ export class ContactsService {
 
   async update(id: string, dto: UpdateContactDto) {
     await this.ensureExists(id);
+    const links =
+      dto.customerLinks !== undefined || dto.customerIds !== undefined
+        ? this.resolveCustomerLinks(dto)
+        : null;
+    const primaryCustomerId =
+      dto.primaryCustomerId !== undefined
+        ? dto.primaryCustomerId
+        : links
+          ? (links.find((l) => l.isPrimary)?.customerId ??
+            links[0]?.customerId ??
+            null)
+          : undefined;
+
+    if (links) {
+      await this.prisma.contactCustomer.deleteMany({ where: { contactId: id } });
+      if (links.length) {
+        await this.prisma.contactCustomer.createMany({
+          data: links.map((l) => ({
+            contactId: id,
+            customerId: l.customerId,
+            isPrimary: Boolean(l.isPrimary),
+            roleAtCustomer: l.roleAtCustomer?.trim() || null,
+          })),
+        });
+      }
+    }
+
     const contact = await this.prisma.contact.update({
       where: { id },
       data: {
@@ -315,8 +345,15 @@ export class ContactsService {
         ...(dto.linkedFromScan !== undefined
           ? { linkedFromScan: dto.linkedFromScan }
           : {}),
-        ...(dto.primaryCustomerId !== undefined
-          ? { primaryCustomerId: dto.primaryCustomerId }
+        ...(dto.photoUrl !== undefined ? { photoUrl: dto.photoUrl } : {}),
+        ...(dto.linkedIn !== undefined ? { linkedIn: dto.linkedIn } : {}),
+        ...(dto.timeZone !== undefined ? { timeZone: dto.timeZone } : {}),
+        ...(dto.doNotContact !== undefined
+          ? { doNotContact: dto.doNotContact }
+          : {}),
+        ...(dto.howWeMet !== undefined ? { howWeMet: dto.howWeMet } : {}),
+        ...(primaryCustomerId !== undefined
+          ? { primaryCustomerId }
           : {}),
         ...(dto.assignedRepId !== undefined
           ? { assignedRepId: dto.assignedRepId }
@@ -328,8 +365,53 @@ export class ContactsService {
           ? { status: dto.status as CrmRecordStatus }
           : {}),
       },
+      include: {
+        primaryCustomer: { select: { id: true, name: true, code: true } },
+        customers: {
+          include: { customer: { select: { id: true, name: true, code: true } } },
+        },
+      },
     });
     return { data: contact };
+  }
+
+  private resolveCustomerLinks(dto: {
+    customerLinks?: {
+      customerId: string;
+      roleAtCustomer?: string;
+      isPrimary?: boolean;
+    }[];
+    customerIds?: string[];
+    primaryCustomerId?: string;
+  }) {
+    if (dto.customerLinks?.length) {
+      const seen = new Set<string>();
+      const links = dto.customerLinks.filter((l) => {
+        if (!l.customerId || seen.has(l.customerId)) return false;
+        seen.add(l.customerId);
+        return true;
+      });
+      if (!links.some((l) => l.isPrimary) && links[0]) {
+        links[0] = { ...links[0], isPrimary: true };
+      }
+      return links;
+    }
+    const ids = [
+      ...(dto.primaryCustomerId ? [dto.primaryCustomerId] : []),
+      ...(dto.customerIds ?? []),
+    ];
+    const seen = new Set<string>();
+    return ids
+      .filter((id) => {
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      })
+      .map((customerId) => ({
+        customerId,
+        isPrimary: customerId === (dto.primaryCustomerId ?? ids[0]),
+        roleAtCustomer: undefined as string | undefined,
+      }));
   }
 
   async archive(id: string) {

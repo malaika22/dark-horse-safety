@@ -12,8 +12,11 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/auth.guards';
 import { ExportQueryDto } from '../../common/dto/list-query.dto';
 import {
+  BulkRemindEodDto,
   CreateEodReportDto,
   EodReportListQueryDto,
+  RemindEodDto,
+  RequestEodDetailDto,
   UpdateEodReportDto,
 } from './dto/eod-report.dto';
 import { EodReportsService } from './eod-reports.service';
@@ -37,6 +40,12 @@ export class EodReportsController {
     return this.eodReports.kpi();
   }
 
+  @Get('attention')
+  @ApiOperation({ summary: 'Missing / late EOD reports needing reminders' })
+  attention() {
+    return this.eodReports.listAttention();
+  }
+
   @Get('export')
   @ApiOperation({ summary: 'Export EOD reports CSV' })
   export(@Query() query: ExportQueryDto & EodReportListQueryDto) {
@@ -51,8 +60,8 @@ export class EodReportsController {
 
   @Post('bulk/remind')
   @ApiOperation({ summary: 'Bulk send EOD reminders' })
-  bulkRemind(@Body() body: { ids: string[] }) {
-    return this.eodReports.bulkRemind(body.ids ?? []);
+  bulkRemind(@Body() body: BulkRemindEodDto) {
+    return this.eodReports.bulkRemind(body.ids ?? [], body);
   }
 
   @Get(':id')
@@ -68,8 +77,23 @@ export class EodReportsController {
   }
 
   @Post(':id/remind')
-  @ApiOperation({ summary: 'Send EOD reminder email to assigned rep' })
-  remind(@Param('id') id: string) {
-    return this.eodReports.remind(id);
+  @ApiOperation({ summary: 'Send EOD reminder to assigned rep' })
+  remind(@Param('id') id: string, @Body() dto: RemindEodDto) {
+    return this.eodReports.remind(id, dto);
+  }
+
+  @Post(':id/request-detail')
+  @ApiOperation({ summary: 'Request more detail from assigned rep' })
+  requestDetail(@Param('id') id: string, @Body() dto: RequestEodDetailDto) {
+    return this.eodReports.requestDetail(id, dto);
+  }
+
+  @Post(':id/acknowledge')
+  @ApiOperation({ summary: 'Manager acknowledge EOD report' })
+  acknowledge(
+    @Param('id') id: string,
+    @Body() body: { by?: string; note?: string },
+  ) {
+    return this.eodReports.acknowledge(id, body);
   }
 }

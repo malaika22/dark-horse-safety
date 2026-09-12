@@ -60,6 +60,7 @@ model User {
   eodReports          EodReport[]          @relation("EodReportRep")
   salesActivities     SalesActivity[]      @relation("SalesActivityRep")
   quotesOwned         Quote[]              @relation("QuoteOwner")
+  quoteVersions       QuoteVersion[]       @relation("QuoteVersionAuthor")
   workOrdersOwned     WorkOrder[]          @relation("WorkOrderAssignedRep")
   savedViews          SavedView[]
   gpsFlags            GpsFlag[]            @relation("GpsFlagTechnician")
@@ -162,6 +163,10 @@ model Customer {
   website              String?
   phone                String?
   email                String?
+  customerType         String?
+  source               String?
+  accountNotes         String?
+  logoUrl              String?
   billingAddress       String?
   mailingAddress       String?
   paymentTerms         String?
@@ -186,6 +191,9 @@ model Customer {
   archivedAt           DateTime?
   assignedRepId        String?
   assignedRep          User?           @relation("CustomerAssignedRep", fields: [assignedRepId], references: [id], onDelete: SetNull)
+  parentCompanyId      String?
+  parentCompany        Customer?       @relation("CustomerParent", fields: [parentCompanyId], references: [id], onDelete: SetNull)
+  subsidiaries         Customer[]      @relation("CustomerParent")
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
@@ -206,6 +214,8 @@ model Customer {
   @@index([assignedRepId])
   @@index([name])
   @@index([archivedAt])
+  @@index([parentCompanyId])
+  @@index([customerType])
 }
 
 // ─── Contact ─────────────────────────────────────────────────────────────────
@@ -222,6 +232,11 @@ model Contact {
   isPrimary        Boolean         @default(false)
   notes            String?
   linkedFromScan   String?
+  photoUrl         String?
+  linkedIn         String?
+  timeZone         String?
+  doNotContact     Boolean         @default(false)
+  howWeMet         String?
   status           CrmRecordStatus @default(ACTIVE)
   lastActivityAt   DateTime?
   archivedAt       DateTime?
@@ -234,9 +249,10 @@ model Contact {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
-  customers  ContactCustomer[]
-  quotes     Quote[]
-  activities SalesActivity[]
+  customers       ContactCustomer[]
+  quotes          Quote[]
+  activities      SalesActivity[]
+  siteLocations   Location[]       @relation("LocationSiteContact")
 
   @@index([status])
   @@index([assignedRepId])
@@ -274,9 +290,23 @@ model Location {
   status          CrmRecordStatus @default(ACTIVE)
   accessNotes     String?
   siteContact     String?
+  siteContactId   String?
+  siteContactRef  Contact?        @relation("LocationSiteContact", fields: [siteContactId], references: [id], onDelete: SetNull)
   geofenceRadius  String?
+  geofenceOverride Boolean        @default(false)
   gpsRequired     Boolean         @default(false)
   nearestHospital String?
+  hospitalPhone   String?
+  hospitalAddress String?
+  hospitalDriveTime String?
+  fireEmergency   String?
+  fireNonEmergency String?
+  policeEmergency String?
+  policeNonEmergency String?
+  ambulance       String?
+  musterPoint     String?
+  sitePhotos      Json?
+  evacuationMapUrl String?        @db.Text
   openJobs        Int             @default(0)
   gpsStatus       String?
   city            String?
@@ -293,6 +323,7 @@ model Location {
   @@index([customerId])
   @@index([status])
   @@index([name])
+  @@index([siteContactId])
 }
 
 // ─── Pricing Rule ────────────────────────────────────────────────────────────
@@ -306,9 +337,18 @@ model PricingRule {
   unit                String?
   minimumCharge       Decimal?        @db.Decimal(14, 2)
   overtimeMultiplier  String?
+  overtimeThreshold   String?
+  halfDayRate         Decimal?        @db.Decimal(14, 2)
+  minimumQuantity     Decimal?        @db.Decimal(14, 2)
   effectiveFrom       DateTime?
   effectiveTo         DateTime?
   notes               String?
+  netsuiteItem        String?
+  appliesTo           String?
+  appliesToWells      Json?
+  approvalStatus      String?
+  approvedBy          String?
+  approvedAt          DateTime?
   status              CrmRecordStatus @default(ACTIVE)
   archivedAt          DateTime?
   customerId          String
@@ -333,6 +373,7 @@ model CustomerRequirement {
   appliesTo         String?
   enforcementLevel  EnforcementLevel @default(SOFT_GATE)
   evidenceRequired  Boolean          @default(false)
+  evidenceUrl       String?
   renewalPeriod     String?
   notes             String?
   dueDate           DateTime?
@@ -521,8 +562,15 @@ model Quote {
   amount         Decimal             @default(0) @db.Decimal(14, 2)
   status         CrmRecordStatus     @default(DRAFT)
   approvalStatus QuoteApprovalStatus @default(NOT_REQUIRED)
+  revision       Int                 @default(1)
+  hasPo          Boolean             @default(false)
+  poNumber       String?
   expiresAt      DateTime?
   sentAt         DateTime?
+  scheduledSendAt DateTime?
+  scheduledTo     String?
+  scheduledSubject String?
+  scheduledMessage String?
   terms          String?
   notes          String?
   archivedAt     DateTime?
@@ -539,11 +587,30 @@ model Quote {
   activities  SalesActivity[]
   workOrders  WorkOrder[]
   attachments QuoteAttachment[]
+  versions    QuoteVersion[]
 
   @@index([customerId])
   @@index([contactId])
   @@index([status])
   @@index([ownerId])
+  @@index([scheduledSendAt])
+}
+
+model QuoteVersion {
+  id          String   @id @default(uuid())
+  quoteId     String
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  revision    Int
+  status      String
+  amount      Decimal  @db.Decimal(14, 2)
+  snapshot    Json
+  sentAt      DateTime?
+  createdById String?
+  createdBy   User?    @relation("QuoteVersionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@unique([quoteId, revision])
+  @@index([quoteId])
 }
 
 model QuoteLineItem {
@@ -624,6 +691,22 @@ model CrmDocument {
   updatedAt  DateTime  @updatedAt
 
   @@index([customerId])
+}
+
+// ─── Pay cycles (CRM pricing effective dates) ────────────────────────────────
+
+model PayCycle {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  label       String
+  cycleNumber Int
+  startDate   DateTime @db.Date
+  endDate     DateTime @db.Date
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([startDate])
+  @@index([cycleNumber])
 }
 
 // ─── Saved views (generalized per list scope) ────────────────────────────────

@@ -290,6 +290,8 @@ export interface DashboardSortMenuProps {
   onDirectionChange: (direction: DashboardSortDirection) => void;
   /** When false, trigger shows field label only (no A-Z / Z-A). Default true. */
   showDirectionInTrigger?: boolean;
+  /** When `long`, trigger shows Ascending / Descending instead of A-Z / Z-A. */
+  directionFormat?: "alpha" | "long";
   className?: string;
 }
 
@@ -301,13 +303,21 @@ export function DashboardSortMenu({
   onFieldChange,
   onDirectionChange,
   showDirectionInTrigger = true,
+  directionFormat = "alpha",
   className,
 }: DashboardSortMenuProps) {
   const [open, setOpen] = React.useState(false);
   const anchorRef = React.useRef<HTMLButtonElement>(null);
   const activeLabel =
     options.find((option) => option.id === field)?.label ?? "Sort";
-  const directionLabel = direction === "asc" ? "A-Z" : "Z-A";
+  const directionLabel =
+    directionFormat === "long"
+      ? direction === "asc"
+        ? "Ascending"
+        : "Descending"
+      : direction === "asc"
+        ? "A-Z"
+        : "Z-A";
   const triggerValue = showDirectionInTrigger
     ? `${activeLabel} (${directionLabel})`
     : activeLabel;

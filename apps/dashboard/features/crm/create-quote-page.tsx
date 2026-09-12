@@ -284,7 +284,9 @@ export function CreateQuotePage({
               : prev,
           );
         }
-        const rules = pricingRes?.data.items ?? [];
+        const rules = (pricingRes?.data.items ?? []).filter(
+          (r) => (r.approvalStatus ?? "APPROVED").toUpperCase() === "APPROVED",
+        );
         if (rules[0]) {
           setPricingHint(
             `Rate pre-fills from the customer’s pricing rules · e.g. ${rules[0].serviceItem} @ ${money(Number(rules[0].rate))}`.toUpperCase(),
@@ -504,9 +506,17 @@ export function CreateQuotePage({
           subject: opts.sendPayload.subject,
           message: opts.sendPayload.message,
           schedule: opts.sendPayload.schedule,
+          scheduledAt:
+            opts.sendPayload.schedule === "later"
+              ? opts.sendPayload.scheduledAt
+              : undefined,
           attachmentIds: attachmentIds.length ? attachmentIds : undefined,
         });
-        toastSuccess("Quote sent");
+        toastSuccess(
+          opts.sendPayload.schedule === "later"
+            ? `Quote scheduled for ${opts.sendPayload.scheduledAt || "later"}`
+            : "Quote sent",
+        );
         router.push(`/crm/quotes/${id}`);
         return;
       }

@@ -128,6 +128,12 @@ export class WorkOrdersService {
         customerId: true,
         notes: true,
         ownerId: true,
+        amount: true,
+        expiresAt: true,
+        owner: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+        customer: { select: { id: true, name: true, code: true } },
       },
     });
     if (!quote) {
@@ -138,6 +144,11 @@ export class WorkOrdersService {
     }
 
     const code = await this.codes.next('workOrder');
+    const scheduled =
+      quote.expiresAt && quote.expiresAt.getTime() > Date.now()
+        ? quote.expiresAt
+        : new Date(Date.now() + 7 * 86_400_000);
+
     const workOrder = await this.prisma.$transaction(async (tx) => {
       const created = await tx.workOrder.create({
         data: {
@@ -148,10 +159,14 @@ export class WorkOrdersService {
           notes: quote.notes,
           status: CrmRecordStatus.DRAFT,
           assignedRepId: quote.ownerId,
+          serviceDate: scheduled,
         },
         include: {
           customer: { select: { id: true, name: true, code: true } },
-          quote: { select: { id: true, quoteNumber: true } },
+          quote: { select: { id: true, quoteNumber: true, amount: true } },
+          assignedRep: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
         },
       });
       await tx.customer.update({
@@ -160,6 +175,21 @@ export class WorkOrdersService {
       });
       return created;
     });
-    return { data: workOrder };
+
+    const createdBy = workOrder.assignedRep
+      ? [workOrder.assignedRep.firstName?.[0], workOrder.assignedRep.lastName]
+          .filter(Boolean)
+          .join('. ') || workOrder.assignedRep.email
+      : '—';
+
+    return {
+      data: {
+        ...workOrder,
+        value: Number(quote.amount),
+        scheduled: workOrder.serviceDate,
+        createdBy,
+        quoteNumber: quote.quoteNumber,
+      },
+    };
   }
 }

@@ -16,35 +16,6 @@ import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmFormPageShell } from "./crm-form-page-shell";
 import { useCustomerOptions } from "./use-customer-options";
 
-const FORM_RULE_FORM = {
-  triggerOptions: [
-    { value: "On Dispatch", label: "On Dispatch" },
-    { value: "On Start", label: "On Start" },
-    { value: "Per Shift", label: "Per Shift" },
-  ] as DashboardSelectOption[],
-  dueOptions: [
-    { value: "Before Dispatch", label: "Before Dispatch" },
-    { value: "Before Closeout", label: "Before Closeout" },
-    { value: "Before Job Start", label: "Before Job Start" },
-  ] as DashboardSelectOption[],
-  appliesToOptions: [
-    { value: "All Jobs", label: "All Jobs" },
-    { value: "Well Sites", label: "Well Sites" },
-    { value: "Fleet Jobs", label: "Fleet Jobs" },
-    { value: "H2S Sites", label: "H2S Sites" },
-  ] as DashboardSelectOption[],
-  versionOptions: [
-    { value: "V1", label: "V1" },
-    { value: "V2", label: "V2" },
-    { value: "V3", label: "V3" },
-  ] as DashboardSelectOption[],
-  statusOptions: [
-    { value: "ACTIVE", label: "Active" },
-    { value: "INACTIVE", label: "Inactive" },
-    { value: "DRAFT", label: "Draft" },
-  ] as DashboardSelectOption[],
-};
-
 export function FormRuleFormPage({
   mode = "create",
   ruleId,
@@ -57,6 +28,10 @@ export function FormRuleFormPage({
   const { lookups } = useCrmLookups({ includeLocations: false });
   const templateOptions = lookupOptions(lookups, "formTemplates");
   const jobTypeOptions = lookupOptions(lookups, "jobTypes");
+  const triggerOptions = lookupOptions(lookups, "formTriggers");
+  const dueOptions = lookupOptions(lookups, "formDueOptions");
+  const versionOptions = lookupOptions(lookups, "formVersions");
+  const statusOptions = lookupOptions(lookups, "formRuleStatuses");
   const { options: customers, loading: customersLoading } = useCustomerOptions();
   const [submitting, setSubmitting] = React.useState(false);
   const [ready, setReady] = React.useState(!isEdit);
@@ -178,7 +153,7 @@ export function FormRuleFormPage({
                   label="Trigger"
                   value={trigger}
                   onChange={(e) => setTrigger(e.target.value)}
-                  options={FORM_RULE_FORM.triggerOptions}
+                  options={triggerOptions}
                 />
                 <DashboardSelectField
                   label="Applies To"
@@ -187,30 +162,26 @@ export function FormRuleFormPage({
                     setAppliesTo(e.target.value);
                     if (!jobType) setJobType(e.target.value);
                   }}
-                  options={
-                    jobTypeOptions.length
-                      ? jobTypeOptions
-                      : FORM_RULE_FORM.appliesToOptions
-                  }
+                  options={jobTypeOptions}
                   emptyMessage="No record found"
                 />
                 <DashboardSelectField
                   label="Due By"
                   value={due}
                   onChange={(e) => setDue(e.target.value)}
-                  options={FORM_RULE_FORM.dueOptions}
+                  options={dueOptions}
                 />
                 <DashboardSelectField
                   label="Version"
                   value={version}
                   onChange={(e) => setVersion(e.target.value)}
-                  options={FORM_RULE_FORM.versionOptions}
+                  options={versionOptions}
                 />
                 <DashboardSelectField
                   label="Status"
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
-                  options={FORM_RULE_FORM.statusOptions}
+                  options={statusOptions}
                 />
                 <DashboardTextField
                   label="Applies From"

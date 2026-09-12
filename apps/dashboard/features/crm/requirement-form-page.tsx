@@ -7,35 +7,12 @@ import {
   DashboardSelectField,
   DashboardTextField,
   DashboardToggle,
-  type DashboardSelectOption,
 } from "@dark-horse-safety/ui";
 import { crmApi } from "@/lib/crm-api";
-import { toastApiError, toastSuccess } from "@/lib/toast";
+import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
+import { toastApiError, toastSuccess, toastValidationError } from "@/lib/toast";
 import { CrmFormPageShell } from "./crm-form-page-shell";
 import { useCustomerOptions } from "./use-customer-options";
-
-const TYPE_OPTIONS: DashboardSelectOption[] = [
-  { value: "certification", label: "Certification" },
-  { value: "safety", label: "Safety" },
-  { value: "contract", label: "Contract" },
-  { value: "insurance", label: "Insurance" },
-  { value: "tax", label: "Tax" },
-];
-const APPLIES_OPTIONS: DashboardSelectOption[] = [
-  { value: "all", label: "All" },
-  { value: "wells", label: "Well sites" },
-  { value: "field", label: "Field ops" },
-];
-const ENFORCEMENT_OPTIONS: DashboardSelectOption[] = [
-  { value: "hard-gate", label: "Hard Gate" },
-  { value: "soft-gate", label: "Soft Gate" },
-  { value: "advisory", label: "Advisory" },
-];
-const CYCLE_OPTIONS: DashboardSelectOption[] = [
-  { value: "annual", label: "Annual" },
-  { value: "quarterly", label: "Quarterly" },
-  { value: "monthly", label: "Monthly" },
-];
 
 export function RequirementFormPage({
   mode = "create",
@@ -47,16 +24,21 @@ export function RequirementFormPage({
   const router = useRouter();
   const isEdit = mode === "edit";
   const { options: customers, loading: customersLoading } = useCustomerOptions();
+  const { lookups } = useCrmLookups({ includeLocations: false });
+  const typeOptions = lookupOptions(lookups, "requirementTypes");
+  const appliesOptions = lookupOptions(lookups, "appliesTo");
+  const enforcementOptions = lookupOptions(lookups, "enforcementLevels");
+  const cycleOptions = lookupOptions(lookups, "reviewCycles");
 
   const [submitting, setSubmitting] = React.useState(false);
   const [customerId, setCustomerId] = React.useState("");
-  const [requirementType, setRequirementType] = React.useState<string>("");
-  const [name, setName] = React.useState<string>("");
-  const [appliesTo, setAppliesTo] = React.useState<string>("");
-  const [enforcementLevel, setEnforcementLevel] = React.useState<string>("");
-  const [evidenceRequired, setEvidenceRequired] = React.useState<boolean>(false);
-  const [renewalPeriod, setRenewalPeriod] = React.useState<string>("");
-  const [notes, setNotes] = React.useState<string>("");
+  const [requirementType, setRequirementType] = React.useState("");
+  const [name, setName] = React.useState("");
+  const [appliesTo, setAppliesTo] = React.useState("");
+  const [enforcementLevel, setEnforcementLevel] = React.useState("");
+  const [evidenceRequired, setEvidenceRequired] = React.useState(false);
+  const [renewalPeriod, setRenewalPeriod] = React.useState("");
+  const [notes, setNotes] = React.useState("");
 
   React.useEffect(() => {
     if (!isEdit || !requirementId) return;
@@ -68,11 +50,9 @@ export function RequirementFormPage({
         const r = req.data;
         setCustomerId(r.customerId);
         setName(r.name ?? "");
-        setRequirementType((r.requirementType ?? "certification").toLowerCase());
-        setAppliesTo((r.appliesTo ?? "all").toLowerCase());
-        setEnforcementLevel(
-          (r.enforcementLevel ?? "HARD_GATE").toLowerCase().replace(/_/g, "-"),
-        );
+        setRequirementType(r.requirementType ?? "");
+        setAppliesTo(r.appliesTo ?? "");
+        setEnforcementLevel(r.enforcementLevel ?? "");
         setEvidenceRequired(Boolean(r.evidenceRequired));
         setRenewalPeriod(r.renewalPeriod ?? "");
         setNotes(r.notes ?? "");
@@ -86,8 +66,8 @@ export function RequirementFormPage({
   }, [isEdit, requirementId]);
 
   async function handleSave(addAnother = false) {
-    if (!customerId || !name.trim()) {
-      toastApiError(new Error("Customer and requirement are required"));
+    if (!customerId || !name.trim() || !requirementType || !enforcementLevel) {
+      toastValidationError();
       return;
     }
     setSubmitting(true);
@@ -95,14 +75,12 @@ export function RequirementFormPage({
       const body = {
         customerId,
         name: name.trim(),
-        requirementType:
-          TYPE_OPTIONS.find((o) => o.value === requirementType)?.label ??
-          requirementType,
-        appliesTo:
-          APPLIES_OPTIONS.find((o) => o.value === appliesTo)?.label ?? appliesTo,
-        enforcementLevel: enforcementLevel
-          .replace(/-/g, "_")
-          .toUpperCase() as "HARD_GATE" | "SOFT_GATE" | "ADVISORY",
+        requirementType,
+        appliesTo: appliesTo || undefined,
+        enforcementLevel: enforcementLevel as
+          | "HARD_GATE"
+          | "SOFT_GATE"
+          | "ADVISORY",
         evidenceRequired,
         renewalPeriod: renewalPeriod.trim() || undefined,
         notes: notes.trim() || undefined,
@@ -152,7 +130,8 @@ export function RequirementFormPage({
                 label="Requirement Type *"
                 value={requirementType}
                 onChange={(e) => setRequirementType(e.target.value)}
-                options={TYPE_OPTIONS}
+                options={typeOptions}
+                placeholder="Select type"
               />
               <DashboardTextField
                 label="Requirement *"
@@ -164,13 +143,15 @@ export function RequirementFormPage({
                 label="Applies To"
                 value={appliesTo}
                 onChange={(e) => setAppliesTo(e.target.value)}
-                options={APPLIES_OPTIONS}
+                options={appliesOptions}
+                placeholder="Select"
               />
               <DashboardSelectField
                 label="Enforcement Level *"
                 value={enforcementLevel}
                 onChange={(e) => setEnforcementLevel(e.target.value)}
-                options={ENFORCEMENT_OPTIONS}
+                options={enforcementOptions}
+                placeholder="Select level"
               />
               <DashboardToggle
                 label="Evidence Required?"
@@ -181,8 +162,9 @@ export function RequirementFormPage({
                 label="Renewal Period"
                 value={renewalPeriod}
                 onChange={(e) => setRenewalPeriod(e.target.value)}
-                options={CYCLE_OPTIONS}
+                options={cycleOptions}
                 emptyMessage="No record found"
+                placeholder="Select period"
               />
               <DashboardTextField
                 label="Notes"

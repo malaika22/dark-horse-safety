@@ -10,6 +10,7 @@ import {
   DashboardExportMenu,
   DashboardFilterChips,
   DashboardListToolbar,
+  DashboardMenuPopover,
   DashboardPagination,
   DashboardRowActionMenu,
   DashboardSaveNewViewModal,
@@ -35,17 +36,49 @@ import { useCrmSavedViews } from "@/lib/use-crm-saved-views";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
 import { CrmListEmptyState } from "@/features/crm/crm-states";
+import { useSetHeaderActions } from "@/features/app-shell/header-actions-context";
 import { EOD_KPI_SHELL, EOD_SORT_OPTIONS } from "./crm-constants";
-import type { BadgeCell, EodReportRow } from "./crm-types";
+import type { EodReportRow } from "./crm-types";
+import {
+  EodSendReminderModal,
+  type EodAttentionItem,
+} from "./eod-flow-modals";
+
+function shortRepName(rep?: {
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+} | null) {
+  if (!rep) return "—";
+  const first = rep.firstName?.trim();
+  const last = rep.lastName?.trim();
+  if (first && last) return `${first.charAt(0)}. ${last}`.toUpperCase();
+  return (first || last || rep.email || "—").toUpperCase();
+}
+
+function fmtAttentionDate(iso?: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d
+    .toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    .toUpperCase();
+}
 
 type EodFilters = {
   status: string;
   repId: string;
+  dateFrom: string;
+  dateTo: string;
+  hasPipeline: boolean;
 };
 
 const DEFAULT_EOD_FILTERS: EodFilters = {
   status: "",
   repId: "",
+  dateFrom: "",
+  dateTo: "",
+  hasPipeline: false,
 };
 
 function FilterCheckMarkIcon({ className }: { className?: string }) {
@@ -125,7 +158,7 @@ function FilterSelectRow({
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="h-8 w-full appearance-none rounded-md border-0 bg-[#2A2A2A] py-0 pl-2.5 pr-8 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
+          className="h-8 w-full appearance-none rounded-lg border-0 bg-[#2A2A2A] py-0 pl-2.5 pr-8 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
         >
           <option value="" />
           {options.map((o) => (
@@ -142,6 +175,85 @@ function FilterSelectRow({
   );
 }
 
+function FilterDateRangeRow({
+  label,
+  from,
+  to,
+  onFromChange,
+  onToChange,
+}: {
+  label: string;
+  from: string;
+  to: string;
+  onFromChange: (v: string) => void;
+  onToChange: (v: string) => void;
+}) {
+  const inputClass =
+    "h-8 min-w-0 flex-1 rounded-lg border-0 bg-[#2A2A2A] px-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none [color-scheme:dark]";
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p className="min-w-0 shrink truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+        {label}
+      </p>
+      <div className="flex min-w-0 max-w-[200px] flex-1 items-center gap-1.5">
+        <input
+          type="date"
+          value={from}
+          onChange={(e) => onFromChange(e.target.value)}
+          className={inputClass}
+          aria-label="Date from"
+        />
+        <span className="shrink-0 font-sans text-[12px] text-[#FDFDFF]" aria-hidden>
+          –
+        </span>
+        <input
+          type="date"
+          value={to}
+          onChange={(e) => onToChange(e.target.value)}
+          className={inputClass}
+          aria-label="Date to"
+        />
+      </div>
+    </div>
+  );
+}
+
+function FilterToggleRow({
+  label,
+  checked,
+  onCheckedChange,
+}: {
+  label: string;
+  checked: boolean;
+  onCheckedChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p className="min-w-0 shrink truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+        {label}
+      </p>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onCheckedChange(!checked)}
+        className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+          checked ? "bg-[#FDFDFF]" : "bg-[#3E3E3E]"
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full transition-transform ${
+            checked
+              ? "translate-x-4 bg-[#1A1A1A]"
+              : "bg-[#959597]"
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
 function chipsFromFilters(
   f: EodFilters,
   opts: {
@@ -150,6 +262,9 @@ function chipsFromFilters(
   },
 ) {
   const chips: { id: string; label: string }[] = [];
+  if (f.repId) {
+    chips.push({ id: "rep", label: optionLabel(opts.reps, f.repId) });
+  }
   if (f.status === "NEEDS_REVIEW" || f.status === "PENDING") {
     chips.push({ id: "exceptions", label: "Exceptions" });
   } else if (f.status) {
@@ -158,10 +273,21 @@ function chipsFromFilters(
       label: optionLabel(opts.statuses, f.status),
     });
   }
-  if (f.repId) {
-    chips.push({ id: "rep", label: optionLabel(opts.reps, f.repId) });
+  if (f.dateFrom || f.dateTo) {
+    const from = f.dateFrom || "…";
+    const to = f.dateTo || "…";
+    chips.push({ id: "dates", label: `${from} – ${to}` });
+  }
+  if (f.hasPipeline) {
+    chips.push({ id: "pipeline", label: "Has Pipeline" });
   }
   return chips;
+}
+
+function filtersAreActive(f: EodFilters) {
+  return Boolean(
+    f.status || f.repId || f.dateFrom || f.dateTo || f.hasPipeline,
+  );
 }
 
 function EodFiltersDrawer({
@@ -236,18 +362,30 @@ function EodFiltersDrawer({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5 scrollbar-hidden">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 scrollbar-hidden">
+          <FilterSelectRow
+            label="Rep"
+            value={value.repId}
+            options={repOptions}
+            onChange={(v) => patch({ repId: v })}
+          />
           <FilterSelectRow
             label="Status"
             value={value.status}
             options={statusOptions}
             onChange={(v) => patch({ status: v })}
           />
-          <FilterSelectRow
-            label="Rep"
-            value={value.repId}
-            options={repOptions}
-            onChange={(v) => patch({ repId: v })}
+          <FilterDateRangeRow
+            label="Date Range"
+            from={value.dateFrom}
+            to={value.dateTo}
+            onFromChange={(v) => patch({ dateFrom: v })}
+            onToChange={(v) => patch({ dateTo: v })}
+          />
+          <FilterToggleRow
+            label="Has Pipeline Value?"
+            checked={value.hasPipeline}
+            onCheckedChange={(v) => patch({ hasPipeline: v })}
           />
         </div>
 
@@ -272,15 +410,6 @@ function EodFiltersDrawer({
   );
 }
 
-function BadgeOrDash({ value }: { value: BadgeCell }) {
-  if (!value) return <span className="text-[#959597]">—</span>;
-  return (
-    <DashboardBadge variant={value.variant} pill className="max-w-full">
-      {value.label}
-    </DashboardBadge>
-  );
-}
-
 function StackedCell({
   title,
   subtitle,
@@ -296,6 +425,90 @@ function StackedCell({
           {subtitle}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function AttentionPanel({
+  items,
+  onRemind,
+  onView,
+}: {
+  items: {
+    id: string;
+    kind: "missing" | "late";
+    date: string;
+    rep: string;
+    detail: string;
+  }[];
+  onRemind: (id: string) => void;
+  onView: (id: string) => void;
+}) {
+  if (items.length === 0) return null;
+  const missing = items.filter((i) => i.kind === "missing").length;
+  const late = items.filter((i) => i.kind === "late").length;
+  const summary = [
+    missing ? `${missing} Missing` : null,
+    late ? `${late} Late` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-[#2D2D30] bg-panel">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#2D2D30] px-4 py-3 sm:px-5">
+        <span className="text-[#E8C07A]" aria-hidden>
+          ⚠
+        </span>
+        <p className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+          Needs Attention — Not Submitted
+          {summary ? (
+            <span className="text-[#959597]"> ({summary})</span>
+          ) : null}
+        </p>
+      </div>
+      <ul className="divide-y divide-[#2D2D30]">
+        {items.map((item) => (
+          <li
+            key={item.id}
+            className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5"
+          >
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <DashboardBadge
+                variant={item.kind === "missing" ? "error" : "warning"}
+                pill
+              >
+                {item.kind === "missing" ? "Missing" : "Late"}
+              </DashboardBadge>
+              <span className="font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                {item.date}
+              </span>
+              <span className="font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                {item.rep}
+              </span>
+              <span
+                className={`font-sans text-[11px] uppercase tracking-[-0.02em] ${
+                  item.kind === "missing" ? "text-[#FF6B6B]" : "text-[#959597]"
+                }`}
+              >
+                {item.detail}
+              </span>
+            </div>
+            {item.kind === "missing" ? (
+              <DashboardToolbarButton
+                variant="primary"
+                onClick={() => onRemind(item.id)}
+              >
+                Remind
+              </DashboardToolbarButton>
+            ) : (
+              <DashboardToolbarButton onClick={() => onView(item.id)}>
+                View
+              </DashboardToolbarButton>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -317,6 +530,20 @@ export function EodReportsPage() {
   const [filtersApplied, setFiltersApplied] = React.useState(false);
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
+  const [attention, setAttention] = React.useState<
+    {
+      id: string;
+      kind: "missing" | "late";
+      date: string;
+      rep: string;
+      detail: string;
+    }[]
+  >([]);
+  const [reminderItems, setReminderItems] = React.useState<EodAttentionItem[]>(
+    [],
+  );
+  const [sendReminderOpen, setSendReminderOpen] = React.useState(false);
+  const [attentionTick, setAttentionTick] = React.useState(0);
   const {
     savedViews,
     activeViewId,
@@ -324,6 +551,47 @@ export function EodReportsPage() {
     createView,
     deleteView,
   } = useCrmSavedViews("EOD_REPORTS");
+
+  const remindMenuRef = React.useRef<HTMLButtonElement>(null);
+  const [remindMenuOpen, setRemindMenuOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await crmApi.listEodAttention();
+        if (cancelled) return;
+        const raw = res.data.items ?? [];
+        setAttention(
+          raw.map((r) => ({
+            id: r.id,
+            kind: r.kind,
+            date: fmtAttentionDate(r.reportDate),
+            rep: shortRepName(r.rep),
+            detail: r.detail,
+          })),
+        );
+        setReminderItems(
+          raw.map((r) => ({
+            id: r.id,
+            kind: r.kind,
+            repName: shortRepName(r.rep),
+            dateLabel: fmtAttentionDate(r.reportDate),
+            detail: r.detail,
+            selectedByDefault: r.selectedByDefault !== false,
+          })),
+        );
+      } catch {
+        if (!cancelled) {
+          setAttention([]);
+          setReminderItems([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [attentionTick]);
 
   const { lookups, reps } = useCrmLookups({ includeLocations: false });
   const statusOptions = React.useMemo(() => {
@@ -344,9 +612,12 @@ export function EodReportsPage() {
 
   const extraParams = React.useMemo(() => {
     if (!filtersApplied) return undefined;
-    const params: Record<string, string | undefined> = {};
+    const params: Record<string, string | boolean | undefined> = {};
     if (appliedFilters.status) params.status = appliedFilters.status;
     if (appliedFilters.repId) params.repId = appliedFilters.repId;
+    if (appliedFilters.dateFrom) params.dateFrom = appliedFilters.dateFrom;
+    if (appliedFilters.dateTo) params.dateTo = appliedFilters.dateTo;
+    if (appliedFilters.hasPipeline) params.hasPipeline = true;
     return Object.keys(params).length ? params : undefined;
   }, [appliedFilters, filtersApplied]);
 
@@ -399,7 +670,7 @@ export function EodReportsPage() {
       setAppliedFilters(nextFilters);
       setDraftFilters(nextFilters);
       setFiltersApplied(
-        p.filtersApplied ?? Boolean(nextFilters.status || nextFilters.repId),
+        p.filtersApplied ?? filtersAreActive(nextFilters),
       );
     } else if (typeof p.filtersApplied === "boolean") {
       setFiltersApplied(p.filtersApplied);
@@ -484,9 +755,50 @@ export function EodReportsPage() {
 
   async function handleRemind(id: string) {
     try {
-      await crmApi.remindEodReport(id);
+      await crmApi.remindEodReport(id, { viaEmail: true, viaPush: true });
       toastSuccess("Reminder sent");
       reload();
+      setAttentionTick((t) => t + 1);
+    } catch (err) {
+      toastApiError(err);
+    }
+  }
+
+  async function openSendReminderModal() {
+    setAttentionTick((t) => t + 1);
+    setSendReminderOpen(true);
+  }
+
+  async function handleSendReminderPayload(payload: {
+    ids: string[];
+    message: string;
+    viaPush: boolean;
+    viaEmail: boolean;
+  }) {
+    try {
+      const res = await crmApi.bulkRemindEodReports(payload.ids, {
+        message: payload.message,
+        viaPush: payload.viaPush,
+        viaEmail: payload.viaEmail,
+      });
+      toastSuccess(
+        `Reminders sent to ${res.data.sent} rep${res.data.sent === 1 ? "" : "s"}`,
+      );
+      setSelectedIds([]);
+      reload();
+      setAttentionTick((t) => t + 1);
+    } catch (err) {
+      toastApiError(err);
+      throw err;
+    }
+  }
+
+  async function handleAcknowledge(id: string) {
+    try {
+      await crmApi.acknowledgeEodReport(id, { by: "Manager" });
+      toastSuccess("Report acknowledged");
+      reload();
+      setAttentionTick((t) => t + 1);
     } catch (err) {
       toastApiError(err);
     }
@@ -494,17 +806,32 @@ export function EodReportsPage() {
 
   async function handleBulkRemind() {
     try {
-      await crmApi.bulkRemindEodReports(selectedIds);
+      const ids =
+        selectedIds.length > 0
+          ? selectedIds
+          : attention.filter((a) => a.kind === "missing").map((a) => a.id);
+      if (ids.length === 0) {
+        toastApiError(new Error("No reports to remind"));
+        return;
+      }
+      await crmApi.bulkRemindEodReports(ids, {
+        viaEmail: true,
+        viaPush: true,
+      });
       toastSuccess("Reminders sent");
       setSelectedIds([]);
       reload();
+      setAttentionTick((t) => t + 1);
     } catch (err) {
       toastApiError(err);
     }
   }
 
   function applyExceptionFilter() {
-    const next: EodFilters = { status: "PENDING", repId: appliedFilters.repId };
+    const next: EodFilters = {
+      ...appliedFilters,
+      status: "PENDING",
+    };
     setDraftFilters(next);
     setAppliedFilters(next);
     setFiltersApplied(true);
@@ -512,25 +839,82 @@ export function EodReportsPage() {
   }
 
   function clearChip(id: string) {
+    let next = { ...appliedFilters };
     if (id === "exceptions" || id === "status") {
-      const next = { ...appliedFilters, status: "" };
-      setAppliedFilters(next);
-      setDraftFilters(next);
-      if (!next.repId) setFiltersApplied(false);
+      next = { ...next, status: "" };
     } else if (id === "rep") {
-      const next = { ...appliedFilters, repId: "" };
-      setAppliedFilters(next);
-      setDraftFilters(next);
-      if (!next.status) setFiltersApplied(false);
+      next = { ...next, repId: "" };
+    } else if (id === "dates") {
+      next = { ...next, dateFrom: "", dateTo: "" };
+    } else if (id === "pipeline") {
+      next = { ...next, hasPipeline: false };
     }
+    setAppliedFilters(next);
+    setDraftFilters(next);
+    setFiltersApplied(filtersAreActive(next));
   }
+
+  useSetHeaderActions(
+    <div className="relative">
+      <DashboardToolbarButton
+        ref={remindMenuRef}
+        variant="primary"
+        showChevron
+        leftIcon={<ClockIcon className="shrink-0" />}
+        onClick={() => setRemindMenuOpen((o) => !o)}
+      >
+        Send Reminder
+      </DashboardToolbarButton>
+      <DashboardMenuPopover
+        open={remindMenuOpen}
+        onClose={() => setRemindMenuOpen(false)}
+        anchorRef={remindMenuRef}
+        align="right"
+        className="min-w-[220px]"
+        items={[
+          {
+            id: "compose",
+            label: "Open Reminder Composer",
+            onSelect: () => void openSendReminderModal(),
+          },
+          {
+            id: "missing",
+            label: "Remind Missing Reports",
+            onSelect: () => void handleBulkRemind(),
+          },
+          {
+            id: "selected",
+            label: "Remind Selected",
+            onSelect: () => {
+              if (selectedIds.length === 0) {
+                toastApiError(new Error("Select reports first"));
+                return;
+              }
+              void handleBulkRemind();
+            },
+          },
+          {
+            id: "exceptions",
+            label: "Review Exceptions",
+            onSelect: applyExceptionFilter,
+          },
+          {
+            id: "views",
+            label: "Saved Views",
+            onSelect: () => setSavedViewsOpen(true),
+          },
+        ]}
+      />
+    </div>,
+    [remindMenuOpen, selectedIds, attention, reminderItems],
+  );
 
   const columns: DashboardDataTableColumn<EodReportRow>[] = React.useMemo(
     () => [
       {
         id: "reportId",
         header: "Report ID",
-        className: "min-w-[110px] max-w-[150px]",
+        className: "min-w-[120px] max-w-[160px]",
         cell: (row) => (
           <DashboardTablePrimaryCell
             title={row.reportId}
@@ -542,28 +926,26 @@ export function EodReportsPage() {
       {
         id: "date",
         header: "Date",
-        className: "min-w-[80px]",
+        className: "min-w-[72px]",
         cell: (row) => row.date,
       },
       {
         id: "rep",
         header: "Rep",
-        className: "min-w-[120px]",
+        className: "min-w-[88px]",
         cell: (row) => row.rep,
       },
       {
         id: "activities",
         header: "Activities",
-        className: "min-w-[90px]",
+        className: "min-w-[72px]",
         cell: (row) => row.activities,
       },
       {
         id: "calls",
         header: "Calls",
-        className: "min-w-[80px] hidden md:table-cell",
-        cell: (row) => (
-          <StackedCell title={row.calls} subtitle={row.callsDetail} />
-        ),
+        className: "min-w-[56px] hidden md:table-cell",
+        cell: (row) => row.calls,
       },
       {
         id: "visits",
@@ -576,38 +958,30 @@ export function EodReportsPage() {
       {
         id: "meetings",
         header: "Meetings",
-        className: "min-w-[90px] hidden lg:table-cell",
+        className: "min-w-[80px] hidden lg:table-cell",
         cell: (row) =>
-          row.meetingsBadge ? (
-            <DashboardBadge
-              variant={row.meetingsBadge.variant}
-              pill
-              className="max-w-full"
-            >
-              {row.meetingsBadge.label}
-            </DashboardBadge>
+          row.meetingsMissing ? (
+            <span className="text-[#959597]">Missing</span>
           ) : (
-            <span className="underline underline-offset-2">
-              {row.meetings || "—"}
-            </span>
+            row.meetings
           ),
       },
       {
         id: "quotes",
         header: "Quotes",
-        className: "min-w-[120px] hidden xl:table-cell",
-        cell: (row) => <BadgeOrDash value={row.quotes} />,
+        className: "min-w-[80px] hidden xl:table-cell",
+        cell: (row) => row.quotesLabel,
       },
       {
         id: "pipeline",
         header: "Pipeline",
-        className: "min-w-[130px] hidden xl:table-cell",
-        cell: (row) => <BadgeOrDash value={row.pipeline} />,
+        className: "min-w-[72px] hidden xl:table-cell",
+        cell: (row) => row.pipelineLabel,
       },
       {
         id: "status",
         header: "Status",
-        className: "min-w-[110px]",
+        className: "min-w-[100px]",
         cell: (row) => (
           <DashboardBadge
             variant={row.status.variant}
@@ -617,6 +991,25 @@ export function EodReportsPage() {
             {row.status.label}
           </DashboardBadge>
         ),
+      },
+      {
+        id: "reviewed",
+        header: "Reviewed",
+        className: "min-w-[140px] hidden lg:table-cell",
+        cell: (row) =>
+          row.reviewed.state === "reviewed" ? (
+            <span className="inline-flex min-w-0 items-center gap-1.5 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#4ADE80]">
+              <span aria-hidden>✓</span>
+              <span className="truncate">
+                Reviewed{" "}
+                <span className="text-[#959597]">{row.reviewed.detail}</span>
+              </span>
+            </span>
+          ) : (
+            <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+              Awaiting
+            </span>
+          ),
       },
       {
         id: "actions",
@@ -635,13 +1028,74 @@ export function EodReportsPage() {
                 label: "View Reps Activities That Day",
                 onSelect: () =>
                   router.push(
-                    `/crm/sales?repId=${encodeURIComponent(row.id)}&date=${encodeURIComponent(row.date)}`,
+                    `/crm/sales?${new URLSearchParams({
+                      ...(row.repId ? { repId: row.repId } : {}),
+                      date: row.date,
+                    }).toString()}`,
                   ),
               },
               {
                 id: "reminder",
                 label: "Send Reminder",
-                onSelect: () => void handleRemind(row.id),
+                onSelect: () => {
+                  const match = reminderItems.find((i) => i.id === row.id);
+                  setReminderItems((prev) => {
+                    if (match) {
+                      return prev.map((i) => ({
+                        ...i,
+                        selectedByDefault: i.id === row.id,
+                      }));
+                    }
+                    return [
+                      {
+                        id: row.id,
+                        kind: "missing" as const,
+                        repName: row.rep,
+                        dateLabel: row.date,
+                        detail: row.submittedTime || "Needs reminder",
+                        selectedByDefault: true,
+                      },
+                      ...prev.map((i) => ({
+                        ...i,
+                        selectedByDefault: false,
+                      })),
+                    ];
+                  });
+                  setSendReminderOpen(true);
+                },
+              },
+              {
+                id: "ack",
+                label: "Acknowledge",
+                onSelect: () => void handleAcknowledge(row.id),
+              },
+              {
+                id: "contact",
+                label: "Contact Rep",
+                onSelect: () => {
+                  const match = reminderItems.find((i) => i.id === row.id);
+                  void (async () => {
+                    try {
+                      const res = await crmApi.getEodReport(row.id);
+                      const email = res.data.rep?.email;
+                      if (email) {
+                        window.location.href = `mailto:${email}?subject=${encodeURIComponent(
+                          `EOD ${row.reportId}`,
+                        )}`;
+                      } else {
+                        toastApiError(
+                          new Error(
+                            match
+                              ? `No email on file for ${match.repName}`
+                              : "No email on file for this rep",
+                          ),
+                        );
+                      }
+                    } catch (err) {
+                      toastApiError(err);
+                    }
+                  })();
+                },
               },
               {
                 id: "export",
@@ -653,7 +1107,7 @@ export function EodReportsPage() {
         ),
       },
     ],
-    [router],
+    [router, reminderItems],
   );
 
   return (
@@ -713,7 +1167,7 @@ export function EodReportsPage() {
         <DashboardListToolbar
           search={
             <DashboardSearchInput
-              placeholder="Search WO, Customer, Loca..."
+              placeholder="Rep · Date · Report ID"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -734,24 +1188,15 @@ export function EodReportsPage() {
           }
           actions={
             <>
-              <DashboardToolbarButton onClick={() => setSavedViewsOpen(true)}>
-                Saved views
-              </DashboardToolbarButton>
               <DashboardSortMenu
                 options={EOD_SORT_OPTIONS}
                 field={sortField}
                 direction={sortDirection}
                 onFieldChange={setSortField}
                 onDirectionChange={setSortDirection}
-                showDirectionInTrigger={false}
+                showDirectionInTrigger
+                directionFormat="long"
               />
-              <DashboardToolbarButton
-                leftIcon={<ClockIcon className="shrink-0" />}
-                showChevron
-                onClick={applyExceptionFilter}
-              >
-                Review Exceptions
-              </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
                   {
@@ -794,6 +1239,12 @@ export function EodReportsPage() {
         />
       )}
 
+      <AttentionPanel
+        items={attention}
+        onRemind={(id) => void handleRemind(id)}
+        onView={(id) => router.push(`/crm/eod-reports/${id}`)}
+      />
+
       <DashboardDataTable
         columns={columns}
         rows={rows}
@@ -832,7 +1283,7 @@ export function EodReportsPage() {
         onChange={setDraftFilters}
         onApply={() => {
           setAppliedFilters(draftFilters);
-          setFiltersApplied(true);
+          setFiltersApplied(filtersAreActive(draftFilters));
         }}
         onClearAll={() => {
           setDraftFilters(DEFAULT_EOD_FILTERS);
@@ -875,6 +1326,13 @@ export function EodReportsPage() {
         onConfirm={({ name }) => {
           void createView(name, currentViewPayload());
         }}
+      />
+
+      <EodSendReminderModal
+        open={sendReminderOpen}
+        onClose={() => setSendReminderOpen(false)}
+        items={reminderItems}
+        onSend={handleSendReminderPayload}
       />
     </div>
     </CrmListLoadGate>

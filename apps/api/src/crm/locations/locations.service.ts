@@ -1,10 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CrmRecordStatus, Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { CodeGeneratorService } from '../../common/services/code-generator.service';
 import {
   ExportService,
   isoDate,
 } from '../../common/services/export.service';
+import { UploadsService } from '../../common/services/uploads.service';
 import {
   containsCi,
   orderByFrom,
@@ -33,7 +35,67 @@ export class LocationsService {
     private readonly prisma: PrismaService,
     private readonly codes: CodeGeneratorService,
     private readonly exportService: ExportService,
+    private readonly uploads: UploadsService,
   ) {}
+
+  /** Persist any base64 payloads to disk; DB keeps URL metadata only. */
+  private async persistSitePhotos(
+    locationId: string,
+    raw: unknown,
+  ): Promise<Prisma.InputJsonValue> {
+    if (!Array.isArray(raw)) return [];
+    const out: Array<Record<string, unknown>> = [];
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') continue;
+      const p = item as Record<string, unknown>;
+      let url = typeof p.url === 'string' ? p.url : undefined;
+      let storagePath =
+        typeof p.storagePath === 'string' ? p.storagePath : undefined;
+      const contentBase64 =
+        typeof p.contentBase64 === 'string' ? p.contentBase64 : undefined;
+
+      if (contentBase64 && (!url || contentBase64.startsWith('data:'))) {
+        const saved = await this.uploads.saveBase64({
+          folder: `locations/${locationId}/photos`,
+          fileName: String(p.name || p.label || 'photo.jpg'),
+          contentBase64,
+        });
+        url = saved.url;
+        storagePath = saved.storagePath;
+      }
+
+      if (!url) continue;
+      out.push({
+        id: String(p.id ?? randomUUID()),
+        label: String(p.label ?? 'Landmark').trim() || 'Landmark',
+        name: typeof p.name === 'string' ? p.name : undefined,
+        url,
+        storagePath,
+      });
+    }
+    return out as Prisma.InputJsonValue;
+  }
+
+  private async persistEvacuationMap(
+    locationId: string,
+    value?: string | null,
+  ): Promise<string | null | undefined> {
+    if (value === undefined) return undefined;
+    if (value === null || !value.trim()) return null;
+    const trimmed = value.trim();
+    if (trimmed.startsWith('/uploads/') || /^https?:\/\//i.test(trimmed)) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('data:') || trimmed.length > 400) {
+      const saved = await this.uploads.saveBase64({
+        folder: `locations/${locationId}`,
+        fileName: 'evacuation-map.jpg',
+        contentBase64: trimmed,
+      });
+      return saved.url;
+    }
+    return trimmed;
+  }
 
   private where(query: LocationListQueryDto): Prisma.LocationWhereInput {
     const and: Prisma.LocationWhereInput[] = [];
@@ -82,7 +144,9 @@ export class LocationsService {
         take,
         orderBy: this.listOrderBy(query.sort, query.direction),
         include: {
-          customer: { select: { id: true, name: true, code: true } },
+          customer: {
+          select: { id: true, name: true, code: true, clockInRadius: true },
+        },
           workOrders: {
             where: openWorkOrderWhere(),
             take: 1,
@@ -199,7 +263,9 @@ export class LocationsService {
     const location = await this.prisma.location.findUnique({
       where: { id },
       include: {
-        customer: { select: { id: true, name: true, code: true } },
+        customer: {
+          select: { id: true, name: true, code: true, clockInRadius: true },
+        },
         routeRules: {
           where: { archivedAt: null },
           take: 20,
@@ -209,7 +275,13 @@ export class LocationsService {
             code: true,
             routeLabel: true,
             geofenceRadius: true,
+            gpsRequired: true,
+            clockInWindow: true,
+            routeFrom: true,
+            expectedTravelTime: true,
             status: true,
+            locationId: true,
+            customerId: true,
           },
         },
         workOrders: {
@@ -257,18 +329,60 @@ export class LocationsService {
         status: (dto.status as CrmRecordStatus) ?? CrmRecordStatus.ACTIVE,
         accessNotes: dto.accessNotes,
         siteContact: dto.siteContact,
+        siteContactId: dto.siteContactId,
         geofenceRadius: dto.geofenceRadius,
+        geofenceOverride: dto.geofenceOverride ?? false,
         gpsRequired: dto.gpsRequired ?? false,
         nearestHospital: dto.nearestHospital,
+        hospitalPhone: dto.hospitalPhone,
+        hospitalAddress: dto.hospitalAddress,
+        hospitalDriveTime: dto.hospitalDriveTime,
+        fireEmergency: dto.fireEmergency,
+        fireNonEmergency: dto.fireNonEmergency,
+        policeEmergency: dto.policeEmergency,
+        policeNonEmergency: dto.policeNonEmergency,
+        ambulance: dto.ambulance,
+        musterPoint: dto.musterPoint,
         city: dto.city,
         customerId: dto.customerId,
       },
     });
+
+    const sitePhotos =
+      dto.sitePhotos !== undefined
+        ? await this.persistSitePhotos(location.id, dto.sitePhotos)
+        : undefined;
+    const evacuationMapUrl =
+      dto.evacuationMapUrl !== undefined
+        ? await this.persistEvacuationMap(location.id, dto.evacuationMapUrl)
+        : undefined;
+
+    if (sitePhotos !== undefined || evacuationMapUrl !== undefined) {
+      const updated = await this.prisma.location.update({
+        where: { id: location.id },
+        data: {
+          ...(sitePhotos !== undefined ? { sitePhotos } : {}),
+          ...(evacuationMapUrl !== undefined ? { evacuationMapUrl } : {}),
+        },
+      });
+      return { data: updated };
+    }
+
     return { data: location };
   }
 
   async update(id: string, dto: UpdateLocationDto) {
     await this.ensureExists(id);
+
+    const sitePhotos =
+      dto.sitePhotos !== undefined
+        ? await this.persistSitePhotos(id, dto.sitePhotos)
+        : undefined;
+    const evacuationMapUrl =
+      dto.evacuationMapUrl !== undefined
+        ? await this.persistEvacuationMap(id, dto.evacuationMapUrl)
+        : undefined;
+
     const location = await this.prisma.location.update({
       where: { id },
       data: {
@@ -291,8 +405,14 @@ export class LocationsService {
         ...(dto.siteContact !== undefined
           ? { siteContact: dto.siteContact }
           : {}),
+        ...(dto.siteContactId !== undefined
+          ? { siteContactId: dto.siteContactId }
+          : {}),
         ...(dto.geofenceRadius !== undefined
           ? { geofenceRadius: dto.geofenceRadius }
+          : {}),
+        ...(dto.geofenceOverride !== undefined
+          ? { geofenceOverride: dto.geofenceOverride }
           : {}),
         ...(dto.gpsRequired !== undefined
           ? { gpsRequired: dto.gpsRequired }
@@ -300,6 +420,33 @@ export class LocationsService {
         ...(dto.nearestHospital !== undefined
           ? { nearestHospital: dto.nearestHospital }
           : {}),
+        ...(dto.hospitalPhone !== undefined
+          ? { hospitalPhone: dto.hospitalPhone }
+          : {}),
+        ...(dto.hospitalAddress !== undefined
+          ? { hospitalAddress: dto.hospitalAddress }
+          : {}),
+        ...(dto.hospitalDriveTime !== undefined
+          ? { hospitalDriveTime: dto.hospitalDriveTime }
+          : {}),
+        ...(dto.fireEmergency !== undefined
+          ? { fireEmergency: dto.fireEmergency }
+          : {}),
+        ...(dto.fireNonEmergency !== undefined
+          ? { fireNonEmergency: dto.fireNonEmergency }
+          : {}),
+        ...(dto.policeEmergency !== undefined
+          ? { policeEmergency: dto.policeEmergency }
+          : {}),
+        ...(dto.policeNonEmergency !== undefined
+          ? { policeNonEmergency: dto.policeNonEmergency }
+          : {}),
+        ...(dto.ambulance !== undefined ? { ambulance: dto.ambulance } : {}),
+        ...(dto.musterPoint !== undefined
+          ? { musterPoint: dto.musterPoint }
+          : {}),
+        ...(sitePhotos !== undefined ? { sitePhotos } : {}),
+        ...(evacuationMapUrl !== undefined ? { evacuationMapUrl } : {}),
         ...(dto.city !== undefined ? { city: dto.city } : {}),
         ...(dto.customerId !== undefined
           ? { customerId: dto.customerId }
@@ -341,7 +488,9 @@ export class LocationsService {
       orderBy: { name: 'asc' },
       take: 5000,
       include: {
-        customer: { select: { id: true, name: true, code: true } },
+        customer: {
+          select: { id: true, name: true, code: true, clockInRadius: true },
+        },
       },
     });
     type Row = (typeof rows)[number];

@@ -10,6 +10,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/auth.guards';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthUser } from '../../common/decorators/current-user.decorator';
 import { ExportQueryDto } from '../../common/dto/list-query.dto';
 import {
   BulkPricingRuleIdsDto,
@@ -56,10 +58,24 @@ export class PricingRulesController {
     return this.pricingRules.bulkDelete(dto.ids);
   }
 
+  @Get('impact')
+  @ApiOperation({
+    summary: 'Count open quotes that use a customer + service item rate',
+  })
+  impact(
+    @Query('customerId') customerId?: string,
+    @Query('serviceItem') serviceItem?: string,
+  ) {
+    return this.pricingRules.impact(customerId, serviceItem);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create pricing rule' })
-  create(@Body() dto: CreatePricingRuleDto) {
-    return this.pricingRules.create(dto);
+  create(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CreatePricingRuleDto,
+  ) {
+    return this.pricingRules.create(dto, user);
   }
 
   @Get(':id')
@@ -76,8 +92,18 @@ export class PricingRulesController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update pricing rule' })
-  update(@Param('id') id: string, @Body() dto: UpdatePricingRuleDto) {
-    return this.pricingRules.update(id, dto);
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdatePricingRuleDto,
+  ) {
+    return this.pricingRules.update(id, dto, user);
+  }
+
+  @Post(':id/approve')
+  @ApiOperation({ summary: 'Approve a pending pricing rule' })
+  approve(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.pricingRules.approve(id, user);
   }
 
   @Post(':id/archive')

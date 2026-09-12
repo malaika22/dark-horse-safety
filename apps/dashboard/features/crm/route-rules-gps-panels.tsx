@@ -82,16 +82,45 @@ function sourceLabel(source: string) {
   return "System default";
 }
 
-function formatFlagTime(iso: string) {
+function formatFlagDateParts(iso: string) {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("en-US", {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  if (Number.isNaN(d.getTime())) return { date: "—", time: "" };
+  return {
+    date: d
+      .toLocaleDateString("en-US", { month: "short", day: "2-digit" })
+      .toUpperCase(),
+    time: d.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+  };
+}
+
+function WarningTriangleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={className}
+    >
+      <path
+        d="M12 3.5L22 20.5H2L12 3.5Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 10v4.5M12 17.5h.01"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 }
 
 function FlagIcon({ className }: { className?: string }) {
@@ -105,27 +134,6 @@ function FlagIcon({ className }: { className?: string }) {
       className={className}
     >
       <path d="M5 3v18M5 4h10l-2 4 2 4H5" fill="currentColor" />
-    </svg>
-  );
-}
-
-function FilterCheckMarkIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-      className={className}
-    >
-      <path
-        d="M5 12.5l4.5 4.5L19 7"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
     </svg>
   );
 }
@@ -650,24 +658,24 @@ export function RouteGeofenceMap({
   );
 }
 
-function flagTypeClass(type: string) {
-  if (/home/i.test(type)) return "bg-[#7A5C1E] text-[#F5D78E]";
-  if (/outside/i.test(type)) return "bg-[#7A3E1E] text-[#F5A623]";
-  if (/unavailable/i.test(type)) return "bg-[#5C4A2A] text-[#D4B483]";
-  if (/accuracy/i.test(type)) return "bg-[#6B4E1E] text-[#E8C07A]";
-  return "bg-[#2A2A2A] text-[#FDFDFF]";
+function sourceTextClass(source: string) {
+  if (source === "SITE_OVERRIDE") return "text-[#60A5FA]";
+  if (source === "CUSTOMER_DEFAULT") return "text-[#C084FC]";
+  return "text-[#A1A1AA]";
 }
 
-function sourcePillClass(source: string) {
-  if (source === "SITE_OVERRIDE") return "bg-[#1E3A5F] text-[#93C5FD]";
-  if (source === "CUSTOMER_DEFAULT") return "bg-[#3B1F5C] text-[#D8B4FE]";
-  return "bg-[#2A2A2A] text-[#A1A1AA]";
+function outcomePillClass(outcome: string) {
+  if (/accept/i.test(outcome)) {
+    return "border border-[#3A3A3A] bg-[#2A2A2A] text-[#C8C8C8]";
+  }
+  if (/reject/i.test(outcome)) {
+    return "border border-[#5C1F1F] bg-[#2A1212] text-[#F87171]";
+  }
+  return "border border-[#5C3A1E] bg-[#2A1F12] text-[#E8C07A]";
 }
 
-function outcomeClass(outcome: string) {
-  if (/accept/i.test(outcome)) return "text-[#4ADE80]";
-  if (/reject/i.test(outcome)) return "text-[#F87171]";
-  return "text-[#F5A623]";
+function isAwaitingOutcome(outcome: string) {
+  return /awaiting|pending|explanation/i.test(outcome);
 }
 
 export function RouteGpsFlagsSection({
@@ -705,36 +713,45 @@ export function RouteGpsFlagsSection({
 
   return (
     <DashboardPanel className="overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4 pb-3 sm:px-5">
+      <div className="px-4 pt-4 pb-3 sm:px-5">
         <DashboardPanelTitle
           icon="lightning"
-          title="GPS Flags — Last 30 Days"
+          title="GPS Flags · Last 30 Days"
+          className="!flex-row !flex-wrap !items-center !justify-start gap-x-3 gap-y-2"
           trailing={
-            <span className="rounded bg-[#5C3A1E] px-2 py-0.5 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#F5A623]">
-              {summary.total} Flags · {summary.sites} Sites
-            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="rounded-md bg-[#5C3A1E] px-2 py-0.5 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#F5A623]">
+                {summary.total} Flags
+              </span>
+              <span className="rounded-md bg-[#5C3A1E] px-2 py-0.5 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#F5A623]">
+                {summary.sites} Sites
+              </span>
+            </div>
           }
         />
       </div>
 
       {insight ? (
-        <div className="mx-4 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#5C3A1E] bg-[#2A1F12] px-3 py-2.5 sm:mx-5">
-          <p className="min-w-0 flex-1 font-sans text-[11px] uppercase leading-relaxed tracking-[-0.02em] text-[#E8C07A]">
-            {insight.message}
-          </p>
-          <button
-            type="button"
+        <div className="mx-4 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#8B6914]/60 bg-[#1C160C] px-3 py-2.5 sm:mx-5">
+          <div className="flex min-w-0 flex-1 items-start gap-2.5">
+            <WarningTriangleIcon className="mt-0.5 shrink-0 text-[#E8C07A]" />
+            <p className="min-w-0 font-sans text-[11px] uppercase leading-relaxed tracking-[-0.02em] text-[#E8C07A]">
+              {insight.message}
+            </p>
+          </div>
+          <DashboardToolbarButton
+            variant="primary"
             onClick={() => onAdjustRadius?.(insight.routeRuleId)}
-            className="shrink-0 rounded-md border border-[#5C3A1E] bg-[#1A1A1A] px-3 py-1.5 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]"
+            className="shrink-0"
           >
             Adjust Radius
-          </button>
+          </DashboardToolbarButton>
         </div>
       ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#2D2D30] px-4 py-2.5 sm:px-5">
-        <div className="inline-flex items-center gap-1 rounded-md border border-[#2D2D30] p-0.5">
-          <span className="px-2 font-sans text-[10px] uppercase text-[#959597]">
+        <div className="inline-flex items-center gap-2">
+          <span className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597]">
             Group by
           </span>
           {(["site", "date"] as const).map((g) => (
@@ -743,9 +760,9 @@ export function RouteGpsFlagsSection({
               type="button"
               onClick={() => onGroupByChange(g)}
               className={cn(
-                "rounded px-2.5 py-1 font-sans text-[10px] uppercase tracking-[-0.02em]",
+                "rounded-md px-2.5 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] transition-colors",
                 groupBy === g
-                  ? "bg-[#FDFDFF] text-[#121212]"
+                  ? "bg-[#2A2A2A] text-[#FDFDFF]"
                   : "text-[#959597] hover:text-[#FDFDFF]",
               )}
             >
@@ -756,9 +773,6 @@ export function RouteGpsFlagsSection({
         {onOpenFilters ? (
           <DashboardToolbarButton
             leftIcon={<DashboardToolbarIcons.Filter className="shrink-0" />}
-            rightIcon={
-              <FilterCheckMarkIcon className="shrink-0 text-[#959597]" />
-            }
             onClick={onOpenFilters}
           >
             Filters
@@ -778,10 +792,10 @@ export function RouteGpsFlagsSection({
                 "Distance",
                 "Rule Source",
                 "Outcome",
-                "Action",
+                "",
               ].map((h) => (
                 <th
-                  key={h}
+                  key={h || "actions"}
                   className="px-3 py-2.5 font-sans text-[10px] font-normal uppercase tracking-[-0.02em] text-[#959597] sm:px-4"
                 >
                   {h}
@@ -800,85 +814,101 @@ export function RouteGpsFlagsSection({
                 </td>
               </tr>
             ) : (
-              sorted.map((row) => (
-                <tr
-                  key={row.id}
-                  className="border-b border-[#2D2D30] last:border-b-0"
-                >
-                  <td className="px-3 py-3 sm:px-4">
-                    <p className="font-sans text-[11px] font-[510] uppercase text-[#FDFDFF]">
-                      {row.site}
-                    </p>
-                    <p className="mt-1 font-sans text-[10px] uppercase text-[#959597]">
-                      {row.customer}
-                    </p>
-                  </td>
-                  <td className="px-3 py-3 sm:px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#2A2A2A] font-sans text-[9px] text-[#FDFDFF]">
-                        {row.technicianInitials}
-                      </span>
-                      <span className="font-sans text-[11px] uppercase text-[#FDFDFF]">
-                        {row.technician}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 font-sans text-[11px] uppercase tabular-nums text-[#FDFDFF] sm:px-4">
-                    {formatFlagTime(row.flaggedAt)}
-                  </td>
-                  <td className="px-3 py-3 sm:px-4">
-                    <span
-                      className={cn(
-                        "inline-flex rounded-full px-2 py-0.5 font-sans text-[10px] uppercase",
-                        flagTypeClass(row.flagType),
-                      )}
-                    >
-                      {row.flagType}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 sm:px-4">
-                    <p className="font-sans text-[11px] uppercase text-[#FDFDFF]">
-                      {row.distanceOutside ?? "—"}
-                    </p>
-                    {row.radiusApplied ? (
-                      <p className="mt-1 font-sans text-[10px] uppercase text-[#959597]">
-                        radius {row.radiusApplied}
-                      </p>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-3 sm:px-4">
-                    <span
-                      className={cn(
-                        "inline-flex rounded-full px-2 py-0.5 font-sans text-[10px] uppercase",
-                        sourcePillClass(row.ruleSource),
-                      )}
-                    >
-                      {sourceLabel(row.ruleSource)}
-                    </span>
-                  </td>
-                  <td
-                    className={cn(
-                      "px-3 py-3 font-sans text-[11px] uppercase sm:px-4",
-                      outcomeClass(row.outcome),
-                    )}
+              sorted.map((row) => {
+                const { date, time } = formatFlagDateParts(row.flaggedAt);
+                const showReview = isAwaitingOutcome(row.outcome);
+                return (
+                  <tr
+                    key={row.id}
+                    className="border-b border-[#2D2D30] last:border-b-0"
                   >
-                    {row.outcome.replace(/_/g, " ")}
-                  </td>
-                  <td className="px-3 py-3 sm:px-4">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        row.routeRuleId
-                          ? onAdjustRadius?.(row.routeRuleId)
-                          : onReview?.(row.id)
-                      }
-                      className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#93C5FD] hover:underline"
-                    >
-                      {row.routeRuleId ? "Adjust radius" : "Review"}
-                    </button>
-                  </td>
-                </tr>
-              ))
+                    <td className="px-3 py-3.5 sm:px-4">
+                      <p className="font-sans text-[12px] font-[510] uppercase leading-tight tracking-[-0.02em] text-[#FDFDFF]">
+                        {row.site}
+                      </p>
+                      <p className="mt-1 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597]">
+                        {row.customer}
+                      </p>
+                    </td>
+                    <td className="px-3 py-3.5 sm:px-4">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#3A4556] font-sans text-[9px] font-[510] text-[#DCE3EE]">
+                          {row.technicianInitials}
+                        </span>
+                        <span className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                          {row.technician}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3.5 sm:px-4">
+                      <p className="font-sans text-[12px] font-[510] uppercase tabular-nums tracking-[-0.02em] text-[#FDFDFF]">
+                        {date}
+                      </p>
+                      {time ? (
+                        <p className="mt-1 font-sans text-[10px] uppercase tabular-nums tracking-[-0.02em] text-[#959597]">
+                          {time}
+                        </p>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-3.5 sm:px-4">
+                      <span className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                        {row.flagType}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3.5 sm:px-4">
+                      <p className="font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                        {row.distanceOutside ?? "—"}
+                      </p>
+                      {row.radiusApplied ? (
+                        <p className="mt-1 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597]">
+                          Radius {row.radiusApplied}
+                        </p>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-3.5 sm:px-4">
+                      <span
+                        className={cn(
+                          "font-sans text-[11px] font-[510] uppercase tracking-[-0.02em]",
+                          sourceTextClass(row.ruleSource),
+                        )}
+                      >
+                        {sourceLabel(row.ruleSource)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3.5 sm:px-4">
+                      <span
+                        className={cn(
+                          "inline-flex whitespace-nowrap rounded-full px-2.5 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em]",
+                          outcomePillClass(row.outcome),
+                        )}
+                      >
+                        {row.outcome.replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3.5 text-right sm:px-4">
+                      {showReview ? (
+                        <button
+                          type="button"
+                          onClick={() => onReview?.(row.id)}
+                          className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#4ADE80] hover:underline"
+                        >
+                          Review
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onAdjustRadius?.(row.routeRuleId)
+                          }
+                          className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#E8C07A] hover:underline"
+                        >
+                          Adjust Radius
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

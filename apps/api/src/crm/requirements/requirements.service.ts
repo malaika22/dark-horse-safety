@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CrmRecordStatus, EnforcementLevel, Prisma } from '@prisma/client';
+import { MailService } from '../../auth/mail.service';
 import { CodeGeneratorService } from '../../common/services/code-generator.service';
 import {
   ExportService,
@@ -36,6 +37,7 @@ export class RequirementsService {
     private readonly prisma: PrismaService,
     private readonly codes: CodeGeneratorService,
     private readonly exportService: ExportService,
+    private readonly mail: MailService,
   ) {}
 
   private where(
@@ -163,6 +165,7 @@ export class RequirementsService {
         appliesTo: dto.appliesTo,
         enforcementLevel: dto.enforcementLevel ?? EnforcementLevel.SOFT_GATE,
         evidenceRequired: dto.evidenceRequired ?? false,
+        evidenceUrl: dto.evidenceUrl,
         renewalPeriod: dto.renewalPeriod,
         notes: dto.notes,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
@@ -194,6 +197,9 @@ export class RequirementsService {
         ...(dto.evidenceRequired !== undefined
           ? { evidenceRequired: dto.evidenceRequired }
           : {}),
+        ...(dto.evidenceUrl !== undefined
+          ? { evidenceUrl: dto.evidenceUrl }
+          : {}),
         ...(dto.renewalPeriod !== undefined
           ? { renewalPeriod: dto.renewalPeriod }
           : {}),
@@ -214,6 +220,67 @@ export class RequirementsService {
       },
     });
     return { data: req };
+  }
+
+  async requestFromCustomer(id: string) {
+    const req = await this.prisma.customerRequirement.findUnique({
+      where: { id },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            contactLinks: {
+              where: { isPrimary: true },
+              take: 1,
+              select: {
+                contact: { select: { email: true, fullName: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!req || req.archivedAt) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Requirement not found',
+      });
+    }
+
+    const primaryContactEmail =
+      req.customer.contactLinks[0]?.contact?.email?.trim() || null;
+    const to =
+      req.customer.email?.trim() ||
+      primaryContactEmail ||
+      null;
+    if (!to) {
+      throw new BadRequestException({
+        code: 'NO_RECIPIENT',
+        message:
+          'No customer or primary contact email on file for this requirement',
+      });
+    }
+
+    await this.mail.sendCrmEmail({
+      to,
+      subject: `Evidence requested: ${req.name}`,
+      title: 'Evidence request',
+      bodyHtml: `<p style="margin:0 0 16px;color:#d1d5db">Please provide evidence for requirement <strong style="color:#fff">${req.name}</strong> (${req.code}).</p>
+        <p style="margin:0;color:#9ca3af;font-size:13px">Customer: ${req.customer.name}</p>`,
+      kind: 'crm-requirement-request',
+    });
+
+    const updated = await this.prisma.customerRequirement.update({
+      where: { id },
+      data: {
+        status: CrmRecordStatus.NEEDS_REVIEW,
+        evidenceRequired: true,
+        docsRequired: true,
+      },
+    });
+    return { data: { ...updated, emailed: true, to } };
   }
 
   async archive(id: string) {

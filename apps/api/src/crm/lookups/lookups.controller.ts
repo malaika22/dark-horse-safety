@@ -11,9 +11,11 @@ export class LookupsController {
   constructor(private readonly lookups: LookupsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Static CRM form option lists' })
+  @ApiOperation({
+    summary: 'CRM form option lists (catalog + live DB distinct values)',
+  })
   all() {
-    return this.lookups.all();
+    return this.lookups.allLive();
   }
 
   @Get('customers')

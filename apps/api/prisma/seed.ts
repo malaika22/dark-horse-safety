@@ -1746,6 +1746,40 @@ async function main() {
     where: { reportCode: { in: ['EOD-2026-0904', 'EOD-2026-0905'] } },
   });
 
+  // ─── Pay cycles (pricing effective-from) ──────────────────────────────────
+  const payCycleStart = new Date(Date.UTC(2026, 8, 7));
+  for (let i = 0; i < 24; i++) {
+    const from = new Date(payCycleStart);
+    from.setUTCDate(payCycleStart.getUTCDate() + i * 14);
+    const to = new Date(from);
+    to.setUTCDate(from.getUTCDate() + 13);
+    const cycle = 18 + i;
+    const code = `CYCLE-${cycle}`;
+    const fmt = (d: Date) =>
+      d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        timeZone: 'UTC',
+      });
+    await prisma.payCycle.upsert({
+      where: { code },
+      update: {
+        label: `Cycle ${cycle} · ${fmt(from)} – ${fmt(to)}`,
+        cycleNumber: cycle,
+        startDate: from,
+        endDate: to,
+      },
+      create: {
+        code,
+        label: `Cycle ${cycle} · ${fmt(from)} – ${fmt(to)}`,
+        cycleNumber: cycle,
+        startDate: from,
+        endDate: to,
+      },
+    });
+  }
+
   console.log(
     `CRM seed: ${customers.length} customers, ${contacts.length} contacts, ${locations.length} locations`,
   );

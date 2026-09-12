@@ -43,8 +43,8 @@ function statusBadge(status: string): {
   if (["ACTIVE", "COMPLETE", "SUBMITTED", "WON", "SENT", "MET"].includes(s)) {
     return { label, variant: "success" };
   }
-  if (["PENDING", "NEEDS_REVIEW", "DRAFT", "OPEN"].includes(s)) {
-    return { label, variant: "warning" };
+  if (["LATE", "PENDING", "NEEDS_REVIEW", "DRAFT", "OPEN"].includes(s)) {
+    return { label: s === "LATE" ? "Late" : label, variant: "warning" };
   }
   if (["IN_PROGRESS"].includes(s)) {
     return { label, variant: "offline" };
@@ -150,6 +150,7 @@ export function mapContactRow(c: CrmContact): ContactRow {
     assignedRep: userName(c.assignedRep),
     hasEmail: Boolean(c.email),
     hasPhone: Boolean(c.mobile || c.officePhone),
+    photoUrl: c.photoUrl ?? null,
   };
 }
 
@@ -208,10 +209,16 @@ function fmtIsoDate(value?: string | null) {
   return d.toISOString().slice(0, 10);
 }
 
-function pricingStatusBadge(status: string): {
+function pricingStatusBadge(
+  status: string,
+  approvalStatus?: string | null,
+): {
   label: string;
   variant: DashboardBadgeVariant;
 } {
+  if ((approvalStatus ?? "").toUpperCase() === "PENDING") {
+    return { label: "Pending approval", variant: "warning" };
+  }
   const label = titleCaseStatus(status);
   const s = status.toUpperCase();
   if (s === "ACTIVE") return { label, variant: "success" };
@@ -229,12 +236,13 @@ export function mapPricingRuleRow(r: CrmPricingRule): PricingRuleRow {
     customerId: r.customerId ?? r.customer?.id,
     code: r.code,
     service: r.serviceItem,
-    status: pricingStatusBadge(r.status),
+    status: pricingStatusBadge(r.status, r.approvalStatus),
     rate: money(r.rate),
     unit: r.unit ?? "—",
     effective: fmtIsoDate(r.effectiveFrom),
     expires: fmtIsoDate(r.effectiveTo),
     owner: shortUserName(r.owner),
+    approvalStatus: r.approvalStatus ?? null,
   };
 }
 
@@ -297,7 +305,7 @@ function requirementEvidenceBadge(r: CrmRequirement): {
   ) {
     return { label: "OVERDUE", variant: "error" };
   }
-  if (!docsNeeded || s === "COMPLETE") {
+  if (!docsNeeded || s === "COMPLETE" || Boolean(r.evidenceUrl?.trim())) {
     return { label: "ON FILE", variant: "success" };
   }
   if (s === "PENDING" || s === "NEEDS_REVIEW" || s === "IN_PROGRESS") {
@@ -405,32 +413,113 @@ export function mapRouteLocationCard(r: CrmRouteRule): RouteLocationCard {
 
 export function mapEodReportRow(r: CrmEodReport): EodReportRow {
   const submitted = r.submittedAt ? new Date(r.submittedAt) : null;
+  const reportDay = r.reportDate ? new Date(r.reportDate) : null;
   const time = submitted
     ? submitted.toLocaleTimeString("en-US", {
         hour: "numeric",
         minute: "2-digit",
       })
     : "";
+  const submittedLate =
+    Boolean(submitted) &&
+    !Number.isNaN(submitted!.getTime()) &&
+    (submitted!.getHours() >= 18 ||
+      (reportDay &&
+        !Number.isNaN(reportDay.getTime()) &&
+        submitted!.toDateString() !== reportDay.toDateString()));
+  const rawStatus = (r.status || "").toUpperCase();
+  const displayStatus =
+    rawStatus === "PENDING" || rawStatus === "IN_PROGRESS"
+      ? "PENDING"
+      : submittedLate && (rawStatus === "SUBMITTED" || rawStatus === "COMPLETE")
+        ? "LATE"
+        : rawStatus;
+
+  const quotesSent = r.quotesSent ?? 0;
+  const quotesLabel =
+    r.quotesNote?.trim() ||
+    (quotesSent > 0 ? `${quotesSent} Sent` : "—");
+
+  const pipelineVal =
+    r.pipelineValue != null && r.pipelineValue !== ""
+      ? Number(r.pipelineValue)
+      : NaN;
+  const pipelineLabel =
+    r.pipelineNote?.trim() ||
+    (Number.isFinite(pipelineVal) && pipelineVal > 0
+      ? pipelineVal >= 1000
+        ? `$${Math.round(pipelineVal / 1000)}K`
+        : money(pipelineVal)
+      : "—");
+
+  const meetingsMissing =
+    Boolean(r.meetingsNote?.trim()) ||
+    ((r.meetingsCount ?? 0) === 0 &&
+      (rawStatus === "PENDING" || rawStatus === "NEEDS_REVIEW"));
+
+  const reviewMatch = r.notes?.match(/\[REVIEWED\]\s*(.+)/i);
+  const ackMatch = r.notes?.match(/---ACK---\s*(\{[\s\S]*?\})\s*$/m);
+  let ackBy: string | null = null;
+  if (ackMatch?.[1]) {
+    try {
+      const parsed = JSON.parse(ackMatch[1]) as { by?: string };
+      ackBy = parsed.by?.trim() || null;
+    } catch {
+      ackBy = null;
+    }
+  }
+  const noteSnippet =
+    reviewMatch?.[1]?.trim() ||
+    ackBy ||
+    (r.notes?.trim() && !r.notes.trim().startsWith("[") && !r.notes.includes("---ACK---")
+      ? r.notes.trim().slice(0, 40)
+      : "") ||
+    r.activityLines?.[0]?.summary?.trim()?.slice(0, 28) ||
+    "";
+
+  let reviewed: EodReportRow["reviewed"] = {
+    state: "awaiting",
+    detail: "Awaiting",
+  };
+  if (reviewMatch || ackMatch || rawStatus === "COMPLETE") {
+    reviewed = {
+      state: "reviewed",
+      detail: (noteSnippet || ackBy || "Acknowledged").toUpperCase(),
+    };
+  } else if (
+    noteSnippet &&
+    (displayStatus === "SUBMITTED" || displayStatus === "LATE")
+  ) {
+    reviewed = { state: "reviewed", detail: noteSnippet.toUpperCase() };
+  }
+
   return {
     id: r.id,
     reportId: r.reportCode,
-    submittedTime: time,
-    date: fmtDate(r.reportDate),
-    rep: userName(r.rep),
+    submittedTime: time
+      ? `Submitted ${time.replace(/\s/g, "").replace(/([AP])M$/i, "$1").toUpperCase()}`
+      : "",
+    date: fmtShortDate(r.reportDate),
+    rep: shortUserName(r.rep),
+    repId: r.rep?.id ?? null,
     activities: r.activitiesCount ?? 0,
     calls: String(r.callsCount ?? 0),
     callsDetail: r.callsDetail ?? "",
     visits: String(r.visitsCount ?? 0),
-    visitsDetail: r.visitsDetail ?? "",
-    meetings: String(r.meetingsCount ?? 0),
-    meetingsBadge: r.meetingsNote
-      ? { label: r.meetingsNote, variant: "error" }
-      : null,
-    quotes: r.quotesNote ? { label: r.quotesNote, variant: "success" } : null,
-    pipeline: r.pipelineNote
-      ? { label: r.pipelineNote, variant: "warning" }
-      : null,
-    status: statusBadge(r.status),
+    visitsDetail: (r.visitsDetail ?? "").toUpperCase(),
+    meetings: meetingsMissing ? "Missing" : String(r.meetingsCount ?? 0),
+    meetingsMissing,
+    quotesLabel: quotesLabel.toUpperCase(),
+    pipelineLabel: pipelineLabel.toUpperCase(),
+    status:
+      displayStatus === "LATE"
+        ? { label: "Late", variant: "warning" }
+        : displayStatus === "PENDING" || displayStatus === "IN_PROGRESS"
+          ? { label: "Missing", variant: "error" }
+          : statusBadge(displayStatus),
+    reviewed,
+    rawStatus,
+    submittedAt: r.submittedAt ?? null,
   };
 }
 
@@ -458,25 +547,119 @@ export function mapSalesActivityRow(a: CrmSalesActivity): SalesActivityRow {
   };
 }
 
+function fmtShortDate(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d
+    .toLocaleDateString("en-US", { month: "short", day: "2-digit" })
+    .toUpperCase();
+}
+
+function relativeFrom(value?: string | null) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const days = Math.round((Date.now() - d.getTime()) / 86_400_000);
+  if (days === 0) return "Today";
+  if (days === 1) return "1 Day Ago";
+  if (days > 1) return `${days} Days Ago`;
+  if (days === -1) return "In 1 Day";
+  return `In ${Math.abs(days)} Days`;
+}
+
+function shortPersonName(full?: string | null) {
+  if (!full?.trim()) return "—";
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0]!.toUpperCase();
+  return `${parts[0]![0]}. ${parts[parts.length - 1]}`.toUpperCase();
+}
+
+function quoteStatusBadge(
+  status: string,
+  approvalStatus?: string | null,
+): { label: string; variant: DashboardBadgeVariant } {
+  const s = status.toUpperCase();
+  if (s === "WON") return { label: "Converted", variant: "gold" };
+  if (s === "EXPIRED") return { label: "Expired", variant: "error" };
+  if (s === "SENT") return { label: "Sent", variant: "billing" };
+  if (s === "DRAFT") return { label: "Draft", variant: "operations" };
+  if (
+    s === "OPEN" ||
+    s === "APPROVED" ||
+    approvalStatus?.toUpperCase() === "APPROVED"
+  ) {
+    return { label: "Approved", variant: "success" };
+  }
+  return statusBadge(status);
+}
+
+function quoteApprovalLabel(status?: string | null) {
+  const s = (status ?? "").toUpperCase();
+  if (!s || s === "NOT_REQUIRED") return "—";
+  if (s === "PENDING") return "Pending";
+  if (s === "APPROVED") return "Approved";
+  if (s === "REJECTED") return "Rejected";
+  return titleCaseStatus(status!);
+}
+
 export function mapQuoteRow(q: CrmQuote): QuoteRow {
+  const expiresAt = q.expiresAt ?? null;
+  const expired =
+    Boolean(expiresAt) &&
+    (q.status.toUpperCase() === "EXPIRED" ||
+      new Date(expiresAt!).getTime() < Date.now());
+  const amountNum =
+    typeof q.amount === "number" ? q.amount : Number(q.amount);
+  const approval = quoteApprovalLabel(q.approvalStatus);
   return {
     id: q.id,
+    customerId: q.customer?.id ?? null,
     quoteNumber: q.quoteNumber,
-    createdDate: fmtDate(q.createdAt),
+    version: q.revision ? `V${q.revision}` : "V1",
+    createdAt: q.createdAt,
+    createdDate: fmtShortDate(q.createdAt),
     customer: q.customer?.name ?? "—",
-    contact: q.contact?.fullName ?? "—",
+    contact: shortPersonName(q.contact?.fullName),
     amount: money(q.amount),
-    created: fmtDate(q.createdAt),
-    createdDetail: "",
-    expires: fmtDate(q.expiresAt),
-    expiresDetail: "",
-    owner: userName(q.owner),
-    sent: q.sentAt
-      ? { label: "Sent", variant: "review" }
-      : null,
-    status: statusBadge(q.status),
-    approval: q.approvalStatus
-      ? statusBadge(q.approvalStatus)
-      : null,
+    amountValue: Number.isFinite(amountNum) ? amountNum : 0,
+    created: fmtShortDate(q.createdAt),
+    createdDetail: relativeFrom(q.createdAt),
+    expires: fmtShortDate(expiresAt),
+    expiresDetail: expired
+      ? `Expired ${relativeFrom(expiresAt)}`
+      : relativeFrom(expiresAt),
+    expiresExpired: expired,
+    owner: shortPersonName(userName(q.owner) === "—" ? null : userName(q.owner)),
+    status: quoteStatusBadge(q.status, q.approvalStatus),
+    approval,
+    approvedOn:
+      approval === "Approved"
+        ? fmtShortDate(q.updatedAt ?? q.sentAt ?? q.createdAt)
+        : "—",
   };
+}
+
+/** Assign V1..Vn within each customer by created order (oldest = V1). */
+export function assignQuoteVersions(rows: QuoteRow[]): QuoteRow[] {
+  const byCustomer = new Map<string, QuoteRow[]>();
+  for (const row of rows) {
+    const key = row.customerId ?? row.id;
+    const list = byCustomer.get(key) ?? [];
+    list.push(row);
+    byCustomer.set(key, list);
+  }
+  const versionById = new Map<string, string>();
+  for (const list of byCustomer.values()) {
+    const ordered = [...list].sort((a, b) =>
+      a.createdAt.localeCompare(b.createdAt),
+    );
+    ordered.forEach((row, i) => {
+      versionById.set(row.id, `V${i + 1}`);
+    });
+  }
+  return rows.map((row) => ({
+    ...row,
+    version: versionById.get(row.id) ?? row.version,
+  }));
 }

@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -44,6 +45,7 @@ export class LocationListQueryDto extends ListQueryDto {
 export class CreateLocationDto {
   @ApiProperty()
   @IsString()
+  @IsNotEmpty({ message: 'Enter a location name.' })
   @MaxLength(200)
   name!: string;
 
@@ -101,8 +103,18 @@ export class CreateLocationDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsUUID()
+  siteContactId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   geofenceRadius?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  geofenceOverride?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -117,10 +129,64 @@ export class CreateLocationDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  hospitalPhone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  hospitalAddress?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  hospitalDriveTime?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  fireEmergency?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  fireNonEmergency?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  policeEmergency?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  policeNonEmergency?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  ambulance?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  musterPoint?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  sitePhotos?: unknown;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  evacuationMapUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   city?: string;
 
   @ApiProperty()
-  @IsUUID()
+  @IsUUID('4', { message: 'Select a customer.' })
   customerId!: string;
 }
 

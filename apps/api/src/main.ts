@@ -1,15 +1,23 @@
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
+import { UploadsService } from './common/services/uploads.service';
 import { formatValidationErrors } from './common/validators/validation.util';
+
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.enableCors({
     origin: process.env.CORS_ORIGIN?.split(',') ?? ['http://localhost:3000'],
     credentials: true,
+  });
+
+  const uploads = app.get(UploadsService);
+  app.useStaticAssets(uploads.root(), {
+    prefix: '/uploads/',
   });
 
   app.useGlobalPipes(
@@ -31,7 +39,7 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Dark Horse Safety API')
     .setDescription(
-      'Admin auth APIs (email/password login, Google OAuth, password reset, invites) and CRM APIs (customers, contacts, locations, pricing/requirements/form/route rules, EOD reports, sales activities, quotes, saved views, lookups).',
+      'Admin auth APIs (email/password login, Google OAuth, password reset, invites) and CRM APIs (customers, contacts, locations, pricing/requirements/form/route rules, EOD reports, sales activities, quotes, saved views, lookups). Files are stored under UPLOADS_DIR and served at /uploads/*.',
     )
     .setVersion('1.0')
     .addBearerAuth(
@@ -53,6 +61,7 @@ async function bootstrap() {
     .addTag('crm-quotes', 'CRM quotes')
     .addTag('crm-saved-views', 'CRM saved list views')
     .addTag('crm-lookups', 'CRM form lookups / autocomplete')
+    .addTag('crm-uploads', 'File uploads to local storage')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
@@ -68,5 +77,6 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`API running on http://localhost:${port}`);
   console.log(`Swagger docs: http://localhost:${port}/docs`);
+  console.log(`Uploads dir: ${uploads.root()} (served at /uploads/)`);
 }
 void bootstrap();

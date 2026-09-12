@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   DashboardExportMenu,
   DashboardRowActionMenu,
@@ -24,7 +25,6 @@ import {
   type CrmMapPin,
 } from "./crm-map-split-view";
 import { CustomerSitesTable } from "./location-sites-table";
-import { LocationWellDetailsDrawer } from "./location-well-details-drawer";
 import { crmApi, downloadCsv, downloadPdf, downloadXlsx } from "@/lib/crm-api";
 import { mapLocationCard } from "@/lib/crm-mappers";
 import { kpiCellsFromApi, latLngToMapPin } from "@/lib/crm-ui";
@@ -345,13 +345,14 @@ function LocationsFiltersDrawer({
 }
 
 export function LocationsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { askConfirm, dialogs } = useCrmDialogs();
   const [query, setQuery] = React.useState("");
   const [viewMode, setViewMode] = React.useState<"list" | "map" | "split">(
     "split",
   );
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
-  const [detailsId, setDetailsId] = React.useState<string | null>(null);
   const [sortField, setSortField] = React.useState("customer");
   const [sortDirection, setSortDirection] =
     React.useState<DashboardSortDirection>("asc");
@@ -617,19 +618,19 @@ export function LocationsPage() {
   const showMap = viewMode === "map" || viewMode === "split";
   const showList = viewMode === "list" || viewMode === "split";
 
+  React.useEffect(() => {
+    const site = searchParams.get("site");
+    if (!site) return;
+    setSelectedId(site);
+    setViewMode((prev) => (prev === "list" ? "split" : prev));
+  }, [searchParams]);
+
   function openDetails(id: string) {
-    setSelectedId(id);
-    setDetailsId(id);
+    router.push(`/crm/locations/${id}`);
   }
 
   function selectLocation(id: string) {
     setSelectedId(id);
-  }
-
-  function viewOnMap(id: string) {
-    setDetailsId(null);
-    setSelectedId(id);
-    setViewMode((prev) => (prev === "list" ? "split" : prev));
   }
 
   return (
@@ -806,13 +807,6 @@ export function LocationsPage() {
           )
         ) : null}
       </div>
-
-      <LocationWellDetailsDrawer
-        open={Boolean(detailsId)}
-        locationId={detailsId}
-        onClose={() => setDetailsId(null)}
-        onViewOnMap={viewOnMap}
-      />
 
       <LocationsFiltersDrawer
         open={filtersOpen}

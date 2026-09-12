@@ -729,51 +729,57 @@ export function RequirementsPage() {
   }
 
   async function handleUploadEvidence(row: RequirementRow) {
-    const url = await askPrompt({
-      title: "Upload evidence",
-      label: "Evidence URL / reference",
-      placeholder: "https://… or file reference",
-      confirmLabel: "Save",
-    });
-    if (url == null) return;
-    const trimmed = url.trim();
-    try {
-      await crmApi.updateRequirement(row.id, {
-        evidenceRequired: true,
-        docsRequired: true,
-        ...(trimmed
-          ? {
-              notes: trimmed.startsWith("http")
-                ? `Evidence: ${trimmed}`
-                : trimmed,
-              status: "COMPLETE",
-            }
-          : {}),
-      });
-      toastSuccess(
-        trimmed
-          ? `Evidence saved for ${row.requirement}`
-          : "Evidence marked required",
-      );
-      reload();
-    } catch (err) {
-      toastApiError(err);
-    }
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*,.pdf,.doc,.docx,.png,.jpg,.jpeg";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      void (async () => {
+        try {
+          const contentBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result ?? ""));
+            reader.onerror = () => reject(reader.error ?? new Error("Read failed"));
+            reader.readAsDataURL(file);
+          });
+          const uploaded = await crmApi.uploadFile({
+            folder: `requirements/${row.id}`,
+            fileName: file.name,
+            mimeType: file.type || undefined,
+            contentBase64,
+          });
+          await crmApi.updateRequirement(row.id, {
+            evidenceRequired: true,
+            docsRequired: true,
+            evidenceUrl: uploaded.data.url,
+            status: "COMPLETE",
+            notes: `Evidence file: ${file.name}`,
+          });
+          toastSuccess(`Evidence uploaded for ${row.requirement}`);
+          reload();
+        } catch (err) {
+          toastApiError(err);
+        }
+      })();
+    };
+    input.click();
   }
 
   async function handleRequestFromCustomer(row: RequirementRow) {
     const ok = await askConfirm({
       title: "Request from customer",
-      description: `Request "${row.requirement}" from ${row.customer}?`,
+      description: `Email ${row.customer} requesting evidence for "${row.requirement}"?`,
       confirmLabel: "Send request",
     });
     if (!ok) return;
     try {
-      await crmApi.updateRequirement(row.id, {
-        status: "NEEDS_REVIEW",
-        evidenceRequired: true,
-      });
-      toastSuccess(`Request sent to ${row.customer}`);
+      const res = await crmApi.requestRequirementEvidence(row.id);
+      toastSuccess(
+        res.data.to
+          ? `Request emailed to ${res.data.to}`
+          : `Request sent for ${row.customer}`,
+      );
       reload();
     } catch (err) {
       toastApiError(err);

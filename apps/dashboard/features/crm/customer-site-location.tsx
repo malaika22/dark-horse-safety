@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { toastApiError, toastSuccess } from "@/lib/toast";
+import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 
 export type SiteCoords = { lat: number; lng: number };
 
@@ -241,6 +242,11 @@ export function CustomerSiteLocationPanel({
   );
   const [minBillable, setMinBillable] = React.useState(minBillableProp ?? "15 MIN");
   const [autoFlag, setAutoFlag] = React.useState(autoFlagProp ?? "AFTER 30MINS");
+  const { lookups } = useCrmLookups({ includeLocations: false });
+  const autoFlagOptions =
+    lookupOptions(lookups, "autoFlagNoShow").length > 0
+      ? lookupOptions(lookups, "autoFlagNoShow")
+      : AUTO_FLAG_OPTIONS;
   const [county, setCounty] = React.useState(countyProp ?? "");
   const [state, setState] = React.useState(stateProp ?? "");
   const [search, setSearch] = React.useState("");
@@ -478,7 +484,7 @@ export function CustomerSiteLocationPanel({
                 }}
                 className="h-10 w-full appearance-none rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3 pr-8 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none focus:border-[#3E3E3E]"
               >
-                {AUTO_FLAG_OPTIONS.map((o) => (
+                {autoFlagOptions.map((o) => (
                   <option key={o.value} value={o.value} className="bg-[#1A1A1A]">
                     {o.label}
                   </option>

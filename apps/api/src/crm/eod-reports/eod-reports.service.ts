@@ -9,7 +9,6 @@ import {
 } from '../../common/services/export.service';
 import {
   containsCi,
-  orderByFrom,
   paginate,
   parsePage,
 } from '../../common/utils/pagination.util';
@@ -18,15 +17,23 @@ import { endOfDay, startOfDay } from '../common/open-jobs.util';
 import {
   CreateEodReportDto,
   EodReportListQueryDto,
+  RemindEodDto,
+  RequestEodDetailDto,
   UpdateEodReportDto,
 } from './dto/eod-report.dto';
 
 const SORT_MAP: Record<string, string> = {
   reportDate: 'reportDate',
+  date: 'reportDate',
   reportCode: 'reportCode',
   createdAt: 'createdAt',
   status: 'status',
   submittedAt: 'submittedAt',
+  activities: 'activitiesCount',
+  activitiesCount: 'activitiesCount',
+  pipeline: 'pipelineValue',
+  pipelineAdded: 'pipelineValue',
+  pipelineValue: 'pipelineValue',
 };
 
 @Injectable()
@@ -45,10 +52,17 @@ export class EodReportsService {
     if (query.dateFrom || query.dateTo) {
       and.push({
         reportDate: {
-          ...(query.dateFrom ? { gte: new Date(query.dateFrom) } : {}),
-          ...(query.dateTo ? { lte: new Date(query.dateTo) } : {}),
+          ...(query.dateFrom
+            ? { gte: new Date(`${query.dateFrom}T00:00:00`) }
+            : {}),
+          ...(query.dateTo
+            ? { lte: new Date(`${query.dateTo}T23:59:59.999`) }
+            : {}),
         },
       });
+    }
+    if (query.hasPipeline === true) {
+      and.push({ pipelineValue: { gt: 0 } });
     }
     if (query.q?.trim()) {
       const q = query.q.trim();
@@ -57,10 +71,31 @@ export class EodReportsService {
           { reportCode: containsCi(q) },
           { notes: containsCi(q) },
           { nextDayPlan: containsCi(q) },
+          { visitsDetail: containsCi(q) },
+          {
+            rep: {
+              OR: [
+                { firstName: containsCi(q) },
+                { lastName: containsCi(q) },
+                { email: containsCi(q) },
+              ],
+            },
+          },
         ],
       });
     }
     return and.length ? { AND: and } : {};
+  }
+
+  private orderBy(query: EodReportListQueryDto): Prisma.EodReportOrderByWithRelationInput[] {
+    const dir = query.direction === 'asc' ? 'asc' : 'desc';
+    const sort = (query.sort ?? '').trim();
+    if (sort === 'rep' || sort === 'repName') {
+      return [{ rep: { lastName: dir } }, { rep: { firstName: dir } }];
+    }
+    const mapped = SORT_MAP[sort];
+    if (mapped) return [{ [mapped]: dir }];
+    return [{ reportDate: 'desc' }];
   }
 
   async list(query: EodReportListQueryDto) {
@@ -72,9 +107,7 @@ export class EodReportsService {
         where,
         skip,
         take,
-        orderBy: orderByFrom(query.sort, query.direction, SORT_MAP, {
-          reportDate: 'desc',
-        }),
+        orderBy: this.orderBy(query),
         include: {
           rep: {
             select: { id: true, firstName: true, lastName: true, email: true },
@@ -85,6 +118,79 @@ export class EodReportsService {
     ]);
     const enriched = await this.attachLiveActivityCounts(items);
     return { data: paginate(enriched, total, page, pageSize) };
+  }
+
+  async listAttention() {
+    const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    const rows = await this.prisma.eodReport.findMany({
+      where: {
+        reportDate: { gte: cutoff },
+        OR: [
+          {
+            status: {
+              in: [CrmRecordStatus.PENDING, CrmRecordStatus.IN_PROGRESS],
+            },
+          },
+          {
+            status: {
+              in: [CrmRecordStatus.SUBMITTED, CrmRecordStatus.COMPLETE],
+            },
+            submittedAt: { not: null },
+          },
+        ],
+      },
+      orderBy: { reportDate: 'desc' },
+      take: 40,
+      include: {
+        rep: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
+    });
+
+    const items = rows
+      .map((r) => {
+        const submitted = r.submittedAt ? new Date(r.submittedAt) : null;
+        const reportDay = new Date(r.reportDate);
+        const pending =
+          r.status === CrmRecordStatus.PENDING ||
+          r.status === CrmRecordStatus.IN_PROGRESS ||
+          !submitted;
+        const late =
+          Boolean(submitted) &&
+          (submitted!.getHours() >= 18 ||
+            submitted!.toDateString() !== reportDay.toDateString());
+        if (!pending && !late) return null;
+
+        const due = new Date(r.reportDate);
+        due.setHours(18, 0, 0, 0);
+        const lateMs = (pending ? Date.now() : submitted!.getTime()) - due.getTime();
+        const hoursLate = Math.max(0, Math.round(lateMs / 3_600_000));
+        const detail = pending
+          ? hoursLate >= 24
+            ? `${Math.floor(hoursLate / 24)} Day${
+                Math.floor(hoursLate / 24) === 1 ? '' : 's'
+              } Late`
+            : `Due 6:00 PM · ${Math.max(hoursLate, 1)} Hrs Late`
+          : `Submitted ${submitted!.toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit',
+            })}`;
+        return {
+          id: r.id,
+          reportCode: r.reportCode,
+          reportDate: r.reportDate,
+          submittedAt: r.submittedAt,
+          status: r.status,
+          kind: pending ? ('missing' as const) : ('late' as const),
+          detail,
+          rep: r.rep,
+          selectedByDefault: true,
+        };
+      })
+      .filter(Boolean);
+
+    return { data: { items } };
   }
 
   async kpi() {
@@ -99,7 +205,7 @@ export class EodReportsService {
         }),
         this.prisma.eodReport.count({
           where: {
-            submittedAt: { gte: weekAgo },
+            submittedAt: { gte: startOfToday },
             status: {
               in: [CrmRecordStatus.SUBMITTED, CrmRecordStatus.COMPLETE],
             },
@@ -126,15 +232,22 @@ export class EodReportsService {
                 CrmRecordStatus.PENDING,
               ],
             },
+            updatedAt: { gte: weekAgo },
           },
           _sum: { amount: true },
         }),
       ]);
 
-    const pipeline =
+    const pipelineRaw =
       pipelineAgg._sum.amount == null
         ? 0
         : Number(pipelineAgg._sum.amount.toString());
+    const pipeline =
+      pipelineRaw <= 0
+        ? 0
+        : pipelineRaw >= 1000
+          ? `$${Math.round(pipelineRaw / 1000)}K`
+          : `$${Math.round(pipelineRaw)}`;
 
     return { data: { today, submitted, pending, activities, pipeline } };
   }
@@ -259,7 +372,7 @@ export class EodReportsService {
     return { data: report };
   }
 
-  async remind(id: string) {
+  async remind(id: string, dto: RemindEodDto = {}) {
     const report = await this.prisma.eodReport.findUnique({
       where: { id },
       include: {
@@ -275,42 +388,238 @@ export class EodReportsService {
       });
     }
 
-    const to = report.rep?.email?.trim();
-    if (!to) {
-      return { data: { sent: false, id, reason: 'no_email' as const } };
-    }
+    const viaEmail = dto.viaEmail !== false;
+    const viaPush = dto.viaPush === true;
+    const message =
+      dto.message?.trim() ||
+      `Your EOD report ${report.reportCode} is missing or late. Please submit it as soon as possible — reach out if you're blocked.`;
 
     const repName =
       [report.rep?.firstName, report.rep?.lastName].filter(Boolean).join(' ') ||
       'there';
+    const to = report.rep?.email?.trim();
 
-    await this.mail.sendCrmEmail({
-      to,
-      subject: `EOD reminder: ${report.reportCode}`,
-      title: 'EOD Report Reminder',
-      bodyHtml: `<p style="margin:0 0 16px;color:#d1d5db">Hi <strong style="color:#fff">${repName}</strong>,</p>
-        <p style="margin:0 0 16px;color:#d1d5db">This is a reminder to submit or review your end-of-day report <strong style="color:#fff">${report.reportCode}</strong>.</p>
-        <p style="margin:0;color:#9ca3af;font-size:13px">Please complete the report when you can.</p>`,
-      kind: 'crm-eod-remind',
+    let emailed = false;
+    let pushed = false;
+
+    if (viaEmail) {
+      if (!to) {
+        return {
+          data: {
+            sent: false,
+            emailed: false,
+            pushed: false,
+            id,
+            reason: 'no_email' as const,
+          },
+        };
+      }
+      await this.mail.sendCrmEmail({
+        to,
+        subject: `EOD reminder: ${report.reportCode}`,
+        title: 'EOD Report Reminder',
+        bodyHtml: `<p style="margin:0 0 16px;color:#d1d5db">Hi <strong style="color:#fff">${repName}</strong>,</p>
+          <p style="margin:0 0 16px;color:#d1d5db">${message.replace(/\n/g, '<br/>')}</p>
+          <p style="margin:0;color:#9ca3af;font-size:13px">Report <strong style="color:#fff">${report.reportCode}</strong> · ${isoDate(report.reportDate)}</p>`,
+        kind: 'crm-eod-remind',
+      });
+      emailed = true;
+    }
+
+    if (viaPush) {
+      await this.prisma.salesActivity.create({
+        data: {
+          activityCode: await this.codes.next('salesActivity'),
+          type: SalesActivityType.OTHER,
+          subject: `EOD Push · ${report.reportCode}`,
+          notes: message,
+          status: CrmRecordStatus.PENDING,
+          activityAt: new Date(),
+          followUpAt: new Date(),
+          repId: report.repId,
+        },
+      });
+      pushed = true;
+    }
+
+    const stamp = new Date().toISOString();
+    const channels = [
+      emailed ? 'email' : null,
+      pushed ? 'push' : null,
+    ]
+      .filter(Boolean)
+      .join('+');
+    const noteLine = `[REMINDER ${stamp}] via ${channels || 'none'}: ${message}`;
+    await this.prisma.eodReport.update({
+      where: { id },
+      data: {
+        notes: report.notes?.trim()
+          ? `${report.notes.trim()}\n${noteLine}`
+          : noteLine,
+      },
     });
 
-    return { data: { sent: true, id } };
+    return {
+      data: {
+        sent: emailed || pushed,
+        emailed,
+        pushed,
+        id,
+      },
+    };
   }
 
-  async bulkRemind(ids: string[]) {
+  async bulkRemind(ids: string[], dto: RemindEodDto = {}) {
     const unique = [...new Set(ids.filter(Boolean))];
     let sent = 0;
     const results: Array<{
       sent: boolean;
+      emailed?: boolean;
+      pushed?: boolean;
       id: string;
       reason?: 'no_email';
     }> = [];
     for (const id of unique) {
-      const result = await this.remind(id);
+      const result = await this.remind(id, dto);
       results.push(result.data);
       if (result.data.sent) sent += 1;
     }
     return { data: { sent, ids: unique, results } };
+  }
+
+  async requestDetail(id: string, dto: RequestEodDetailDto) {
+    const report = await this.prisma.eodReport.findUnique({
+      where: { id },
+      include: {
+        rep: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
+    });
+    if (!report) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'EOD report not found',
+      });
+    }
+
+    const missing = (dto.missing ?? []).map((m) => m.trim()).filter(Boolean);
+    const note = dto.note?.trim() || '';
+    const dueBackBy = dto.dueBackBy ? new Date(dto.dueBackBy) : null;
+    const viaEmail = dto.viaEmail !== false;
+    const viaPush = dto.viaPush !== false;
+
+    const missingLabel = missing.length
+      ? missing.map((m) => m.replace(/_/g, ' ')).join(', ')
+      : 'additional detail';
+    const bodyText = [
+      `Manager requested more detail on ${report.reportCode}.`,
+      `What's missing: ${missingLabel}.`,
+      note ? `Note: ${note}` : null,
+      dueBackBy && !Number.isNaN(dueBackBy.getTime())
+        ? `Due back by: ${dueBackBy.toLocaleString('en-US')}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const stamp = new Date().toISOString();
+    const noteLine = `[REQUEST DETAIL ${stamp}] missing=${missing.join('|') || 'other'}; due=${dueBackBy?.toISOString() ?? '—'}; ${note}`;
+    const updated = await this.prisma.eodReport.update({
+      where: { id },
+      data: {
+        status: CrmRecordStatus.NEEDS_REVIEW,
+        notes: report.notes?.trim()
+          ? `${report.notes.trim()}\n${noteLine}`
+          : noteLine,
+      },
+      include: {
+        rep: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
+    });
+
+    const repName =
+      [report.rep?.firstName, report.rep?.lastName].filter(Boolean).join(' ') ||
+      'there';
+    let emailed = false;
+    let pushed = false;
+
+    if (viaEmail && report.rep?.email?.trim()) {
+      await this.mail.sendCrmEmail({
+        to: report.rep.email.trim(),
+        subject: `EOD detail requested: ${report.reportCode}`,
+        title: 'Request More Detail',
+        bodyHtml: `<p style="margin:0 0 16px;color:#d1d5db">Hi <strong style="color:#fff">${repName}</strong>,</p>
+          <p style="margin:0 0 16px;color:#d1d5db">${bodyText.replace(/\n/g, '<br/>')}</p>`,
+        kind: 'crm-eod-request-detail',
+      });
+      emailed = true;
+    }
+
+    if (viaPush) {
+      await this.prisma.salesActivity.create({
+        data: {
+          activityCode: await this.codes.next('salesActivity'),
+          type: SalesActivityType.OTHER,
+          subject: `EOD Detail Request · ${report.reportCode}`,
+          notes: bodyText,
+          status: CrmRecordStatus.PENDING,
+          activityAt: new Date(),
+          followUpAt:
+            dueBackBy && !Number.isNaN(dueBackBy.getTime())
+              ? dueBackBy
+              : new Date(Date.now() + 24 * 60 * 60 * 1000),
+          repId: report.repId,
+        },
+      });
+      pushed = true;
+    }
+
+    return {
+      data: {
+        report: updated,
+        emailed,
+        pushed,
+        missing,
+        dueBackBy: dueBackBy?.toISOString() ?? null,
+      },
+    };
+  }
+
+  async acknowledge(id: string, body: { by?: string; note?: string } = {}) {
+    const report = await this.prisma.eodReport.findUnique({ where: { id } });
+    if (!report) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'EOD report not found',
+      });
+    }
+    const by = body.by?.trim() || 'Manager';
+    const stamp = new Date().toISOString();
+    const ackJson = JSON.stringify({ by, at: stamp, note: body.note ?? null });
+    let notes = report.notes ?? '';
+    if (/---ACK---/.test(notes)) {
+      notes = notes.replace(/---ACK---\s*\{[\s\S]*?\}\s*$/m, '').trim();
+    }
+    notes = `${notes}\n---ACK---\n${ackJson}`.trim();
+    const updated = await this.prisma.eodReport.update({
+      where: { id },
+      data: {
+        notes,
+        status:
+          report.status === CrmRecordStatus.PENDING
+            ? CrmRecordStatus.SUBMITTED
+            : report.status,
+      },
+      include: {
+        rep: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
+    });
+    return { data: updated };
   }
 
   async exportCsv(

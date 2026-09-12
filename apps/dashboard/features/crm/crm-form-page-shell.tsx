@@ -24,6 +24,8 @@ export function CrmFormPageShell({
   submitLabel = "Save",
   saveAndAddAnotherLabel = "Save & Add Another",
   extraFooterActions,
+  topTrailing,
+  showTopCancel = true,
   sections,
   onSave,
   onSaveAndAddAnother,
@@ -37,6 +39,10 @@ export function CrmFormPageShell({
   saveAndAddAnotherLabel?: string;
   /** Extra footer buttons between Cancel and Save & Add Another (e.g. Link to Existing). */
   extraFooterActions?: React.ReactNode;
+  /** Optional actions aligned top-right (e.g. Link to Existing Contact on Add Contact). */
+  topTrailing?: React.ReactNode;
+  /** When false, hides the top ← Cancel row (footer Cancel remains). */
+  showTopCancel?: boolean;
   sections: CrmFormSection[];
   onSave?: () => void | Promise<void>;
   onSaveAndAddAnother?: () => void | Promise<void>;
@@ -48,15 +54,26 @@ export function CrmFormPageShell({
 }) {
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:p-6">
-      <div>
-        <Link href={cancelHref} className="inline-flex shrink-0">
-          <DashboardToolbarButton
-            leftIcon={<ArrowLeftIcon className="shrink-0" />}
-          >
-            Cancel
-          </DashboardToolbarButton>
-        </Link>
-      </div>
+      {showTopCancel || topTrailing ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {showTopCancel ? (
+            <Link href={cancelHref} className="inline-flex shrink-0">
+              <DashboardToolbarButton
+                leftIcon={<ArrowLeftIcon className="shrink-0" />}
+              >
+                Cancel
+              </DashboardToolbarButton>
+            </Link>
+          ) : (
+            <span />
+          )}
+          {topTrailing ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {topTrailing}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {saveError ? (
         <CrmSaveFailedState

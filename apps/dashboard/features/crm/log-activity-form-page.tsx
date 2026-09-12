@@ -14,26 +14,11 @@ import {
 } from "@dark-horse-safety/ui";
 import type { DashboardSelectOption } from "@dark-horse-safety/ui";
 import { crmApi } from "@/lib/crm-api";
+import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { useRouter } from "next/navigation";
 
-const TYPE_OPTIONS: DashboardSelectOption[] = [
-  { value: "CALL", label: "Call" },
-  { value: "VISIT", label: "Visit" },
-  { value: "MEETING", label: "Meeting" },
-  { value: "EMAIL", label: "Email" },
-];
-const DURATION_OPTIONS: DashboardSelectOption[] = [
-  { value: "15", label: "15 min" },
-  { value: "30", label: "30 min" },
-  { value: "60", label: "60 min" },
-];
-const OUTCOME_OPTIONS: DashboardSelectOption[] = [
-  { value: "Positive", label: "Positive" },
-  { value: "Neutral", label: "Neutral" },
-  { value: "No Answer", label: "No Answer" },
-];
-const SUBJECT_CHIPS = [
+const SUBJECT_CHIPS_FALLBACK = [
   { id: "quote", label: "Quote" },
   { id: "call", label: "Call" },
   { id: "follow-up", label: "Follow-up" },
@@ -44,19 +29,28 @@ function todayInputValue() {
 }
 
 function parseDurationMinutes(duration?: string | null) {
-  if (!duration) return "30";
+  if (!duration) return "30 min";
+  if (/\d+\s*min/i.test(duration) || /\d+\s*hr/i.test(duration)) return duration;
   const match = String(duration).match(/\d+/);
-  return match?.[0] ?? "30";
+  return match ? `${match[0]} min` : "30 min";
 }
 
-function parseSubjectChips(subject?: string | null) {
-  if (!subject?.trim()) return ["quote", "call"];
-  const parts = subject.split(/[,/|]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
-  const ids = SUBJECT_CHIPS.map((c) => c.id);
+function parseSubjectChips(
+  subject: string | null | undefined,
+  chips: { id: string; label: string }[],
+) {
+  if (!subject?.trim()) return chips.slice(0, 2).map((c) => c.id);
+  const parts = subject
+    .split(/[,/|]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
   const matched = parts
-    .map((p) => ids.find((id) => id === p || SUBJECT_CHIPS.find((c) => c.id === id)?.label.toLowerCase() === p))
+    .map(
+      (p) =>
+        chips.find((c) => c.id === p || c.label.toLowerCase() === p)?.id,
+    )
     .filter((id): id is string => Boolean(id));
-  return matched.length ? [...new Set(matched)] : ["quote", "call"];
+  return matched.length ? [...new Set(matched)] : chips.slice(0, 2).map((c) => c.id);
 }
 
 /**
@@ -71,6 +65,19 @@ export function LogActivityFormPage({
 }) {
   const router = useRouter();
   const isEdit = mode === "edit";
+  const { lookups } = useCrmLookups({ includeLocations: false });
+  const typeOptions = lookupOptions(lookups, "salesActivityTypes");
+  const durationOptions = lookupOptions(lookups, "activityDurations");
+  const outcomeOptions = lookupOptions(lookups, "activityOutcomes");
+  const subjectChips = (
+    lookupOptions(lookups, "activitySubjects").length
+      ? lookupOptions(lookups, "activitySubjects").map((o) => ({
+          id: o.value,
+          label: o.label,
+        }))
+      : SUBJECT_CHIPS_FALLBACK
+  );
+
   const [subjects, setSubjects] = React.useState(["quote", "call"]);
   const [customerOptions, setCustomerOptions] = React.useState<DashboardSelectOption[]>([]);
   const [contactOptions, setContactOptions] = React.useState<DashboardSelectOption[]>([]);
@@ -81,8 +88,8 @@ export function LogActivityFormPage({
   const [type, setType] = React.useState("CALL");
   const [activityDate, setActivityDate] = React.useState(todayInputValue);
   const [followUpDate, setFollowUpDate] = React.useState("");
-  const [duration, setDuration] = React.useState("30");
-  const [outcome, setOutcome] = React.useState("Positive");
+  const [duration, setDuration] = React.useState("30 min");
+  const [outcome, setOutcome] = React.useState("");
   const [notes, setNotes] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [ready, setReady] = React.useState(!isEdit);
@@ -129,9 +136,9 @@ export function LogActivityFormPage({
         setActivityDate(a.activityAt ? a.activityAt.slice(0, 10) : todayInputValue());
         setFollowUpDate(a.followUpAt ? a.followUpAt.slice(0, 10) : "");
         setDuration(parseDurationMinutes(a.duration));
-        setOutcome(a.outcome || "Positive");
+        setSubjects(parseSubjectChips(a.subject, subjectChips));
+        setOutcome(a.outcome || "");
         setNotes(a.notes ?? "");
-        setSubjects(parseSubjectChips(a.subject));
         setCustomerId(a.customer?.id ?? "");
         setContactId(a.contact?.id ?? "");
         setRepId(a.rep?.id ?? "");
@@ -191,7 +198,9 @@ export function LogActivityFormPage({
         type,
         subject: subjects.join(", ") || undefined,
         outcome,
-        duration: `${duration} min`,
+        duration: duration.includes("min") || duration.includes("hr")
+          ? duration
+          : `${duration} min`,
         notes: notes || undefined,
         activityAt,
         followUpAt: followUpDate
@@ -250,7 +259,7 @@ export function LogActivityFormPage({
               label="Type"
               value={type}
               onChange={(e) => setType(e.target.value)}
-              options={TYPE_OPTIONS}
+              options={typeOptions}
             />
             <DashboardTextField
               label="Date"
@@ -280,7 +289,7 @@ export function LogActivityFormPage({
               label="Duration"
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
-              options={DURATION_OPTIONS}
+              options={durationOptions}
             />
           </DashboardFormGrid>
         </div>
@@ -297,7 +306,7 @@ export function LogActivityFormPage({
               label="Outcome"
               value={outcome}
               onChange={(e) => setOutcome(e.target.value)}
-              options={OUTCOME_OPTIONS}
+              options={outcomeOptions}
             />
             <DashboardTextField
               label="Follow-up Date"
@@ -308,7 +317,7 @@ export function LogActivityFormPage({
           </DashboardFormGrid>
           <DashboardChoiceChips
             label="Subject"
-            options={SUBJECT_CHIPS}
+            options={subjectChips}
             value={subjects}
             onChange={setSubjects}
           />

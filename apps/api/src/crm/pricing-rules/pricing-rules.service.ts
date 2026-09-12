@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { CrmRecordStatus, Prisma } from '@prisma/client';
 import { CodeGeneratorService } from '../../common/services/code-generator.service';
 import {
@@ -159,6 +159,32 @@ export class PricingRulesService {
     };
   }
 
+  async impact(customerId?: string, serviceItem?: string) {
+    if (!customerId?.trim() || !serviceItem?.trim()) {
+      return { data: { openQuotes: 0 } };
+    }
+    const openQuotes = await this.prisma.quote.count({
+      where: {
+        archivedAt: null,
+        customerId,
+        status: {
+          in: [
+            CrmRecordStatus.DRAFT,
+            CrmRecordStatus.SENT,
+            CrmRecordStatus.OPEN,
+            CrmRecordStatus.PENDING,
+          ],
+        },
+        lineItems: {
+          some: {
+            item: { equals: serviceItem.trim(), mode: 'insensitive' },
+          },
+        },
+      },
+    });
+    return { data: { openQuotes } };
+  }
+
   async getById(id: string) {
     const rule = await this.prisma.pricingRule.findUnique({
       where: { id },
@@ -178,8 +204,23 @@ export class PricingRulesService {
     return { data: rule };
   }
 
-  async create(dto: CreatePricingRuleDto) {
+  async create(dto: CreatePricingRuleDto, user?: { id: string; email: string; role: string }) {
     const code = await this.codes.next('pricingRule');
+    const owner = user
+      ? await this.prisma.user.findUnique({
+          where: { id: user.id },
+          select: { id: true, firstName: true, lastName: true, email: true, role: true },
+        })
+      : null;
+    const approvedBy =
+      owner
+        ? `${userShortLabel(owner)}${owner.role ? ` (${owner.role})` : ''}`
+        : dto.approvedBy;
+    const isApprover =
+      user?.role === 'ADMIN' || user?.role === 'SUPERVISOR';
+    const approvalStatus = isApprover
+      ? (dto.approvalStatus ?? 'APPROVED')
+      : 'PENDING';
     const rule = await this.prisma.pricingRule.create({
       data: {
         code,
@@ -190,19 +231,67 @@ export class PricingRulesService {
         unit: dto.unit,
         minimumCharge: dto.minimumCharge,
         overtimeMultiplier: dto.overtimeMultiplier,
+        overtimeThreshold: dto.overtimeThreshold,
+        halfDayRate: dto.halfDayRate,
+        minimumQuantity: dto.minimumQuantity,
         effectiveFrom: dto.effectiveFrom
           ? new Date(dto.effectiveFrom)
           : undefined,
         effectiveTo: dto.effectiveTo ? new Date(dto.effectiveTo) : undefined,
         notes: dto.notes,
+        netsuiteItem: dto.netsuiteItem,
+        appliesTo: dto.appliesTo,
+        appliesToWells:
+          dto.appliesToWells === undefined
+            ? undefined
+            : (dto.appliesToWells as Prisma.InputJsonValue),
+        approvalStatus,
+        approvedBy: approvalStatus === 'APPROVED' ? (approvedBy ?? undefined) : undefined,
+        approvedAt: approvalStatus === 'APPROVED' ? new Date() : undefined,
         status: (dto.status as CrmRecordStatus) ?? CrmRecordStatus.ACTIVE,
-        ownerId: dto.ownerId,
+        ownerId: user?.id ?? dto.ownerId,
       },
     });
     return { data: rule };
   }
 
-  async update(id: string, dto: UpdatePricingRuleDto) {
+  async approve(id: string, user: { id: string; email: string; role: string }) {
+    if (user.role !== 'ADMIN' && user.role !== 'SUPERVISOR') {
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'Approver role required',
+      });
+    }
+    await this.ensureExists(id);
+    const owner = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        role: true,
+      },
+    });
+    const rule = await this.prisma.pricingRule.update({
+      where: { id },
+      data: {
+        approvalStatus: 'APPROVED',
+        approvedBy: owner
+          ? `${userShortLabel(owner)}${owner.role ? ` (${owner.role})` : ''}`
+          : user.email,
+        approvedAt: new Date(),
+        status: CrmRecordStatus.ACTIVE,
+      },
+    });
+    return { data: rule };
+  }
+
+  async update(
+    id: string,
+    dto: UpdatePricingRuleDto,
+    user?: { id: string; email: string; role: string },
+  ) {
     await this.ensureExists(id);
     const rule = await this.prisma.pricingRule.update({
       where: { id },
@@ -222,6 +311,15 @@ export class PricingRulesService {
         ...(dto.overtimeMultiplier !== undefined
           ? { overtimeMultiplier: dto.overtimeMultiplier }
           : {}),
+        ...(dto.overtimeThreshold !== undefined
+          ? { overtimeThreshold: dto.overtimeThreshold }
+          : {}),
+        ...(dto.halfDayRate !== undefined
+          ? { halfDayRate: dto.halfDayRate }
+          : {}),
+        ...(dto.minimumQuantity !== undefined
+          ? { minimumQuantity: dto.minimumQuantity }
+          : {}),
         ...(dto.effectiveFrom !== undefined
           ? {
               effectiveFrom: dto.effectiveFrom
@@ -235,10 +333,20 @@ export class PricingRulesService {
             }
           : {}),
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+        ...(dto.netsuiteItem !== undefined
+          ? { netsuiteItem: dto.netsuiteItem }
+          : {}),
+        ...(dto.appliesTo !== undefined ? { appliesTo: dto.appliesTo } : {}),
+        ...(dto.appliesToWells !== undefined
+          ? { appliesToWells: dto.appliesToWells as Prisma.InputJsonValue }
+          : {}),
+        ...(dto.approvalStatus !== undefined
+          ? { approvalStatus: dto.approvalStatus }
+          : {}),
         ...(dto.status !== undefined
           ? { status: dto.status as CrmRecordStatus }
           : {}),
-        ...(dto.ownerId !== undefined ? { ownerId: dto.ownerId } : {}),
+        ...(user?.id ? { ownerId: user.id } : {}),
       },
     });
     return { data: rule };

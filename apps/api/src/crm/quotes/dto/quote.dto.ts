@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsDateString,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -26,6 +27,41 @@ export class QuoteListQueryDto extends ListQueryDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  valueMin?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  valueMax?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  createdMin?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  createdMax?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  expiresMin?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  expiresMax?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  hasPo?: string;
 }
 
 export class QuoteLineItemInputDto {
@@ -167,6 +203,20 @@ export class SendQuoteDto {
   @IsArray()
   @IsUUID('4', { each: true })
   attachmentIds?: string[];
+
+  @ApiPropertyOptional({ description: 'Attach generated PDF summary to email' })
+  @IsOptional()
+  attachPdf?: boolean | string;
+
+  @ApiPropertyOptional({ enum: ['now', 'later'] })
+  @IsOptional()
+  @IsIn(['now', 'later'])
+  schedule?: 'now' | 'later';
+
+  @ApiPropertyOptional({ description: 'ISO datetime when schedule=later' })
+  @IsOptional()
+  @IsDateString()
+  scheduledAt?: string;
 }
 
 export class AddQuoteAttachmentDto {

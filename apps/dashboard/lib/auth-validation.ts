@@ -23,6 +23,20 @@ export function mapApiValidationError(err: unknown): {
   details?: Record<string, string[]>;
 } {
   if (err instanceof ApiError) {
+    const hasFieldDetails =
+      !!err.details && Object.keys(err.details).length > 0;
+    const isValidation =
+      err.code === "VALIDATION_ERROR" ||
+      hasFieldDetails ||
+      (err.status === 400 && /validat|required|missing/i.test(err.message));
+
+    if (isValidation) {
+      return {
+        message: "Some fields are missing. Please check and fill them.",
+        details: err.details,
+      };
+    }
+
     return {
       message:
         firstApiValidationError(err.details) ??
@@ -30,6 +44,10 @@ export function mapApiValidationError(err: unknown): {
         "Something went wrong. Try again.",
       details: err.details,
     };
+  }
+
+  if (err instanceof Error && err.message.trim()) {
+    return { message: err.message.trim() };
   }
 
   return { message: "Something went wrong. Try again." };

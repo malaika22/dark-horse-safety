@@ -23,32 +23,32 @@ export type HeaderMeta = {
 /** Figma app-header titles — longest prefix wins for nested `/new` routes. */
 const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | null }[] = [
   { path: "/dashboard", breadcrumb: "Dashboard", pageTitle: null },
-  { path: "/crm/accounts/new", breadcrumb: "CRM / Customers", pageTitle: "Add Customer" },
-  { path: "/crm/contacts/new", breadcrumb: "CRM / Contacts", pageTitle: "Add Contact" },
+  { path: "/crm/accounts/new", breadcrumb: "CRM / Customers / Add Customer", pageTitle: null },
+  { path: "/crm/contacts/new", breadcrumb: "CRM / Contacts / Add Contact", pageTitle: null },
   {
     path: "/crm/requirements/new",
-    breadcrumb: "CRM / Customer Requests",
-    pageTitle: "Add Requirement",
+    breadcrumb: "CRM / Customer Requests / Add Requirement",
+    pageTitle: null,
   },
   {
     path: "/crm/pricing-rules/new",
-    breadcrumb: "CRM / Pricing Rules",
-    pageTitle: "Add Pricing Rule",
+    breadcrumb: "CRM / Pricing Rules / Add Pricing Rule",
+    pageTitle: null,
   },
   {
     path: "/crm/form-rules/new",
-    breadcrumb: "CRM / Form Rules",
-    pageTitle: "Add Form Rule",
+    breadcrumb: "CRM / Form Rules / Add Form Rule",
+    pageTitle: null,
   },
   {
     path: "/crm/route-rules/new",
-    breadcrumb: "CRM / Route / GPS Rules",
-    pageTitle: "Add Route Rule",
+    breadcrumb: "CRM / Route / GPS Rules / Add Route Rule",
+    pageTitle: null,
   },
   {
     path: "/crm/locations/new",
-    breadcrumb: "CRM / Locations / Wells",
-    pageTitle: "Add Location",
+    breadcrumb: "CRM / Locations / Wells / Add Location",
+    pageTitle: null,
   },
   { path: "/crm/accounts", breadcrumb: "CRM / Customer", pageTitle: "Customers" },
   { path: "/crm/contacts", breadcrumb: "CRM / Contacts", pageTitle: "Contacts" },
@@ -80,11 +80,15 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
   { path: "/crm/eod-reports", breadcrumb: "Sales / EOD Reports", pageTitle: "EOD Reports" },
   {
     path: "/crm/quotes/new",
-    breadcrumb: "Sales / Quotes",
-    pageTitle: "Create Quote",
+    breadcrumb: "Sales / Quotes / Create Quote",
+    pageTitle: null,
   },
   { path: "/crm/quotes", breadcrumb: "Sales / Quotes", pageTitle: "Quotes" },
-  { path: "/crm/sales/new", breadcrumb: "Sales / Sales Activity", pageTitle: "Log Activity" },
+  {
+    path: "/crm/sales/new",
+    breadcrumb: "Sales / Sales Activity / Log Activity",
+    pageTitle: null,
+  },
   { path: "/crm/sales", breadcrumb: "Sales / Sales Activity", pageTitle: "Sales Activity" },
   {
     path: "/crm/sales-calendar",
@@ -225,31 +229,31 @@ function headerMetaForPath(pathname: string): HeaderMeta {
 
   // Edit routes — keep page title
   if (/^\/crm\/accounts\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Customers", pageTitle: "Edit Customer" };
+    return { breadcrumb: "CRM / Customers / Edit Customer", pageTitle: null };
   }
   if (/^\/crm\/locations\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Locations / Wells", pageTitle: "Edit Location" };
+    return { breadcrumb: "CRM / Locations / Wells / Edit Location", pageTitle: null };
   }
   if (/^\/crm\/pricing-rules\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Pricing Rules", pageTitle: "Edit Pricing Rule" };
+    return { breadcrumb: "CRM / Pricing Rules / Edit Pricing Rule", pageTitle: null };
   }
   if (/^\/crm\/requirements\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Customer Requests", pageTitle: "Edit Requirement" };
+    return { breadcrumb: "CRM / Customer Requests / Edit Requirement", pageTitle: null };
   }
   if (/^\/crm\/form-rules\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Form Rules", pageTitle: "Edit Form Rule" };
+    return { breadcrumb: "CRM / Form Rules / Edit Form Rule", pageTitle: null };
   }
   if (/^\/crm\/route-rules\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Route / GPS Rules", pageTitle: "Edit Route Rule" };
+    return { breadcrumb: "CRM / Route / GPS Rules / Edit Route Rule", pageTitle: null };
   }
   if (/^\/crm\/quotes\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "Sales / Quotes", pageTitle: "Edit Quote" };
+    return { breadcrumb: "Sales / Quotes / Edit Quote", pageTitle: null };
   }
   if (/^\/crm\/sales\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "Sales / Sales Activity", pageTitle: "Edit Activity" };
+    return { breadcrumb: "Sales / Sales Activity / Edit Activity", pageTitle: null };
   }
   if (/^\/crm\/contacts\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Contacts", pageTitle: "Edit Contact" };
+    return { breadcrumb: "CRM / Contacts / Edit Contact", pageTitle: null };
   }
 
   // Detail routes — breadcrumb only; actions live in row 2 via context
@@ -260,7 +264,7 @@ function headerMetaForPath(pathname: string): HeaderMeta {
     return { breadcrumb: "Sales / EOD Reports / Detail", pageTitle: null };
   }
   if (/^\/crm\/quotes\/[^/]+\/preview$/.test(pathname)) {
-    return { breadcrumb: "Sales / Quotes", pageTitle: "Quote Preview" };
+    return { breadcrumb: "Sales / Quotes / Preview", pageTitle: null };
   }
   if (/^\/crm\/quotes\/[^/]+$/.test(pathname)) {
     return { breadcrumb: "Sales / Quotes / Detail", pageTitle: null };
@@ -270,6 +274,12 @@ function headerMetaForPath(pathname: string): HeaderMeta {
   }
   if (/^\/crm\/contacts\/[^/]+$/.test(pathname) && pathname !== "/crm/contacts/new") {
     return { breadcrumb: "CRM / Customer / Contacts", pageTitle: null };
+  }
+  if (
+    /^\/crm\/locations\/[^/]+$/.test(pathname) &&
+    pathname !== "/crm/locations/new"
+  ) {
+    return { breadcrumb: "CRM / Locations / Wells", pageTitle: null };
   }
   if (
     /^\/operations\/work-orders\/[^/]+$/.test(pathname) &&

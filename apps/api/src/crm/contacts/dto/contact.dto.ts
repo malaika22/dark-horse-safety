@@ -4,10 +4,14 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsEmail,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
+  ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import { ListQueryDto } from '../../../common/dto/list-query.dto';
 
@@ -34,9 +38,26 @@ export class ContactListQueryDto extends ListQueryDto {
   includeArchived?: boolean;
 }
 
+export class ContactCustomerLinkDto {
+  @ApiProperty()
+  @IsUUID('4')
+  customerId!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  roleAtCustomer?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isPrimary?: boolean;
+}
+
 export class CreateContactDto {
   @ApiProperty()
   @IsString()
+  @IsNotEmpty({ message: 'Enter a full name.' })
   @MaxLength(200)
   fullName!: string;
 
@@ -48,6 +69,9 @@ export class CreateContactDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @ValidateIf((_, v) => typeof v === 'string' && v.trim().length > 0)
+  @IsEmail({}, { message: 'Enter a valid email.' })
+  @MaxLength(254)
   email?: string;
 
   @ApiPropertyOptional()
@@ -82,6 +106,31 @@ export class CreateContactDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  photoUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  linkedIn?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  timeZone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  doNotContact?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  howWeMet?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsUUID()
   primaryCustomerId?: string;
 
@@ -100,6 +149,13 @@ export class CreateContactDto {
   @IsArray()
   @IsUUID('4', { each: true })
   customerIds?: string[];
+
+  @ApiPropertyOptional({ type: [ContactCustomerLinkDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ContactCustomerLinkDto)
+  customerLinks?: ContactCustomerLinkDto[];
 
   @ApiPropertyOptional()
   @IsOptional()

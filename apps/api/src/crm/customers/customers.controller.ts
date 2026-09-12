@@ -20,6 +20,7 @@ import { CustomersService } from './customers.service';
 import {
   BulkCustomerIdsDto,
   BulkUpdateCustomersDto,
+  CreateCustomerDocumentDto,
   CreateCustomerDto,
   CustomerListQueryDto,
   UpdateCustomerDocumentDto,
@@ -94,6 +95,15 @@ export class CustomersController {
   @ApiOperation({ summary: 'Duplicate customer' })
   duplicate(@Param('id') id: string) {
     return this.customers.duplicate(id);
+  }
+
+  @Post(':id/documents')
+  @ApiOperation({ summary: 'Create customer document (MSA / COI / W-9 / logo)' })
+  createDocument(
+    @Param('id') id: string,
+    @Body() dto: CreateCustomerDocumentDto,
+  ) {
+    return this.customers.createDocument(id, dto);
   }
 
   @Patch(':id/documents/:documentId')

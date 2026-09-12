@@ -821,7 +821,8 @@ export class DashboardService {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    const [pendingEod, followUps, expiringQuotes] = await Promise.all([
+    const [pendingEod, followUps, expiringQuotes, eodPushFollowups, scheduledQuotes] =
+      await Promise.all([
       this.prisma.eodReport.count({
         where: {
           status: {
@@ -845,6 +846,21 @@ export class DashboardService {
           },
         },
       }),
+      this.prisma.salesActivity.count({
+        where: {
+          archivedAt: null,
+          subject: { startsWith: 'EOD' },
+          status: CrmRecordStatus.PENDING,
+          followUpAt: { not: null, lte: new Date() },
+        },
+      }),
+      this.prisma.quote.count({
+        where: {
+          archivedAt: null,
+          sentAt: null,
+          scheduledSendAt: { not: null, lte: new Date() },
+        },
+      }),
     ]);
 
     const items = [
@@ -853,6 +869,13 @@ export class DashboardService {
             id: 'eod-pending',
             title: `${pendingEod} EOD report(s) need attention`,
             href: '/crm/eod-reports',
+          }
+        : null,
+      eodPushFollowups > 0
+        ? {
+            id: 'eod-push',
+            title: `${eodPushFollowups} EOD in-app reminder(s)`,
+            href: '/crm/sales',
           }
         : null,
       followUps > 0
@@ -866,6 +889,13 @@ export class DashboardService {
         ? {
             id: 'quotes-expiring',
             title: `${expiringQuotes} quote(s) expiring within 7 days`,
+            href: '/crm/quotes',
+          }
+        : null,
+      scheduledQuotes > 0
+        ? {
+            id: 'quotes-scheduled',
+            title: `${scheduledQuotes} scheduled quote send(s) due`,
             href: '/crm/quotes',
           }
         : null,
