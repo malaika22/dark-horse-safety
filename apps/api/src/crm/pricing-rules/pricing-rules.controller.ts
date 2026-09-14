@@ -58,6 +58,18 @@ export class PricingRulesController {
     return this.pricingRules.bulkDelete(dto.ids);
   }
 
+  @Get('conflict')
+  @ApiOperation({
+    summary: 'Existing active rate for customer + service (Add Pricing Rule banner)',
+  })
+  conflict(
+    @Query('customerId') customerId?: string,
+    @Query('serviceItem') serviceItem?: string,
+    @Query('excludeId') excludeId?: string,
+  ) {
+    return this.pricingRules.conflict(customerId, serviceItem, excludeId);
+  }
+
   @Get('impact')
   @ApiOperation({
     summary: 'Count open quotes that use a customer + service item rate',
@@ -65,8 +77,9 @@ export class PricingRulesController {
   impact(
     @Query('customerId') customerId?: string,
     @Query('serviceItem') serviceItem?: string,
+    @Query('effectiveFrom') effectiveFrom?: string,
   ) {
-    return this.pricingRules.impact(customerId, serviceItem);
+    return this.pricingRules.impact(customerId, serviceItem, effectiveFrom);
   }
 
   @Post()

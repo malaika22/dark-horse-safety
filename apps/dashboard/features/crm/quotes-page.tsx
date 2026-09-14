@@ -38,14 +38,37 @@ import { useCrmDialogs } from "@/features/crm/use-crm-dialogs";
 import { QUOTES_KPI_SHELL, QUOTES_SORT_OPTIONS } from "./crm-constants";
 import type { QuoteRow } from "./crm-types";
 import {
+  CannotConvertQuoteModal,
+  ConversionFailedModal,
+  ConvertQuoteToWorkOrderModal,
   QuoteCompareVersionsModal,
   QuoteVersionHistoryModal,
   ResendQuoteModal,
   WorkOrderCreatedModal,
   type CompareVersionRow,
+  type ConvertQuotePayload,
   type QuoteVersionListItem,
   type ResendQuotePayload,
 } from "./quote-flow-modals";
+import type {
+  CrmQuoteConvertEligibility,
+  CrmQuoteConvertResult,
+} from "@/lib/crm-api";
+
+function mergeJobTypeOptions(
+  primary: { value: string; label: string }[],
+  fallback: { value: string; label: string }[],
+) {
+  const seen = new Set<string>();
+  const out: { value: string; label: string }[] = [];
+  for (const o of [...primary, ...fallback]) {
+    const key = o.value.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ value: o.value, label: o.label || o.value });
+  }
+  return out;
+}
 
 function formatOpenQuotesSummary(amount: number, count: number) {
   if (!count) return "Total — Across — Open Quotes";
@@ -326,16 +349,33 @@ export function QuotesPage() {
     rows: CompareVersionRow[];
   }>({ leftLabel: "V2", rightLabel: "V3", rows: [] });
   const [woCreatedOpen, setWoCreatedOpen] = React.useState(false);
-  const [woCreated, setWoCreated] = React.useState<{
-    quoteId: string;
+  const [woResult, setWoResult] = React.useState<CrmQuoteConvertResult | null>(
+    null,
+  );
+  const [convertTarget, setConvertTarget] = React.useState<{
+    id: string;
     quoteNumber: string;
-    workOrderId: string;
-    workOrderCode: string;
-    customer: string;
-    value: string;
-    scheduled: string;
-    createdBy: string;
+    customerName: string;
+    customerId?: string;
+    amount: number;
   } | null>(null);
+  const [convertOpen, setConvertOpen] = React.useState(false);
+  const [cannotOpen, setCannotOpen] = React.useState(false);
+  const [failedOpen, setFailedOpen] = React.useState(false);
+  const [failedReason, setFailedReason] = React.useState("");
+  const [eligibility, setEligibility] =
+    React.useState<CrmQuoteConvertEligibility | null>(null);
+  const [pendingOverrideReason, setPendingOverrideReason] = React.useState<
+    string | null
+  >(null);
+  const [lastConvertPayload, setLastConvertPayload] =
+    React.useState<ConvertQuotePayload | null>(null);
+  const [sitesLoading, setSitesLoading] = React.useState(false);
+  const [convertOptions, setConvertOptions] = React.useState<{
+    jobTypes: { value: string; label: string }[];
+    sites: { value: string; label: string }[];
+    defaultServiceDate: string;
+  }>({ jobTypes: [], sites: [], defaultServiceDate: "" });
   const [savedViewsOpen, setSavedViewsOpen] = React.useState(false);
   const [saveNewViewOpen, setSaveNewViewOpen] = React.useState(false);
   const {
@@ -348,6 +388,7 @@ export function QuotesPage() {
 
   const { lookups, customers, reps } = useCrmLookups({ includeLocations: false });
   const statusOptions = lookupOptions(lookups, "quoteStatuses");
+  const lookupJobTypes = lookupOptions(lookups, "jobTypes");
 
   const extraParams = React.useMemo(() => {
     const params: Record<string, string | undefined> = {};
@@ -537,38 +578,43 @@ export function QuotesPage() {
   }
 
   async function handleConvertToWorkOrder(id: string) {
+    const row = rows.find((r) => r.id === id);
+    setPendingOverrideReason(null);
+    setFailedOpen(false);
+    setSitesLoading(true);
     try {
-      const res = await crmApi.convertQuoteToWorkOrder(id);
-      const wo = res.data;
-      const scheduled = wo.scheduled
-        ? new Date(wo.scheduled)
-            .toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })
-            .toUpperCase()
-        : "—";
-      const value =
-        wo.value != null
-          ? Number(wo.value).toLocaleString("en-US", {
-              style: "currency",
-              currency: "USD",
-              maximumFractionDigits: 0,
-            })
-          : "—";
-      setWoCreated({
-        quoteId: id,
-        quoteNumber: wo.quoteNumber ?? wo.quote?.quoteNumber ?? "—",
-        workOrderId: wo.id,
-        workOrderCode: wo.code ?? "—",
-        customer: wo.customer?.name ?? "—",
-        value,
-        scheduled,
-        createdBy: wo.createdBy ?? "—",
+      const detail = await crmApi.getQuote(id);
+      const q = detail.data;
+      const target = {
+        id,
+        quoteNumber: q.quoteNumber ?? row?.quoteNumber ?? "—",
+        customerName: q.customer?.name ?? row?.customer ?? "—",
+        customerId: q.customer?.id,
+        amount: Number(q.amount) || 0,
+      };
+      setConvertTarget(target);
+      const elig = await crmApi.quoteConvertEligibility(id);
+      setEligibility(elig.data);
+      setConvertOptions({
+        jobTypes: mergeJobTypeOptions(
+          elig.data.jobTypeOptions ?? [],
+          lookupJobTypes,
+        ),
+        sites: (elig.data.siteOptions ?? []).map((s) => ({
+          value: s.value,
+          label: s.label,
+        })),
+        defaultServiceDate: elig.data.defaultServiceDate ?? "",
       });
-      setWoCreatedOpen(true);
-      reload();
+      if (elig.data.alreadyConverted) {
+        toastSuccess("Quote already converted");
+        return;
+      }
+      if (!elig.data.canConvert) {
+        setCannotOpen(true);
+        return;
+      }
+      setConvertOpen(true);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         router.push(
@@ -577,6 +623,55 @@ export function QuotesPage() {
         return;
       }
       toastApiError(err);
+    } finally {
+      setSitesLoading(false);
+    }
+  }
+
+  async function submitListConvert(payload: ConvertQuotePayload) {
+    if (!convertTarget) return;
+    setLastConvertPayload(payload);
+    try {
+      const res = await crmApi.convertQuoteToWorkOrder(convertTarget.id, {
+        ...payload,
+        ...(pendingOverrideReason
+          ? { overrideReason: pendingOverrideReason }
+          : {}),
+      });
+      setPendingOverrideReason(null);
+      setConvertOpen(false);
+      setCannotOpen(false);
+      setFailedOpen(false);
+      setWoResult(res.data);
+      setWoCreatedOpen(true);
+      reload();
+    } catch (err) {
+      setConvertOpen(false);
+      if (err instanceof ApiError && err.code === "CONVERT_BLOCKED") {
+        try {
+          const elig = await crmApi.quoteConvertEligibility(convertTarget.id);
+          setEligibility(elig.data);
+          setConvertOptions({
+            jobTypes: mergeJobTypeOptions(
+              elig.data.jobTypeOptions ?? [],
+              lookupJobTypes,
+            ),
+            sites: (elig.data.siteOptions ?? []).map((s) => ({
+              value: s.value,
+              label: s.label,
+            })),
+            defaultServiceDate: elig.data.defaultServiceDate ?? "",
+          });
+        } catch {
+          /* keep */
+        }
+        setCannotOpen(true);
+        return;
+      }
+      setFailedReason(
+        err instanceof Error ? err.message : "Conversion failed",
+      );
+      setFailedOpen(true);
     }
   }
 
@@ -1112,20 +1207,61 @@ export function QuotesPage() {
           }
         }}
       />
+      <ConvertQuoteToWorkOrderModal
+        open={convertOpen && Boolean(convertTarget)}
+        onClose={() => {
+          setConvertOpen(false);
+          setPendingOverrideReason(null);
+        }}
+        onConvert={submitListConvert}
+        quoteNumber={convertTarget?.quoteNumber ?? "—"}
+        customerName={convertTarget?.customerName ?? "—"}
+        amount={convertTarget?.amount ?? 0}
+        jobTypeOptions={convertOptions.jobTypes}
+        siteOptions={convertOptions.sites}
+        sitesLoading={sitesLoading}
+        defaultJobType={convertOptions.jobTypes[0]?.value ?? ""}
+        defaultSiteId={convertOptions.sites[0]?.value ?? ""}
+        defaultServiceDate={convertOptions.defaultServiceDate}
+      />
+      <CannotConvertQuoteModal
+        open={cannotOpen}
+        onClose={() => setCannotOpen(false)}
+        eligibility={eligibility}
+        onViewCustomer={() => {
+          const cid =
+            convertTarget?.customerId ?? eligibility?.customer?.id;
+          if (cid) router.push(`/crm/customers/${cid}`);
+        }}
+        onOverride={async (reason) => {
+          setPendingOverrideReason(reason);
+          setCannotOpen(false);
+          setConvertOpen(true);
+        }}
+      />
+      <ConversionFailedModal
+        open={failedOpen}
+        onClose={() => setFailedOpen(false)}
+        quoteNumber={convertTarget?.quoteNumber ?? "—"}
+        customerName={convertTarget?.customerName ?? "—"}
+        reason={failedReason}
+        onRetry={() => {
+          setFailedOpen(false);
+          if (lastConvertPayload && convertTarget) {
+            void submitListConvert(lastConvertPayload);
+          } else if (convertTarget) {
+            void handleConvertToWorkOrder(convertTarget.id);
+          }
+        }}
+      />
       <WorkOrderCreatedModal
-        open={woCreatedOpen && Boolean(woCreated)}
+        open={woCreatedOpen && Boolean(woResult)}
         onClose={() => {
           setWoCreatedOpen(false);
-          setWoCreated(null);
+          setWoResult(null);
         }}
-        quoteNumber={woCreated?.quoteNumber ?? "—"}
-        workOrderCode={woCreated?.workOrderCode ?? "—"}
-        customer={woCreated?.customer ?? "—"}
-        value={woCreated?.value ?? "—"}
-        scheduled={woCreated?.scheduled ?? "—"}
-        createdBy={woCreated?.createdBy ?? "—"}
-        quoteId={woCreated?.quoteId}
-        workOrderId={woCreated?.workOrderId}
+        result={woResult}
+        quoteId={convertTarget?.id ?? woResult?.quoteId ?? undefined}
       />
       {dialogs}
     </div>

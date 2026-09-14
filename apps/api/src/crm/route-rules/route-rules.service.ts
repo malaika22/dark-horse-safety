@@ -16,9 +16,20 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { openWorkOrderWhere } from '../common/open-jobs.util';
 import {
   CreateRouteRuleDto,
+  PreviewGeofenceDto,
+  RouteRuleDefaultsQueryDto,
   RouteRuleListQueryDto,
   UpdateRouteRuleDto,
 } from './dto/route-rule.dto';
+
+const SYSTEM_DEFAULTS = {
+  geofenceRadiusFt: 1000,
+  mileageRate: '$0.67/mi',
+  gpsAccuracyMeters: '15 m',
+  gpsUnavailableBehavior: 'BLOCK_CLOCK_IN',
+  clockInBeforeMin: 15,
+  clockInAfterMin: 15,
+};
 
 const SORT_MAP: Record<string, string> = {
   routeLabel: 'routeLabel',
@@ -491,6 +502,15 @@ export class RouteRulesService {
       include: {
         customer: { select: { id: true, name: true, code: true } },
         location: true,
+        originLocation: {
+          select: {
+            id: true,
+            name: true,
+            latitude: true,
+            longitude: true,
+            city: true,
+          },
+        },
         owner: {
           select: { id: true, firstName: true, lastName: true, email: true },
         },
@@ -505,20 +525,195 @@ export class RouteRulesService {
     return { data: rule };
   }
 
+  async defaults(query: RouteRuleDefaultsQueryDto) {
+    const systemDefaultRadius = `${SYSTEM_DEFAULTS.geofenceRadiusFt} ft`;
+    let customerName = '';
+    let customerInheritedRadius: string | null = null;
+    let siteName = '';
+    let siteLat: number | null = null;
+    let siteLng: number | null = null;
+    let originName = '';
+    let originLat: number | null = null;
+    let originLng: number | null = null;
+    let autoTravelMinutes: number | null = null;
+
+    if (query.customerId) {
+      const [customer, customerRule] = await Promise.all([
+        this.prisma.customer.findUnique({
+          where: { id: query.customerId },
+          select: { name: true, clockInRadius: true },
+        }),
+        this.prisma.routeRule.findFirst({
+          where: {
+            customerId: query.customerId,
+            locationId: null,
+            archivedAt: null,
+          },
+          orderBy: { updatedAt: 'desc' },
+          select: { geofenceRadius: true },
+        }),
+      ]);
+      customerName = customer?.name ?? '';
+      customerInheritedRadius =
+        customerRule?.geofenceRadius?.trim() ||
+        customer?.clockInRadius?.trim() ||
+        systemDefaultRadius;
+    }
+
+    if (query.locationId) {
+      const site = await this.prisma.location.findUnique({
+        where: { id: query.locationId },
+        select: {
+          name: true,
+          latitude: true,
+          longitude: true,
+          geofenceRadius: true,
+        },
+      });
+      if (site) {
+        siteName = site.name;
+        siteLat = site.latitude;
+        siteLng = site.longitude;
+        if (site.geofenceRadius?.trim()) {
+          customerInheritedRadius = site.geofenceRadius;
+        }
+      }
+    }
+
+    if (query.originLocationId) {
+      const origin = await this.prisma.location.findUnique({
+        where: { id: query.originLocationId },
+        select: { name: true, latitude: true, longitude: true },
+      });
+      if (origin) {
+        originName = origin.name;
+        originLat = origin.latitude;
+        originLng = origin.longitude;
+      }
+    }
+
+    if (
+      siteLat != null &&
+      siteLng != null &&
+      originLat != null &&
+      originLng != null
+    ) {
+      const miles =
+        this.haversineFt(siteLat, siteLng, originLat, originLng) / 5280;
+      // Assume ~35 mph average oilfield travel
+      autoTravelMinutes = Math.max(5, Math.round((miles / 35) * 60));
+    }
+
+    return {
+      data: {
+        systemDefaultRadius,
+        customerInheritedRadius,
+        customerName,
+        siteName,
+        siteLat,
+        siteLng,
+        originName,
+        originLat,
+        originLng,
+        autoTravelMinutes,
+        systemMileageRate: SYSTEM_DEFAULTS.mileageRate,
+        systemGpsAccuracy: SYSTEM_DEFAULTS.gpsAccuracyMeters,
+        systemGpsUnavailableBehavior: SYSTEM_DEFAULTS.gpsUnavailableBehavior,
+        defaultClockInBeforeMin: SYSTEM_DEFAULTS.clockInBeforeMin,
+        defaultClockInAfterMin: SYSTEM_DEFAULTS.clockInAfterMin,
+      },
+    };
+  }
+
+  async previewGeofence(dto: PreviewGeofenceDto) {
+    const location = await this.prisma.location.findUnique({
+      where: { id: dto.locationId },
+      select: {
+        id: true,
+        name: true,
+        latitude: true,
+        longitude: true,
+      },
+    });
+    if (!location) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Site location not found',
+      });
+    }
+    const radiusFt = this.parseRadiusFt(dto.geofenceRadius) || SYSTEM_DEFAULTS.geofenceRadiusFt;
+    if (location.latitude == null || location.longitude == null) {
+      return {
+        data: {
+          inside: false,
+          distanceFt: null as number | null,
+          overByFt: null as number | null,
+          radiusFt,
+          locationName: location.name,
+          message: 'Site has no coordinates — cannot test geofence.',
+        },
+      };
+    }
+    const distanceFt = Math.round(
+      this.haversineFt(
+        location.latitude,
+        location.longitude,
+        dto.lat,
+        dto.lng,
+      ),
+    );
+    const inside = distanceFt <= radiusFt;
+    const overByFt = inside ? 0 : distanceFt - radiusFt;
+    return {
+      data: {
+        inside,
+        distanceFt,
+        overByFt,
+        radiusFt,
+        locationName: location.name,
+        message: inside
+          ? `✓ Inside geofence (${distanceFt} ft from centre)`
+          : `✕ Outside geofence — ${distanceFt} ft from centre · ${overByFt} ft over`,
+      },
+    };
+  }
+
   async create(dto: CreateRouteRuleDto) {
     const code = await this.codes.next('routeRule');
+    const before = dto.clockInBeforeMin ?? SYSTEM_DEFAULTS.clockInBeforeMin;
+    const after = dto.clockInAfterMin ?? SYSTEM_DEFAULTS.clockInAfterMin;
+    const geofenceRadius = dto.geofenceRadius?.trim();
+    const gpsRequired =
+      dto.gpsRequired ?? Boolean(geofenceRadius && this.parseRadiusFt(geofenceRadius) > 0);
     const rule = await this.prisma.routeRule.create({
       data: {
         code,
         customerId: dto.customerId,
         locationId: dto.locationId,
         geofenceRadius: dto.geofenceRadius,
-        gpsRequired: dto.gpsRequired ?? false,
-        clockInWindow: dto.clockInWindow,
+        geofenceIsOverride: dto.geofenceIsOverride ?? true,
+        gpsRequired,
+        clockInWindow:
+          dto.clockInWindow ??
+          `${before} min before · ${after} min after`,
+        clockInBeforeMin: before,
+        clockInAfterMin: after,
         routeFrom: dto.routeFrom,
+        originType: dto.originType,
+        originLocationId: dto.originLocationId,
+        preferredRoute: dto.preferredRoute,
         expectedTravelTime: dto.expectedTravelTime,
+        travelTimeAuto: dto.travelTimeAuto ?? true,
         mileageRateOverride: dto.mileageRateOverride,
-        routeLabel: dto.routeLabel,
+        mileageRateIsOverride: dto.mileageRateIsOverride ?? false,
+        gpsAccuracyMeters: dto.gpsAccuracyMeters,
+        gpsAccuracyIsOverride: dto.gpsAccuracyIsOverride ?? false,
+        gpsUnavailableBehavior: dto.gpsUnavailableBehavior,
+        routeLabel: dto.routeLabel ?? dto.preferredRoute,
+        effectiveFrom: dto.effectiveFrom
+          ? new Date(dto.effectiveFrom)
+          : undefined,
+        effectiveTo: dto.effectiveTo ? new Date(dto.effectiveTo) : undefined,
         status: (dto.status as CrmRecordStatus) ?? CrmRecordStatus.ACTIVE,
         ownerId: dto.ownerId,
       },
@@ -540,21 +735,67 @@ export class RouteRulesService {
         ...(dto.geofenceRadius !== undefined
           ? { geofenceRadius: dto.geofenceRadius }
           : {}),
+        ...(dto.geofenceIsOverride !== undefined
+          ? { geofenceIsOverride: dto.geofenceIsOverride }
+          : {}),
         ...(dto.gpsRequired !== undefined
           ? { gpsRequired: dto.gpsRequired }
           : {}),
         ...(dto.clockInWindow !== undefined
           ? { clockInWindow: dto.clockInWindow }
           : {}),
+        ...(dto.clockInBeforeMin !== undefined
+          ? { clockInBeforeMin: dto.clockInBeforeMin }
+          : {}),
+        ...(dto.clockInAfterMin !== undefined
+          ? { clockInAfterMin: dto.clockInAfterMin }
+          : {}),
         ...(dto.routeFrom !== undefined ? { routeFrom: dto.routeFrom } : {}),
+        ...(dto.originType !== undefined ? { originType: dto.originType } : {}),
+        ...(dto.originLocationId !== undefined
+          ? { originLocationId: dto.originLocationId }
+          : {}),
+        ...(dto.preferredRoute !== undefined
+          ? {
+              preferredRoute: dto.preferredRoute,
+              routeLabel: dto.preferredRoute,
+            }
+          : {}),
         ...(dto.expectedTravelTime !== undefined
           ? { expectedTravelTime: dto.expectedTravelTime }
+          : {}),
+        ...(dto.travelTimeAuto !== undefined
+          ? { travelTimeAuto: dto.travelTimeAuto }
           : {}),
         ...(dto.mileageRateOverride !== undefined
           ? { mileageRateOverride: dto.mileageRateOverride }
           : {}),
+        ...(dto.mileageRateIsOverride !== undefined
+          ? { mileageRateIsOverride: dto.mileageRateIsOverride }
+          : {}),
+        ...(dto.gpsAccuracyMeters !== undefined
+          ? { gpsAccuracyMeters: dto.gpsAccuracyMeters }
+          : {}),
+        ...(dto.gpsAccuracyIsOverride !== undefined
+          ? { gpsAccuracyIsOverride: dto.gpsAccuracyIsOverride }
+          : {}),
+        ...(dto.gpsUnavailableBehavior !== undefined
+          ? { gpsUnavailableBehavior: dto.gpsUnavailableBehavior }
+          : {}),
         ...(dto.routeLabel !== undefined
           ? { routeLabel: dto.routeLabel }
+          : {}),
+        ...(dto.effectiveFrom !== undefined
+          ? {
+              effectiveFrom: dto.effectiveFrom
+                ? new Date(dto.effectiveFrom)
+                : null,
+            }
+          : {}),
+        ...(dto.effectiveTo !== undefined
+          ? {
+              effectiveTo: dto.effectiveTo ? new Date(dto.effectiveTo) : null,
+            }
           : {}),
         ...(dto.status !== undefined
           ? { status: dto.status as CrmRecordStatus }
@@ -597,12 +838,25 @@ export class RouteRulesService {
         customerId: existing.customerId,
         locationId,
         geofenceRadius: existing.geofenceRadius,
+        geofenceIsOverride: existing.geofenceIsOverride,
         gpsRequired: existing.gpsRequired,
         clockInWindow: existing.clockInWindow,
+        clockInBeforeMin: existing.clockInBeforeMin,
+        clockInAfterMin: existing.clockInAfterMin,
         routeFrom: existing.routeFrom,
+        originType: existing.originType,
+        originLocationId: existing.originLocationId,
+        preferredRoute: existing.preferredRoute,
         expectedTravelTime: existing.expectedTravelTime,
+        travelTimeAuto: existing.travelTimeAuto,
         mileageRateOverride: existing.mileageRateOverride,
+        mileageRateIsOverride: existing.mileageRateIsOverride,
+        gpsAccuracyMeters: existing.gpsAccuracyMeters,
+        gpsAccuracyIsOverride: existing.gpsAccuracyIsOverride,
+        gpsUnavailableBehavior: existing.gpsUnavailableBehavior,
         routeLabel: existing.routeLabel,
+        effectiveFrom: existing.effectiveFrom,
+        effectiveTo: existing.effectiveTo,
         status: CrmRecordStatus.DRAFT,
         ownerId: existing.ownerId,
       },

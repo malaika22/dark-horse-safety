@@ -102,6 +102,7 @@ export class LookupsService {
         ],
         pricingTiers: [
           labelOpt('Standard'),
+          labelOpt('Preferred'),
           labelOpt('Enterprise'),
           labelOpt('Custom'),
         ],
@@ -164,10 +165,73 @@ export class LookupsService {
         ],
         requirementTypes: [
           labelOpt('Certification'),
+          labelOpt('Training'),
+          labelOpt('Document'),
+          labelOpt('Equipment'),
+        ],
+        requirementSources: [
+          opt('CUSTOMER_IMPOSED', 'Customer-Imposed'),
+          opt('REGULATORY', 'Regulatory (OSHA)'),
+          opt('INTERNAL_POLICY', 'Internal Policy'),
+        ],
+        requirementCatalog: [
+          opt(
+            'H2S AWARENESS & SAFETY (ANNUAL)',
+            'H2S Awareness & Safety (Annual) — Training Course Library',
+          ),
+          opt('H2S CERTIFICATION', 'H2S Certification'),
+          opt('CONFINED SPACE ENTRY', 'Confined Space Entry'),
+          opt('FIRST AID / CPR', 'First Aid / CPR'),
+          opt('MSA', 'MSA'),
+          opt('COI', 'COI'),
+          opt('W-9', 'W-9'),
+          opt('SITE ORIENTATION', 'Site Orientation'),
+        ],
+        evidenceTypes: [
+          opt('CERTIFICATE_UPLOAD', 'Certificate Upload'),
+          opt('CARD_PHOTO', 'Card Photo'),
+          opt('THIRD_PARTY_VERIFICATION', 'Third-Party Verification'),
+          opt('ATTESTATION', 'Attestation'),
+        ],
+        verificationMethods: [
+          opt('SELF_CERTIFIED', 'Self-certified'),
+          opt('SUPERVISOR_VERIFIED', 'Supervisor verified'),
+          opt('SAFETY_COORDINATOR_VERIFIED', 'Safety Coordinator verified'),
+          opt('THIRD_PARTY_VERIFIED', 'Third-party verified'),
+        ],
+        technicianScope: [
+          opt('ALL_TECHNICIANS', 'All Technicians'),
+          opt('SPECIFIC_ROLES', 'Specific Roles'),
+          opt('NAMED_INDIVIDUALS', 'Named Individuals'),
+          opt('SPECIFIC_JOB_TYPES', 'Technicians on Specific Job Types'),
+        ],
+        technicianRoles: [
+          labelOpt('Site Safety Technician'),
+          labelOpt('Confined Space Attendant'),
+          labelOpt('H2S Monitor'),
+          labelOpt('Operations'),
           labelOpt('Safety'),
-          labelOpt('Contract'),
-          labelOpt('Insurance'),
-          labelOpt('Tax'),
+          labelOpt('Admin'),
+          labelOpt('Customer'),
+        ],
+        overrideRoles: [
+          labelOpt('Operations'),
+          labelOpt('Safety'),
+          labelOpt('Admin'),
+          labelOpt('Customer'),
+        ],
+        validityPeriods: [
+          opt('ONE_TIME', 'One-time'),
+          opt('ANNUALLY', 'Annually'),
+          opt('EVERY_2_YEARS', 'Every 2 Years'),
+          opt('EVERY_3_YEARS', 'Every 3 Years'),
+          opt('EVERY_5_YEARS', 'Every 5 Years'),
+          opt('ON_CERTIFICATE_EXPIRY', 'On Certificate Expiry'),
+          opt('NEVER', 'Never'),
+        ],
+        rolloutModes: [
+          opt('NEW_ONLY', 'Apply to new assignments only (grandfather existing)'),
+          opt('IMMEDIATE', 'Apply immediately to everyone'),
         ],
         enforcementLevels: [
           opt('HARD_GATE', 'Hard Gate'),
@@ -186,19 +250,36 @@ export class LookupsService {
           labelOpt('Annually'),
         ],
         formTriggers: [
-          labelOpt('On Dispatch'),
-          labelOpt('On Start'),
-          labelOpt('Per Shift'),
+          opt('ON_DISPATCH', 'On Dispatch'),
+          opt('ON_START', 'On Start'),
+          opt('PER_SHIFT', 'Per Shift'),
         ],
         formDueOptions: [
-          labelOpt('Before Dispatch'),
-          labelOpt('Before Closeout'),
-          labelOpt('Before Job Start'),
+          opt('BEFORE_CLOCK_IN', 'Before Clock-In'),
+          opt('BEFORE_DISPATCH', 'Before Dispatch'),
+          opt('BEFORE_CLOSEOUT', 'Before Closeout'),
+          opt('BEFORE_JOB_START', 'Before Job Start'),
         ],
         formVersions: [
           labelOpt('V1'),
           labelOpt('V2'),
           labelOpt('V3'),
+        ],
+        formScopes: [
+          opt('ALL_JOBS', 'All Jobs'),
+          opt('WELL_SITES', 'Well Sites'),
+          opt('FLEET_JOBS', 'Fleet Jobs'),
+          opt('H2S_SITES', 'H2S Sites'),
+        ],
+        formVersionModes: [
+          opt('ALWAYS_LATEST', 'Always use the latest'),
+          opt('PINNED', 'Pin to version'),
+        ],
+        formOverrideRoles: [
+          labelOpt('Operations'),
+          labelOpt('Safety'),
+          labelOpt('Admin'),
+          labelOpt('Supervisor'),
         ],
         activitySubjects: [
           opt('quote', 'Quote'),
@@ -222,6 +303,15 @@ export class LookupsService {
           opt('AFTER 30MINS', 'After 30 mins'),
           opt('AFTER 60MINS', 'After 60 mins'),
         ],
+        routeOriginTypes: [
+          opt('YARD', 'Yard'),
+          opt('HOME', 'Home'),
+          opt('PREVIOUS_JOB', 'Previous Job'),
+        ],
+        gpsUnavailableBehaviors: [
+          opt('BLOCK_CLOCK_IN', 'Block Clock-In'),
+          opt('PROCEED_WITH_FLAG', 'Proceed With Flag'),
+        ],
         formTemplates: [
           labelOpt('JSA'),
           labelOpt('Permit to Work'),
@@ -236,13 +326,16 @@ export class LookupsService {
           labelOpt('EOD Report'),
         ],
         jobTypes: [
+          labelOpt('Confined Space Standby'),
+          labelOpt('Wireline'),
+          labelOpt('H2S Monitoring'),
+          labelOpt('Site Safety'),
           labelOpt('All Jobs'),
           labelOpt('Well Sites'),
           labelOpt('Fleet Jobs'),
           labelOpt('H2S Sites'),
           labelOpt('JSA'),
           labelOpt('Permit to Work'),
-          labelOpt('Wireline'),
           labelOpt('H2S'),
         ],
         contactRoles: [
@@ -269,17 +362,21 @@ export class LookupsService {
           opt('OTHER', 'Other'),
         ],
         activityOutcomes: [
+          labelOpt('Positive'),
+          labelOpt('Neutral'),
+          labelOpt('Negative'),
           labelOpt('Connected'),
           labelOpt('Left Voicemail'),
           labelOpt('Follow-up Set'),
           labelOpt('No Answer'),
-          labelOpt('Won Interest'),
         ],
         activityDurations: [
           labelOpt('15 min'),
           labelOpt('30 min'),
           labelOpt('45 min'),
           labelOpt('1 hr'),
+          labelOpt('1.5 hr'),
+          labelOpt('2 hr+'),
         ],
         quoteStatuses: [
           opt('DRAFT', 'Draft'),
@@ -289,6 +386,30 @@ export class LookupsService {
           opt('EXPIRED', 'Expired'),
           opt('PENDING', 'Pending'),
           opt('OPEN', 'Open'),
+          opt('CONVERTED', 'Converted'),
+        ],
+        expenseStatuses: [
+          opt('DRAFT', 'Draft'),
+          opt('PENDING', 'Pending'),
+          opt('APPROVED', 'Approved'),
+          opt('UNMATCHED', 'Unmatched'),
+          opt('MISSING_RECEIPT', 'Missing Receipt'),
+          opt('NEEDS_REVIEW', 'Needs Review'),
+        ],
+        expenseCategories: [
+          labelOpt('Fuel'),
+          labelOpt('Lodging'),
+          labelOpt('Supplies'),
+          labelOpt('Meals'),
+          labelOpt('Entertainment'),
+          labelOpt('Travel'),
+          labelOpt('Equipment'),
+          labelOpt('Other'),
+        ],
+        // Static non-card methods only — live cards merged in allLive()
+        expensePaymentMethods: [
+          labelOpt('Cash'),
+          labelOpt('Personal Card'),
         ],
       },
     };
@@ -344,6 +465,8 @@ export class LookupsService {
       industriesDb,
       contactRolesDb,
       payCycles,
+      paymentCardsDb,
+      expenseMethodsDb,
     ] = await Promise.all([
       this.prisma.location.findMany({
         where: { archivedAt: null, county: { not: null } },
@@ -394,6 +517,18 @@ export class LookupsService {
         take: 100,
       }),
       this.loadPayCycles(),
+      this.prisma.paymentCard.findMany({
+        where: { archivedAt: null, active: true },
+        select: { label: true, isCompanyCard: true },
+        orderBy: { label: 'asc' },
+        take: 100,
+      }),
+      this.prisma.expense.findMany({
+        where: { archivedAt: null, paymentMethod: { not: null } },
+        select: { paymentMethod: true },
+        distinct: ['paymentMethod'],
+        take: 100,
+      }),
     ]);
 
     const merge = (
@@ -446,6 +581,13 @@ export class LookupsService {
           base.contactRoles,
           contactRolesDb.map((r) => r.roleTitle),
         ),
+        expensePaymentMethods: merge(
+          base.expensePaymentMethods,
+          [
+            ...paymentCardsDb.map((c) => c.label),
+            ...expenseMethodsDb.map((r) => r.paymentMethod),
+          ],
+        ),
       },
     };
   }
@@ -489,6 +631,11 @@ export class LookupsService {
         code: true,
         customerId: true,
         county: true,
+        state: true,
+        siteType: true,
+        latitude: true,
+        longitude: true,
+        geofenceRadius: true,
       },
       orderBy: { name: 'asc' },
       take: 50,

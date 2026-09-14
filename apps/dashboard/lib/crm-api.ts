@@ -201,8 +201,20 @@ export const crmApi = {
         permissionGates: { id: string; customer: string; status: string }[];
       }>
     >("/crm/pricing-rules/side-panels"),
-  pricingRuleImpact: (params: { customerId: string; serviceItem: string }) =>
-    api.get<ApiData<{ openQuotes: number }>>(
+  pricingRuleConflict: (params: {
+    customerId: string;
+    serviceItem: string;
+    excludeId?: string;
+  }) =>
+    api.get<ApiData<CrmPricingRule | null>>(
+      `/crm/pricing-rules/conflict${q(params)}`,
+    ),
+  pricingRuleImpact: (params: {
+    customerId: string;
+    serviceItem: string;
+    effectiveFrom?: string;
+  }) =>
+    api.get<ApiData<{ openQuotes: number; effectiveCycleLabel?: string | null }>>(
       `/crm/pricing-rules/impact${q(params)}`,
     ),
   getPricingRule: (id: string) =>
@@ -257,6 +269,35 @@ export const crmApi = {
     api.get<ApiData<{ csv?: string; pdf?: string; xlsx?: string; filename: string }>>(
       `/crm/requirements/export${q(params)}`,
     ),
+  requirementPreview: (params: {
+    customerId?: string;
+    requirementType?: string;
+    name?: string;
+    renewalLeadDays?: number;
+    validityPeriod?: string;
+    appliesTo?: string;
+    appliesToRoles?: string[];
+    enforcementLevel?: string;
+    rolloutMode?: string;
+    excludeId?: string;
+  }) => {
+    const { appliesToRoles, ...rest } = params;
+    return api.get<
+      ApiData<{
+        checksOnSave: { ok: boolean; message: string }[];
+        blockedTechnicians: { id: string; name: string }[];
+        blockedCount: number;
+        customerName: string;
+      }>
+    >(
+      `/crm/requirements/preview${q({
+        ...rest,
+        appliesToRoles: appliesToRoles?.length
+          ? appliesToRoles.join(",")
+          : undefined,
+      })}`,
+    );
+  },
   requirementsAffectedSummary: () =>
     api.get<
       ApiData<{
@@ -361,6 +402,24 @@ export const crmApi = {
         coverageGaps: { id: string; name: string }[];
       }>
     >("/crm/form-rules/insights"),
+  formRulePreview: (params: {
+    customerId?: string;
+    formTemplate?: string;
+    jobType?: string;
+    required?: boolean;
+    hardGate?: boolean;
+    rolloutMode?: string;
+    excludeId?: string;
+  }) =>
+    api.get<
+      ApiData<{
+        openWorkOrders: number;
+        startedWorkOrders: number;
+        customerName: string;
+        formTemplate: string;
+        showImpact: boolean;
+      }>
+    >(`/crm/form-rules/preview${q(params)}`),
   getFormRule: (id: string) =>
     api.get<ApiData<CrmFormRule>>(`/crm/form-rules/${id}`),
   createFormRule: (body: Record<string, unknown>) =>
@@ -470,6 +529,46 @@ export const crmApi = {
         } | null;
       }>
     >("/crm/route-rules/overview"),
+  routeRuleDefaults: (params: {
+    customerId?: string;
+    locationId?: string;
+    originLocationId?: string;
+  }) =>
+    api.get<
+      ApiData<{
+        systemDefaultRadius: string;
+        customerInheritedRadius: string | null;
+        customerName: string;
+        siteName: string;
+        siteLat: number | null;
+        siteLng: number | null;
+        originName: string;
+        originLat: number | null;
+        originLng: number | null;
+        autoTravelMinutes: number | null;
+        systemMileageRate: string;
+        systemGpsAccuracy: string;
+        systemGpsUnavailableBehavior: string;
+        defaultClockInBeforeMin: number;
+        defaultClockInAfterMin: number;
+      }>
+    >(`/crm/route-rules/defaults${q(params)}`),
+  testRouteGeofence: (body: {
+    locationId: string;
+    geofenceRadius?: string;
+    lat: number;
+    lng: number;
+  }) =>
+    api.post<
+      ApiData<{
+        inside: boolean;
+        distanceFt: number | null;
+        overByFt: number | null;
+        radiusFt: number;
+        locationName: string;
+        message: string;
+      }>
+    >("/crm/route-rules/test-geofence", body),
   getRouteRule: (id: string) =>
     api.get<ApiData<CrmRouteRule>>(`/crm/route-rules/${id}`),
   createRouteRule: (body: Record<string, unknown>) =>
@@ -602,6 +701,124 @@ export const crmApi = {
       `/crm/sales-activities/export${q(params)}`,
     ),
 
+  // ── Expenses ─────────────────────────────────────────────────────────────
+  listExpenses: (params?: CrmListParams) =>
+    api.get<
+      ApiData<{
+        items: CrmExpense[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalAmount: number;
+        from: string | null;
+        to: string | null;
+      }>
+    >(`/crm/expenses${q(params)}`),
+  listCustomerExpenses: (customerId: string, params?: CrmListParams) =>
+    api.get<
+      ApiData<{
+        items: CrmExpense[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalAmount: number;
+        from: string | null;
+        to: string | null;
+      }>
+    >(`/crm/customers/${customerId}/expenses${q(params)}`),
+  getExpense: (id: string) =>
+    api.get<ApiData<CrmExpense>>(`/crm/expenses/${id}`),
+  createExpense: (body: Record<string, unknown>) =>
+    api.post<ApiData<CrmExpense>>("/crm/expenses", body),
+  updateExpense: (id: string, body: Record<string, unknown>) =>
+    api.patch<ApiData<CrmExpense>>(`/crm/expenses/${id}`, body),
+  archiveExpense: (id: string) =>
+    api.post<ApiData<CrmExpense>>(`/crm/expenses/${id}/archive`),
+  approveExpense: (id: string) =>
+    api.post<ApiData<CrmExpense>>(`/crm/expenses/${id}/approve`),
+  flagExpenseForReview: (id: string) =>
+    api.post<ApiData<CrmExpense>>(`/crm/expenses/${id}/flag-for-review`),
+
+  // ── Card reconciliation ──────────────────────────────────────────────────
+  getCustomerCardReconciliation: (
+    customerId: string,
+    params?: { paymentCardId?: string },
+  ) =>
+    api.get<ApiData<CrmCardReconciliation>>(
+      `/crm/customers/${customerId}/card-reconciliation${q(params)}`,
+    ),
+  listPaymentCards: (params?: { activeOnly?: boolean }) =>
+    api.get<
+      ApiData<{ items: CrmPaymentCard[]; total: number }>
+    >(`/crm/payment-cards${q(params as CrmListParams)}`),
+  createPaymentCard: (body: {
+    brand: string;
+    last4: string;
+    isCompanyCard?: boolean;
+    ownerId?: string;
+  }) => api.post<ApiData<CrmPaymentCard>>("/crm/payment-cards", body),
+  updatePaymentCard: (id: string, body: Record<string, unknown>) =>
+    api.patch<ApiData<CrmPaymentCard>>(`/crm/payment-cards/${id}`, body),
+  archivePaymentCard: (id: string) =>
+    api.post<ApiData<CrmPaymentCard>>(`/crm/payment-cards/${id}/archive`),
+  getCardReconciliation: (id: string) =>
+    api.get<ApiData<CrmCardReconciliation>>(`/crm/card-reconciliations/${id}`),
+  syncCardReconciliation: (id: string) =>
+    api.post<ApiData<CrmCardReconciliation>>(
+      `/crm/card-reconciliations/${id}/sync`,
+    ),
+  autoMatchCardReconciliation: (id: string) =>
+    api.post<ApiData<CrmCardReconciliation>>(
+      `/crm/card-reconciliations/${id}/auto-match`,
+    ),
+  addCardReconciliationCharge: (
+    id: string,
+    body: { exceptionDate: string; merchant: string; amount: number },
+  ) =>
+    api.post<ApiData<CrmCardReconciliation>>(
+      `/crm/card-reconciliations/${id}/charges`,
+      body,
+    ),
+  finishCardReconciliation: (id: string, body?: { force?: boolean }) =>
+    api.post<ApiData<CrmCardReconciliation>>(
+      `/crm/card-reconciliations/${id}/finish`,
+      body ?? {},
+    ),
+  requestCardExceptionReceipt: (id: string, exceptionId: string) =>
+    api.post<ApiData<CrmCardReconciliation>>(
+      `/crm/card-reconciliations/${id}/exceptions/${exceptionId}/request-receipt`,
+    ),
+  waiveCardException: (
+    id: string,
+    exceptionId: string,
+    body: { reason: string },
+  ) =>
+    api.post<ApiData<CrmCardReconciliation>>(
+      `/crm/card-reconciliations/${id}/exceptions/${exceptionId}/waive`,
+      body,
+    ),
+  linkCardExceptionExpense: (
+    id: string,
+    exceptionId: string,
+    body: { expenseId: string },
+  ) =>
+    api.post<ApiData<CrmCardReconciliation>>(
+      `/crm/card-reconciliations/${id}/exceptions/${exceptionId}/link-expense`,
+      body,
+    ),
+  markCardExceptionPersonal: (id: string, exceptionId: string) =>
+    api.post<ApiData<CrmCardReconciliation>>(
+      `/crm/card-reconciliations/${id}/exceptions/${exceptionId}/mark-personal`,
+    ),
+  disputeCardException: (id: string, exceptionId: string) =>
+    api.post<ApiData<CrmCardReconciliation>>(
+      `/crm/card-reconciliations/${id}/exceptions/${exceptionId}/dispute`,
+    ),
+  deleteCardException: (id: string, exceptionId: string) =>
+    api.post<ApiData<CrmCardReconciliation>>(
+      `/crm/card-reconciliations/${id}/exceptions/${exceptionId}/delete`,
+    ),
+
   // ── Quotes ───────────────────────────────────────────────────────────────
   listQuotes: (params?: CrmListParams) =>
     api.get<ApiList<CrmQuote>>(`/crm/quotes${q(params)}`),
@@ -701,17 +918,23 @@ export const crmApi = {
     api.delete<ApiData<{ deleted: boolean }> | void>(
       `/crm/quotes/${quoteId}/attachments/${attachmentId}`,
     ),
-  convertQuoteToWorkOrder: (id: string) =>
-    api.post<
-      ApiData<
-        CrmWorkOrder & {
-          value?: number;
-          scheduled?: string | null;
-          createdBy?: string;
-          quoteNumber?: string;
-        }
-      >
-    >(`/crm/quotes/${id}/convert-to-work-order`),
+  convertQuoteToWorkOrder: (
+    id: string,
+    body: {
+      jobType: string;
+      locationId: string;
+      serviceDate: string;
+      overrideReason?: string;
+    },
+  ) =>
+    api.post<ApiData<CrmQuoteConvertResult>>(
+      `/crm/quotes/${id}/convert-to-work-order`,
+      body,
+    ),
+  quoteConvertEligibility: (id: string) =>
+    api.get<ApiData<CrmQuoteConvertEligibility>>(
+      `/crm/quotes/${id}/convert-eligibility`,
+    ),
   duplicateQuote: (id: string) =>
     api.post<ApiData<CrmQuote>>(`/crm/quotes/${id}/duplicate`),
   markQuoteWon: (id: string) =>
@@ -732,8 +955,20 @@ export const crmApi = {
     api.post<ApiData<CrmWorkOrder>>("/crm/work-orders", body),
   listWorkOrders: (params?: CrmListParams) =>
     api.get<ApiList<CrmWorkOrder>>(`/crm/work-orders${q(params)}`),
+  workOrdersKpi: () =>
+    api.get<
+      ApiData<{
+        open: number;
+        inProgress: number;
+        pending: number;
+        completed7d: number;
+        startingToday: number;
+      }>
+    >("/crm/work-orders/kpi"),
   getWorkOrder: (id: string) =>
     api.get<ApiData<CrmWorkOrder>>(`/crm/work-orders/${id}`),
+  updateWorkOrder: (id: string, body: Record<string, unknown>) =>
+    api.patch<ApiData<CrmWorkOrder>>(`/crm/work-orders/${id}`, body),
 
   // ── Dashboard extras ─────────────────────────────────────────────────────
   dashboardSync: () =>
@@ -775,6 +1010,11 @@ export const crmApi = {
           code: string;
           customerId: string;
           county?: string | null;
+          state?: string | null;
+          siteType?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          geofenceRadius?: string | null;
         }[]
       >
     >(`/crm/lookups/locations${q({ q: search, customerId })}`),
@@ -1030,10 +1270,23 @@ export type CrmRequirement = {
   code: string;
   name: string;
   requirementType?: string | null;
+  source?: string | null;
+  issuingBody?: string | null;
+  minimumGrade?: string | null;
   appliesTo?: string | null;
+  appliesToRoles?: string[] | null;
   enforcementLevel?: string;
   evidenceRequired?: boolean;
+  evidenceType?: string | null;
   evidenceUrl?: string | null;
+  verificationMethod?: string | null;
+  overrideRoles?: string[] | null;
+  requireOverrideReason?: boolean;
+  rolloutMode?: string | null;
+  effectiveFrom?: string | null;
+  renewalLeadDays?: number | null;
+  validityPeriod?: string | null;
+  autoCheckable?: boolean;
   renewalPeriod?: string | null;
   notes?: string | null;
   dueDate?: string | null;
@@ -1056,9 +1309,15 @@ export type CrmFormRule = {
   blocksToggle?: boolean;
   due?: string | null;
   appliesFrom?: string | null;
+  appliesToEnd?: string | null;
   trigger?: string | null;
   appliesTo?: string | null;
+  scope?: string | null;
   version?: string | null;
+  versionMode?: string | null;
+  overrideRoles?: string[] | null;
+  requireOverrideReason?: boolean;
+  rolloutMode?: string | null;
   status: string;
   customerId: string;
   customer?: { id: string; name: string } | null;
@@ -1070,12 +1329,25 @@ export type CrmRouteRule = {
   id: string;
   code: string;
   geofenceRadius?: string | null;
+  geofenceIsOverride?: boolean;
   gpsRequired?: boolean;
   clockInWindow?: string | null;
+  clockInBeforeMin?: number | null;
+  clockInAfterMin?: number | null;
   routeFrom?: string | null;
+  originType?: string | null;
+  originLocationId?: string | null;
+  preferredRoute?: string | null;
   expectedTravelTime?: string | null;
+  travelTimeAuto?: boolean;
   mileageRateOverride?: string | null;
+  mileageRateIsOverride?: boolean;
+  gpsAccuracyMeters?: string | null;
+  gpsAccuracyIsOverride?: boolean;
+  gpsUnavailableBehavior?: string | null;
   routeLabel?: string | null;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
   status: string;
   customerId: string;
   locationId?: string | null;
@@ -1084,7 +1356,16 @@ export type CrmRouteRule = {
     id: string;
     name: string;
     city?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
     openJobs?: number;
+  } | null;
+  originLocation?: {
+    id: string;
+    name: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    city?: string | null;
   } | null;
   owner?: CrmUserRef | null;
   createdAt: string;
@@ -1124,20 +1405,146 @@ export type CrmSalesActivity = {
   duration?: string | null;
   notes?: string | null;
   followUpAt?: string | null;
+  createFollowUpTask?: boolean;
+  logExpense?: boolean;
+  attendees?: { id: string; label: string; kind?: string }[] | null;
   status: string;
   activityAt: string;
   customer?: { id: string; name: string } | null;
   contact?: { id: string; fullName: string } | null;
+  location?: {
+    id: string;
+    name: string;
+    code?: string;
+    city?: string | null;
+    state?: string | null;
+  } | null;
+  locationId?: string | null;
   rep?: CrmUserRef | null;
+  linkedQuoteId?: string | null;
   linkedQuote?: {
     id: string;
     quoteNumber: string;
-    amount?: string | number | null;
+    amount?: number | string | null;
     status?: string | null;
     notes?: string | null;
     terms?: string | null;
   } | null;
-  createdAt: string;
+  customerId?: string | null;
+  contactId?: string | null;
+  repId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CrmExpense = {
+  id: string;
+  code: string;
+  expenseDate: string;
+  merchant: string;
+  category: string;
+  paymentMethod?: string | null;
+  amount: number;
+  status: string;
+  reimbursable?: boolean;
+  attendees?: { id: string; label: string; kind?: string }[] | null;
+  noReceipt?: boolean;
+  missingReceiptReason?: string | null;
+  receiptUrl?: string | null;
+  receiptFileName?: string | null;
+  receiptFileSizeBytes?: number | null;
+  receiptCaptureMethod?: string | null;
+  receiptLat?: number | null;
+  receiptLng?: number | null;
+  receiptCapturedAt?: string | null;
+  notes?: string | null;
+  flaggedAt?: string | null;
+  approvedAt?: string | null;
+  customerId: string;
+  locationId?: string | null;
+  repId?: string | null;
+  salesActivityId?: string | null;
+  customer?: { id: string; name: string; code?: string } | null;
+  location?: {
+    id: string;
+    name: string;
+    code?: string;
+    city?: string | null;
+    state?: string | null;
+  } | null;
+  rep?: CrmUserRef | null;
+  salesActivity?: {
+    id: string;
+    activityCode: string;
+    subject?: string | null;
+    type?: string;
+  } | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CrmPaymentCard = {
+  id: string;
+  brand: string;
+  last4: string;
+  label: string;
+  isCompanyCard: boolean;
+  active: boolean;
+  ownerId?: string | null;
+  owner?: CrmUserRef | null;
+};
+
+export type CrmCardReconException = {
+  id: string;
+  kind: string;
+  source?: string;
+  exceptionDate: string;
+  merchant: string;
+  amount: number;
+  resolved: boolean;
+  resolution: string;
+  waiveReason?: string | null;
+  receiptRequestedAt?: string | null;
+  expenseId?: string | null;
+  expense?: {
+    id: string;
+    code: string;
+    merchant: string;
+    amount: number;
+    status: string;
+    receiptUrl?: string | null;
+    noReceipt?: boolean;
+    missingReceiptReason?: string | null;
+  } | null;
+};
+
+export type CrmCardReconciliation = {
+  id: string | null;
+  code?: string;
+  cardLabel: string | null;
+  statementLabel: string;
+  periodStart?: string;
+  periodEnd?: string;
+  statementTotal: number;
+  matchedTotal: number;
+  unmatchedTotal: number;
+  exceptionCount: number;
+  unresolvedChargeCount: number;
+  unresolvedCharges: CrmCardReconException[];
+  bonusDeductionWarning: string | null;
+  cardholderName: string | null;
+  quarterLabel?: string;
+  status: string;
+  forceFinished?: boolean;
+  finishedAt?: string | null;
+  customerId: string;
+  needsPaymentCard?: boolean;
+  paymentCardId?: string | null;
+  paymentCard?: CrmPaymentCard | null;
+  customer?: { id: string; name: string; code?: string } | null;
+  cardholder?: CrmUserRef | null;
+  exceptions: CrmCardReconException[];
+  allExceptions?: CrmCardReconException[];
 };
 
 export type CrmQuote = {
@@ -1209,10 +1616,76 @@ export type CrmWorkOrder = {
   locationName?: string | null;
   scheduledStart?: string | null;
   scheduledEnd?: string | null;
+  amount?: string | number | null;
+  lineItemsSnapshot?: {
+    item: string;
+    quantity: number;
+    rate: number;
+    amount: number;
+  }[] | null;
+  crewAssignedAt?: string | null;
+  equipmentAssignedAt?: string | null;
+  formsCompletedAt?: string | null;
+  eligibilityVerifiedAt?: string | null;
+  stillRequiredBeforeDispatch?: string[];
+  lineItemsSummary?: string;
+  locationLabel?: string | null;
   createdAt?: string;
   customer?: { id: string; name: string; code?: string } | null;
-  location?: { id: string; name: string; code?: string } | null;
+  location?: {
+    id: string;
+    name: string;
+    code?: string;
+    city?: string | null;
+    state?: string | null;
+  } | null;
   quote?: { id: string; quoteNumber?: string; amount?: string | number } | null;
+  assignedRep?: CrmUserRef | null;
+};
+
+export type CrmQuoteConvertEligibilityCheck = {
+  key: "msa" | "customer" | "pricing" | "formRules";
+  label: string;
+  ok: boolean;
+  detail: string;
+};
+
+export type CrmQuoteConvertEligibility = {
+  quoteId: string;
+  quoteNumber: string;
+  amount: number;
+  quoteStatus?: string;
+  customer: { id: string; name: string; code?: string };
+  alreadyConverted: boolean;
+  canConvert: boolean;
+  canOverride: boolean;
+  checks: CrmQuoteConvertEligibilityCheck[];
+  blockerMessage: string | null;
+  jobTypeOptions?: { value: string; label: string }[];
+  siteOptions?: { value: string; label: string; hint?: string }[];
+  defaultServiceDate?: string;
+  lineItemsPreview?: {
+    item: string;
+    quantity: number;
+    rate: number;
+    amount: number;
+  }[];
+};
+
+export type CrmQuoteConvertResult = CrmWorkOrder & {
+  value?: number;
+  scheduled?: string | null;
+  createdBy?: string;
+  quoteNumber?: string;
+  outcome?: string;
+  quoteStatus?: string;
+  lineItemsSummary?: string;
+  locationLabel?: string;
+  convertedBy?: string;
+  convertedOn?: string | null;
+  stillRequiredBeforeDispatch?: string[];
+  overridden?: boolean;
+  conversionOverrideReason?: string | null;
 };
 
 export type CrmQuoteAttachment = {

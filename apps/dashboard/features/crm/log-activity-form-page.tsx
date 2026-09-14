@@ -1,60 +1,68 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
-  ArrowLeftIcon,
-  DashboardChoiceChips,
   DashboardFormGrid,
-  DashboardPanel,
-  DashboardPanelTitle,
   DashboardSelectField,
+  DashboardTextAreaField,
   DashboardTextField,
-  DashboardToolbarButton,
+  DashboardToggle,
+  cn,
+  type DashboardSelectOption,
 } from "@dark-horse-safety/ui";
-import type { DashboardSelectOption } from "@dark-horse-safety/ui";
 import { crmApi } from "@/lib/crm-api";
 import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
-import { toastApiError, toastSuccess } from "@/lib/toast";
-import { useRouter } from "next/navigation";
+import { toastApiError, toastSuccess, toastValidationError } from "@/lib/toast";
+import { CrmFormPageShell } from "./crm-form-page-shell";
 
-const SUBJECT_CHIPS_FALLBACK = [
-  { id: "quote", label: "Quote" },
-  { id: "call", label: "Call" },
-  { id: "follow-up", label: "Follow-up" },
-];
+type Attendee = { id: string; label: string; kind: "contact" | "user" };
 
-function todayInputValue() {
-  return new Date().toISOString().slice(0, 10);
+function nowDateTimeLocal() {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function parseDurationMinutes(duration?: string | null) {
-  if (!duration) return "30 min";
-  if (/\d+\s*min/i.test(duration) || /\d+\s*hr/i.test(duration)) return duration;
-  const match = String(duration).match(/\d+/);
-  return match ? `${match[0]} min` : "30 min";
+function toIsoFromLocal(raw: string) {
+  if (!raw) return new Date().toISOString();
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
-function parseSubjectChips(
-  subject: string | null | undefined,
-  chips: { id: string; label: string }[],
-) {
-  if (!subject?.trim()) return chips.slice(0, 2).map((c) => c.id);
-  const parts = subject
-    .split(/[,/|]+/)
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  const matched = parts
-    .map(
-      (p) =>
-        chips.find((c) => c.id === p || c.label.toLowerCase() === p)?.id,
-    )
-    .filter((id): id is string => Boolean(id));
-  return matched.length ? [...new Set(matched)] : chips.slice(0, 2).map((c) => c.id);
+function toLocalFromIso(iso?: string | null) {
+  if (!iso) return nowDateTimeLocal();
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return nowDateTimeLocal();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function money(n: number) {
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
+}
+
+function parseAttendees(raw: unknown): Attendee[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((a) => {
+      if (!a || typeof a !== "object") return null;
+      const row = a as Record<string, unknown>;
+      const id = String(row.id ?? "");
+      const label = String(row.label ?? "");
+      if (!id || !label) return null;
+      const kind = row.kind === "user" ? "user" : "contact";
+      return { id, label, kind } as Attendee;
+    })
+    .filter((a): a is Attendee => Boolean(a));
 }
 
 /**
- * Shared Log / Edit Sales Activity screen — same UI for both modes.
+ * Log / Edit Sales Activity — Figma layout + live API.
  */
 export function LogActivityFormPage({
   mode = "create",
@@ -64,55 +72,55 @@ export function LogActivityFormPage({
   activityId?: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const isEdit = mode === "edit";
   const { lookups } = useCrmLookups({ includeLocations: false });
   const typeOptions = lookupOptions(lookups, "salesActivityTypes");
   const durationOptions = lookupOptions(lookups, "activityDurations");
   const outcomeOptions = lookupOptions(lookups, "activityOutcomes");
-  const subjectChips = (
-    lookupOptions(lookups, "activitySubjects").length
-      ? lookupOptions(lookups, "activitySubjects").map((o) => ({
-          id: o.value,
-          label: o.label,
-        }))
-      : SUBJECT_CHIPS_FALLBACK
-  );
 
-  const [subjects, setSubjects] = React.useState(["quote", "call"]);
-  const [customerOptions, setCustomerOptions] = React.useState<DashboardSelectOption[]>([]);
-  const [contactOptions, setContactOptions] = React.useState<DashboardSelectOption[]>([]);
-  const [repOptions, setRepOptions] = React.useState<DashboardSelectOption[]>([]);
-  const [customerId, setCustomerId] = React.useState("");
-  const [contactId, setContactId] = React.useState("");
-  const [repId, setRepId] = React.useState("");
-  const [type, setType] = React.useState("CALL");
-  const [activityDate, setActivityDate] = React.useState(todayInputValue);
-  const [followUpDate, setFollowUpDate] = React.useState("");
-  const [duration, setDuration] = React.useState("30 min");
-  const [outcome, setOutcome] = React.useState("");
-  const [notes, setNotes] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [ready, setReady] = React.useState(!isEdit);
+  const [customerOptions, setCustomerOptions] = React.useState<
+    DashboardSelectOption[]
+  >([]);
+  const [contactOptions, setContactOptions] = React.useState<
+    DashboardSelectOption[]
+  >([]);
+  const [locationOptions, setLocationOptions] = React.useState<
+    DashboardSelectOption[]
+  >([]);
+  const [quoteOptions, setQuoteOptions] = React.useState<
+    DashboardSelectOption[]
+  >([]);
+  const [attendeePool, setAttendeePool] = React.useState<Attendee[]>([]);
+  const [addingAttendee, setAddingAttendee] = React.useState(false);
+  const [sitesLoading, setSitesLoading] = React.useState(false);
+
+  const [type, setType] = React.useState("CALL");
+  const [activityAt, setActivityAt] = React.useState(nowDateTimeLocal);
+  const [duration, setDuration] = React.useState("15 min");
+  const [customerId, setCustomerId] = React.useState(
+    searchParams.get("customerId") ?? "",
+  );
+  const [contactId, setContactId] = React.useState("");
+  const [locationId, setLocationId] = React.useState("");
+  const [attendees, setAttendees] = React.useState<Attendee[]>([]);
+  const [outcome, setOutcome] = React.useState("Positive");
+  const [notes, setNotes] = React.useState("");
+  const [linkedQuoteId, setLinkedQuoteId] = React.useState("");
+  const [createFollowUpTask, setCreateFollowUpTask] = React.useState(false);
+  const [logExpense, setLogExpense] = React.useState(false);
   const skipContactClearRef = React.useRef(isEdit);
 
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [customers, reps] = await Promise.all([
-          crmApi.lookupCustomers(),
-          crmApi.lookupReps(),
-        ]);
+        const customers = await crmApi.lookupCustomers();
         if (cancelled) return;
-        setCustomerOptions(customers.data.map((c) => ({ value: c.id, label: c.name })));
-        setRepOptions(
-          reps.data.map((r) => ({
-            value: r.id,
-            label:
-              [r.firstName, r.lastName].filter(Boolean).join(" ").trim() ||
-              r.email ||
-              r.id,
-          })),
+        setCustomerOptions(
+          customers.data.map((c) => ({ value: c.id, label: c.name })),
         );
       } catch (err) {
         toastApiError(err);
@@ -133,15 +141,17 @@ export function LogActivityFormPage({
         const a = res.data;
         skipContactClearRef.current = true;
         setType(a.type || "CALL");
-        setActivityDate(a.activityAt ? a.activityAt.slice(0, 10) : todayInputValue());
-        setFollowUpDate(a.followUpAt ? a.followUpAt.slice(0, 10) : "");
-        setDuration(parseDurationMinutes(a.duration));
-        setSubjects(parseSubjectChips(a.subject, subjectChips));
-        setOutcome(a.outcome || "");
-        setNotes(a.notes ?? "");
+        setActivityAt(toLocalFromIso(a.activityAt));
+        setDuration(a.duration || "15 min");
         setCustomerId(a.customer?.id ?? "");
         setContactId(a.contact?.id ?? "");
-        setRepId(a.rep?.id ?? "");
+        setLocationId(a.locationId ?? a.location?.id ?? "");
+        setAttendees(parseAttendees(a.attendees));
+        setOutcome(a.outcome || "Positive");
+        setNotes(a.notes ?? "");
+        setLinkedQuoteId(a.linkedQuoteId ?? a.linkedQuote?.id ?? "");
+        setCreateFollowUpTask(Boolean(a.createFollowUpTask || a.followUpAt));
+        setLogExpense(Boolean(a.logExpense));
         setReady(true);
       } catch (err) {
         toastApiError(err);
@@ -157,23 +167,70 @@ export function LogActivityFormPage({
     let cancelled = false;
     if (!skipContactClearRef.current) {
       setContactId("");
+      setLocationId("");
+      setLinkedQuoteId("");
+      setAttendees([]);
     } else {
       skipContactClearRef.current = false;
     }
     setContactOptions([]);
+    setLocationOptions([]);
+    setQuoteOptions([]);
+    setAttendeePool([]);
     if (!customerId) return;
+
+    setSitesLoading(true);
     (async () => {
       try {
-        const res = await crmApi.getCustomer(customerId);
+        const [customer, locs, quotes, reps] = await Promise.all([
+          crmApi.getCustomer(customerId),
+          crmApi.lookupLocations(undefined, customerId),
+          crmApi.listQuotes({
+            customerId,
+            pageSize: 50,
+            sort: "createdAt",
+            direction: "desc",
+          }),
+          crmApi.lookupReps(),
+        ]);
         if (cancelled) return;
-        setContactOptions(
-          (res.data.contacts ?? []).map((c) => ({
-            value: c.id,
-            label: c.fullName,
+
+        const contacts = (customer.data.contacts ?? []).map((c) => ({
+          value: c.id,
+          label: c.fullName,
+        }));
+        setContactOptions(contacts);
+        setLocationOptions(
+          (locs.data ?? []).map((l) => ({
+            value: l.id,
+            label: l.name,
           })),
         );
+        setQuoteOptions(
+          (quotes.data.items ?? []).map((q) => ({
+            value: q.id,
+            label: `${q.quoteNumber} · ${money(Number(q.amount) || 0)}`,
+          })),
+        );
+
+        const contactAttendees: Attendee[] = contacts.map((c) => ({
+          id: c.value,
+          label: c.label,
+          kind: "contact",
+        }));
+        const userAttendees: Attendee[] = reps.data.map((r) => ({
+          id: r.id,
+          label:
+            [r.firstName, r.lastName].filter(Boolean).join(" ").trim() ||
+            r.email ||
+            r.id,
+          kind: "user" as const,
+        }));
+        setAttendeePool([...contactAttendees, ...userAttendees]);
       } catch (err) {
         toastApiError(err);
+      } finally {
+        if (!cancelled) setSitesLoading(false);
       }
     })();
     return () => {
@@ -181,41 +238,70 @@ export function LogActivityFormPage({
     };
   }, [customerId]);
 
-  async function handleSave() {
-    if (!customerId) {
-      toastApiError(new Error("Customer is required"));
+  function addAttendee(id: string) {
+    const found = attendeePool.find((a) => a.id === id);
+    if (!found) return;
+    setAttendees((prev) =>
+      prev.some((a) => a.id === id) ? prev : [...prev, found],
+    );
+    setAddingAttendee(false);
+  }
+
+  function removeAttendee(id: string) {
+    setAttendees((prev) => prev.filter((a) => a.id !== id));
+  }
+
+  async function handleSave(addAnother = false) {
+    if (!customerId || !type || !activityAt || !outcome.trim() || !notes.trim()) {
+      toastValidationError("Activity type, date, customer, outcome, and notes are required");
       return;
     }
     setSubmitting(true);
     try {
-      const activityAt = activityDate
-        ? new Date(`${activityDate}T12:00:00`).toISOString()
-        : new Date().toISOString();
       const body = {
         customerId,
         contactId: contactId || undefined,
-        repId: repId || undefined,
+        locationId: locationId || undefined,
         type,
-        subject: subjects.join(", ") || undefined,
-        outcome,
-        duration: duration.includes("min") || duration.includes("hr")
-          ? duration
-          : `${duration} min`,
-        notes: notes || undefined,
-        activityAt,
-        followUpAt: followUpDate
-          ? new Date(`${followUpDate}T12:00:00`).toISOString()
-          : undefined,
+        outcome: outcome.trim(),
+        duration: duration || undefined,
+        notes: notes.trim(),
+        activityAt: toIsoFromLocal(activityAt),
+        linkedQuoteId: linkedQuoteId || undefined,
+        createFollowUpTask,
+        logExpense,
+        attendees: attendees.length ? attendees : [],
         status: "COMPLETE",
       };
+
       if (isEdit && activityId) {
         await crmApi.updateSalesActivity(activityId, body);
         toastSuccess("Activity updated");
         router.push(`/crm/sales/${activityId}`);
       } else {
-        await crmApi.createSalesActivity(body);
+        const created = await crmApi.createSalesActivity(body);
         toastSuccess("Activity logged");
-        router.push("/crm/sales");
+        if (addAnother) {
+          setType("CALL");
+          setActivityAt(nowDateTimeLocal());
+          setDuration("15 min");
+          setContactId("");
+          setLocationId("");
+          setAttendees([]);
+          setOutcome("Positive");
+          setNotes("");
+          setLinkedQuoteId("");
+          setCreateFollowUpTask(false);
+          setLogExpense(false);
+          setAddingAttendee(false);
+        } else if (logExpense && customerId) {
+          const aid = created.data?.id;
+          router.push(
+            `/crm/accounts/${customerId}/expenses?new=1${aid ? `&activityId=${encodeURIComponent(aid)}` : ""}`,
+          );
+        } else {
+          router.push("/crm/sales");
+        }
       }
     } catch (err) {
       toastApiError(err);
@@ -232,121 +318,205 @@ export function LogActivityFormPage({
     );
   }
 
-  const cancelHref = isEdit && activityId ? `/crm/sales/${activityId}` : "/crm/sales";
+  const cancelHref =
+    isEdit && activityId ? `/crm/sales/${activityId}` : "/crm/sales";
+  const availableAttendees = attendeePool.filter(
+    (a) => !attendees.some((x) => x.id === a.id),
+  );
 
   return (
-    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href={cancelHref} className="inline-flex shrink-0">
-          <DashboardToolbarButton leftIcon={<ArrowLeftIcon className="shrink-0" />}>
-            Cancel
-          </DashboardToolbarButton>
-        </Link>
-        <h1 className="order-first w-full text-center font-sans text-[18px] font-normal uppercase leading-none tracking-[-0.02em] text-foreground sm:order-none sm:w-auto sm:flex-1 md:text-[24px]">
-          {isEdit ? "Edit Activity" : "Log Activity"}
-        </h1>
-        <span className="hidden w-[88px] sm:block" aria-hidden />
-      </div>
+    <CrmFormPageShell
+      cancelHref={cancelHref}
+      submitLabel="Save"
+      saveAndAddAnotherLabel="Save & Add Another"
+      submitting={submitting}
+      onSave={() => handleSave(false)}
+      onSaveAndAddAnother={isEdit ? undefined : () => handleSave(true)}
+      sections={[
+        {
+          title: "Activity Details",
+          content: (
+            <div className="space-y-5">
+              <DashboardFormGrid className="gap-x-4 gap-y-5">
+                <DashboardSelectField
+                  label="Activity Type *"
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
+                  options={typeOptions}
+                  placeholder="Select type"
+                  emptyMessage="No activity types found"
+                />
+                <DashboardTextField
+                  label="Date & Time *"
+                  type="datetime-local"
+                  value={activityAt}
+                  onChange={(e) => setActivityAt(e.target.value)}
+                />
+              </DashboardFormGrid>
 
-      <DashboardPanel className="overflow-hidden">
-        <div className="px-4 pt-4 pb-3">
-          <DashboardPanelTitle icon="lightning" title="Activity Details" />
-        </div>
-        <div className="divider-line-full w-full" aria-hidden />
-        <div className="p-4">
-          <DashboardFormGrid className="gap-x-4 gap-y-5">
-            <DashboardSelectField
-              label="Type"
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              options={typeOptions}
-            />
-            <DashboardTextField
-              label="Date"
-              type="date"
-              value={activityDate}
-              onChange={(e) => setActivityDate(e.target.value)}
-            />
-            <DashboardSelectField
-              label="Customer"
-              value={customerId}
-              onChange={(e) => setCustomerId(e.target.value)}
-              options={[{ value: "", label: "Select customer" }, ...customerOptions]}
-            />
-            <DashboardSelectField
-              label="Contact"
-              value={contactId}
-              onChange={(e) => setContactId(e.target.value)}
-              options={[{ value: "", label: "Optional" }, ...contactOptions]}
-            />
-            <DashboardSelectField
-              label="Rep"
-              value={repId}
-              onChange={(e) => setRepId(e.target.value)}
-              options={[{ value: "", label: "Optional" }, ...repOptions]}
-            />
-            <DashboardSelectField
-              label="Duration"
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              options={durationOptions}
-            />
-          </DashboardFormGrid>
-        </div>
-      </DashboardPanel>
+              <DashboardFormGrid className="gap-x-4 gap-y-5">
+                <div className="space-y-1.5">
+                  <DashboardSelectField
+                    label="Duration"
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                    options={durationOptions}
+                    placeholder="Select duration"
+                    emptyMessage="No durations found"
+                  />
+                  <p className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#6F6F72]">
+                    Options:{" "}
+                    {durationOptions.length
+                      ? durationOptions.map((o) => o.label).join(" · ")
+                      : "15 min · 30 min · 45 min · 1 hr · 1.5 hr · 2 hr+"}
+                    .
+                  </p>
+                </div>
+                <DashboardSelectField
+                  label="Customer *"
+                  value={customerId}
+                  onChange={(e) => setCustomerId(e.target.value)}
+                  options={customerOptions}
+                  placeholder="Select customer"
+                  emptyMessage="No customers found"
+                />
+              </DashboardFormGrid>
 
-      <DashboardPanel className="overflow-hidden">
-        <div className="px-4 pt-4 pb-3">
-          <DashboardPanelTitle icon="lightning" title="Outcome & Follow-up" />
-        </div>
-        <div className="divider-line-full w-full" aria-hidden />
-        <div className="space-y-5 p-4">
-          <DashboardFormGrid className="gap-x-4 gap-y-5">
-            <DashboardSelectField
-              label="Outcome"
-              value={outcome}
-              onChange={(e) => setOutcome(e.target.value)}
-              options={outcomeOptions}
-            />
-            <DashboardTextField
-              label="Follow-up Date"
-              type="date"
-              value={followUpDate}
-              onChange={(e) => setFollowUpDate(e.target.value)}
-            />
-          </DashboardFormGrid>
-          <DashboardChoiceChips
-            label="Subject"
-            options={subjectChips}
-            value={subjects}
-            onChange={setSubjects}
-          />
-          <DashboardTextField
-            label="Notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Optional notes"
-          />
-        </div>
-      </DashboardPanel>
+              <DashboardFormGrid className="gap-x-4 gap-y-5">
+                <DashboardSelectField
+                  label="Contact"
+                  value={contactId}
+                  onChange={(e) => setContactId(e.target.value)}
+                  options={contactOptions}
+                  placeholder={
+                    customerId ? "Select contact" : "Select customer first"
+                  }
+                  emptyMessage="No contacts for this customer"
+                />
+                <div className="space-y-1.5">
+                  <DashboardSelectField
+                    label="Location"
+                    value={locationId}
+                    onChange={(e) => setLocationId(e.target.value)}
+                    options={locationOptions}
+                    loading={sitesLoading}
+                    placeholder={
+                      customerId ? "Select location" : "Select customer first"
+                    }
+                    emptyMessage="No locations for this customer"
+                  />
+                  <p className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#6F6F72]">
+                    This customer&apos;s locations only.
+                  </p>
+                </div>
+              </DashboardFormGrid>
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Link href={cancelHref} className="inline-flex shrink-0">
-          <DashboardToolbarButton>Cancel</DashboardToolbarButton>
-        </Link>
-        <DashboardToolbarButton
-          variant="primary"
-          showChevron
-          disabled={submitting}
-          onClick={() => void handleSave()}
-        >
-          {submitting
-            ? "Saving…"
-            : isEdit
-              ? "Save Activity"
-              : "Log Activity"}
-        </DashboardToolbarButton>
-      </div>
-    </div>
+              <div className="space-y-2">
+                  <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
+                    Attendees
+                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {attendees.map((a) => (
+                      <span
+                        key={a.id}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-[#3E3E3E] bg-[#2A2A2A] px-2.5 py-1.5 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]"
+                      >
+                        {a.label}
+                        <button
+                          type="button"
+                          aria-label={`Remove ${a.label}`}
+                          onClick={() => removeAttendee(a.id)}
+                          className="text-[#959597] hover:text-[#FDFDFF]"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setAddingAttendee((v) => !v)}
+                      disabled={!customerId}
+                      className="inline-flex items-center rounded-md border border-dashed border-[#3E3E3E] px-2.5 py-1.5 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] hover:border-[#5A5A5A] hover:text-[#FDFDFF] disabled:opacity-40"
+                    >
+                      + Add attendee
+                    </button>
+                  </div>
+                  {addingAttendee ? (
+                    <div className="flex flex-wrap gap-2">
+                      {availableAttendees.length ? (
+                        availableAttendees.map((a) => (
+                          <button
+                            key={`${a.kind}-${a.id}`}
+                            type="button"
+                            onClick={() => addAttendee(a.id)}
+                            className="rounded-md border border-[#3E3E3E] bg-[#2A2A2A] px-2.5 py-1.5 font-sans text-[11px] uppercase text-[#FDFDFF] hover:bg-white/5"
+                          >
+                            {a.label}
+                            <span className="ml-1 text-[#6F6F72]">
+                              · {a.kind === "user" ? "DH" : "Customer"}
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <p className="font-sans text-[10px] uppercase text-[#6F6F72]">
+                          No more attendees available for this customer.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                  <p className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#6F6F72]">
+                    Shown for meetings. Add anyone from this customer or Dark
+                    Horse who was present.
+                  </p>
+                </div>
+
+              <DashboardFormGrid className="gap-x-4 gap-y-5">
+                <DashboardSelectField
+                  label="Outcome *"
+                  value={outcome}
+                  onChange={(e) => setOutcome(e.target.value)}
+                  options={outcomeOptions}
+                  placeholder="Select outcome"
+                  emptyMessage="No outcomes found"
+                />
+                <DashboardTextAreaField
+                  label="Notes *"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value.slice(0, 2000))}
+                  placeholder="Discussed Q4 pricing…"
+                  rows={4}
+                />
+              </DashboardFormGrid>
+
+              <DashboardFormGrid className="gap-x-4 gap-y-5">
+                <DashboardSelectField
+                  label="Linked Quote"
+                  value={linkedQuoteId}
+                  onChange={(e) => setLinkedQuoteId(e.target.value)}
+                  options={quoteOptions}
+                  placeholder={
+                    customerId ? "Select quote" : "Select customer first"
+                  }
+                  emptyMessage="No quotes for this customer"
+                />
+                <DashboardToggle
+                  label="Create Follow-up Task"
+                  checked={createFollowUpTask}
+                  onCheckedChange={setCreateFollowUpTask}
+                />
+              </DashboardFormGrid>
+
+              <div className={cn("max-w-md")}>
+                <DashboardToggle
+                  label="Log Expense"
+                  checked={logExpense}
+                  onCheckedChange={setLogExpense}
+                />
+              </div>
+            </div>
+          ),
+        },
+      ]}
+    />
   );
 }

@@ -38,6 +38,12 @@ export class CodeGeneratorService {
         return this.prisma.eodReport.count();
       case 'salesActivity':
         return this.prisma.salesActivity.count();
+      case 'expense':
+        return this.prisma.expense.count();
+      case 'cardReconciliation':
+        return this.prisma.cardReconciliation.count();
+      case 'paymentCard':
+        return this.prisma.paymentCard.count();
       case 'quote':
         return this.prisma.quote.count();
       case 'workOrder':

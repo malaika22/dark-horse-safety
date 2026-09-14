@@ -8,11 +8,7 @@ import { cn } from "@dark-horse-safety/ui";
 import { APP_NAV } from "./nav";
 import { ChevronIcon, NavIcon } from "./icons";
 
-function isActivePath(
-  pathname: string,
-  href?: string,
-  siblings?: ReadonlyArray<{ href: string }>,
-) {
+function isActivePath(pathname: string, href?: string) {
   if (!href) return false;
   if (href === "/dashboard") return pathname === "/dashboard";
 
@@ -21,24 +17,18 @@ function isActivePath(
 
   if (!matches(href)) return false;
 
-  // Among siblings, only the longest (most specific) match is active —
+  // Across the whole nav, only the longest matching href is active —
   // so /crm does not stay active on /crm/accounts, etc.
-  if (siblings && siblings.length > 0) {
-    let best = href;
-    for (const sibling of siblings) {
-      if (matches(sibling.href) && sibling.href.length > best.length) {
-        best = sibling.href;
-      }
+  let best = href;
+  for (const item of APP_NAV) {
+    const hrefs =
+      item.children?.map((c) => c.href) ??
+      (item.href ? [item.href] : []);
+    for (const h of hrefs) {
+      if (matches(h) && h.length > best.length) best = h;
     }
-    return best === href;
   }
-
-  // Bare section roots (/crm, /hr, …) are exact-only when used alone
-  if (href.split("/").filter(Boolean).length === 1) {
-    return pathname === href;
-  }
-
-  return true;
+  return best === href;
 }
 
 function sectionOpen(pathname: string, item: (typeof APP_NAV)[number]) {
@@ -163,28 +153,21 @@ function SidebarNav({ onClose }: { onClose?: () => void }) {
               )}
 
               {hasChildren && open ? (
-                <ul className="relative ml-5 mt-1 space-y-0.5 border-l border-border-strong pl-3">
+                <ul className="mt-0.5 space-y-0.5 pl-[42px]">
                   {item.children!.map((child) => {
-                    const active = isActivePath(
-                      pathname,
-                      child.href,
-                      item.children,
-                    );
+                    const active = isActivePath(pathname, child.href);
                     return (
                       <li key={child.id}>
                         <Link
                           href={child.href}
                           onClick={onClose}
                           className={cn(
-                            "relative flex min-w-0 items-center rounded-md px-3 py-2 font-sans text-[13px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors md:text-[14px]",
+                            "flex min-w-0 items-center rounded-md px-3 py-2 font-sans text-[13px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors md:text-[14px]",
                             active
                               ? "bg-gradient-to-r from-[#2f2f2f] to-[#1c1c1c] text-[#FDFDFF]"
                               : "text-[#959597] hover:text-[#FDFDFF]",
                           )}
                         >
-                          {active ? (
-                            <span className="absolute -left-[15px] h-1.5 w-1.5 rounded-full bg-white" />
-                          ) : null}
                           <span className="truncate whitespace-nowrap">
                             {child.label}
                           </span>

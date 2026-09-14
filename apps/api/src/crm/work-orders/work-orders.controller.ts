@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -28,6 +29,12 @@ export class WorkOrdersController {
     return this.workOrders.list(query);
   }
 
+  @Get('kpi')
+  @ApiOperation({ summary: 'Work orders KPI strip' })
+  kpi() {
+    return this.workOrders.kpi();
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create work order' })
   create(@Body() dto: CreateWorkOrderDto) {
@@ -38,5 +45,20 @@ export class WorkOrdersController {
   @ApiOperation({ summary: 'Work order detail' })
   get(@Param('id') id: string) {
     return this.workOrders.getById(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update work order (complete / dispatch readiness)' })
+  update(
+    @Param('id') id: string,
+    @Body()
+    dto: Partial<CreateWorkOrderDto> & {
+      crewAssigned?: boolean;
+      equipmentAssigned?: boolean;
+      formsCompleted?: boolean;
+      eligibilityVerified?: boolean;
+    },
+  ) {
+    return this.workOrders.update(id, dto);
   }
 }

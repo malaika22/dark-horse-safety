@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
 import { CodeGeneratorService } from '../common/services/code-generator.service';
 import { ExportService } from '../common/services/export.service';
+import { CardReconciliationsModule } from './card-reconciliations/card-reconciliations.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { CustomersModule } from './customers/customers.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { EodReportsModule } from './eod-reports/eod-reports.module';
+import { ExpensesModule } from './expenses/expenses.module';
+import { PaymentCardsModule } from './payment-cards/payment-cards.module';
 import { FormRulesModule } from './form-rules/form-rules.module';
 import { LocationsModule } from './locations/locations.module';
 import { LookupsModule } from './lookups/lookups.module';
@@ -29,6 +32,9 @@ import { WorkOrdersModule } from './work-orders/work-orders.module';
     FormRulesModule,
     RouteRulesModule,
     EodReportsModule,
+    ExpensesModule,
+    PaymentCardsModule,
+    CardReconciliationsModule,
     SalesActivitiesModule,
     QuotesModule,
     WorkOrdersModule,

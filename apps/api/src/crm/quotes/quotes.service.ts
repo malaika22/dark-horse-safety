@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { CrmRecordStatus, Prisma, QuoteApprovalStatus } from '@prisma/client';
 import { promises as fs } from 'fs';
 import { MailService } from '../../auth/mail.service';
@@ -16,9 +16,11 @@ import {
   parsePage,
 } from '../../common/utils/pagination.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { AuthUser } from '../../common/decorators/current-user.decorator';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import {
   AddQuoteAttachmentDto,
+  ConvertQuoteToWorkOrderDto,
   CreateQuoteDto,
   QuoteLineItemInputDto,
   QuoteListQueryDto,
@@ -394,7 +396,7 @@ export class QuotesService {
   }
 
   async update(id: string, dto: UpdateQuoteDto) {
-    await this.ensureExists(id);
+    await this.ensureEditable(id);
 
     const lineItems = (dto.lineItems ?? []).map((line, index) => {
       const quantity = line.quantity ?? 1;
@@ -718,8 +720,16 @@ export class QuotesService {
     };
   }
 
-  async convertToWorkOrder(quoteId: string) {
-    return this.workOrders.convertFromQuote(quoteId);
+  async convertEligibility(quoteId: string, user?: AuthUser) {
+    return this.workOrders.convertEligibility(quoteId, user);
+  }
+
+  async convertToWorkOrder(
+    quoteId: string,
+    dto: ConvertQuoteToWorkOrderDto,
+    user?: AuthUser,
+  ) {
+    return this.workOrders.convertFromQuote(quoteId, dto, user);
   }
 
   async send(id: string, dto?: SendQuoteDto) {
@@ -1131,5 +1141,20 @@ export class QuotesService {
         message: 'Quote not found',
       });
     }
+    return found;
+  }
+
+  private async ensureEditable(id: string) {
+    const found = await this.ensureExists(id);
+    if (
+      found.status === CrmRecordStatus.CONVERTED ||
+      found.convertedAt
+    ) {
+      throw new ConflictException({
+        code: 'QUOTE_READ_ONLY',
+        message: 'Converted quotes are read-only',
+      });
+    }
+    return found;
   }
 }

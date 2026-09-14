@@ -44,10 +44,18 @@ const EMPTY_ADDRESS: AddressParts = {
   state: "TX",
   zip: "",
   county: "",
-  country: "USA",
+  country: "United States",
 };
 
-const URL_RE = /^https?:\/\/([\w-]+\.)+[\w-]{2,}(\/\S*)?$/i;
+const URL_RE =
+  /^(https?:\/\/)?([\w-]+\.)+[\w-]{2,}(\/\S*)?$/i;
+
+function normalizeWebsite(raw: string) {
+  const v = raw.trim();
+  if (!v) return undefined;
+  if (/^https?:\/\//i.test(v)) return v;
+  return `https://${v}`;
+}
 const NS_RE = /^NS-\d{7}$/i;
 const ISN_RE = /^ISN-\d{8}$/i;
 const VF_RE = /^VF-\d{7}$/i;
@@ -83,7 +91,7 @@ function serializeAddress(a: AddressParts): string {
     state: a.state.trim(),
     zip: a.zip.trim(),
     county: a.county.trim(),
-    country: a.country.trim() || "USA",
+    country: a.country.trim() || "United States",
   });
 }
 
@@ -99,7 +107,7 @@ function parseAddress(raw?: string | null): AddressParts {
         state: parsed.state ?? "TX",
         zip: parsed.zip ?? "",
         county: parsed.county ?? "",
-        country: parsed.country ?? "USA",
+        country: parsed.country ?? "United States",
       };
     }
   } catch {
@@ -115,7 +123,7 @@ function parseAddress(raw?: string | null): AddressParts {
     state: cityMatch?.[2]?.toUpperCase() ?? "TX",
     zip: cityMatch?.[3] ?? "",
     county: lines[2] ?? "",
-    country: lines[3] ?? "USA",
+    country: lines[3] ?? "United States",
   };
 }
 
@@ -186,50 +194,25 @@ export function CustomerFormPage({
   >([]);
   const [statusOptions, setStatusOptions] = React.useState<
     DashboardSelectOption[]
-  >([
-    { value: "ACTIVE", label: "Active" },
-    { value: "INACTIVE", label: "Inactive" },
-    { value: "NEEDS_REVIEW", label: "Needs review" },
-  ]);
+  >([]);
   const [paymentOptions, setPaymentOptions] = React.useState<
     DashboardSelectOption[]
-  >([
-    { value: "Net 15", label: "Net 15" },
-    { value: "Net 30", label: "Net 30" },
-    { value: "Net 60", label: "Net 60" },
-  ]);
+  >([]);
   const [pricingOptions, setPricingOptions] = React.useState<
     DashboardSelectOption[]
-  >([
-    { value: "Standard", label: "Standard" },
-    { value: "Enterprise", label: "Enterprise" },
-    { value: "Custom", label: "Custom" },
-  ]);
+  >([]);
   const [typeOptions, setTypeOptions] = React.useState<DashboardSelectOption[]>(
-    [
-      { value: "OPERATOR", label: "Operator" },
-      { value: "CONTRACTOR", label: "Contractor" },
-      { value: "VENDOR", label: "Vendor" },
-      { value: "PARTNER", label: "Partner" },
-    ],
+    [],
   );
   const [sourceOptions, setSourceOptions] = React.useState<
     DashboardSelectOption[]
   >([]);
   const [formChipOptions, setFormChipOptions] = React.useState<
     { id: string; label: string }[]
-  >([
-    { id: "JSA", label: "JSA" },
-    { id: "PERMIT TO WORK", label: "Permit To Work" },
-    { id: "EQUIPMENT INSPECTION", label: "Equipment Inspection" },
-  ]);
+  >([]);
   const [stateOptions, setStateOptions] = React.useState<
     DashboardSelectOption[]
-  >([
-    { value: "TX", label: "TX" },
-    { value: "NM", label: "NM" },
-    { value: "OK", label: "OK" },
-  ]);
+  >([]);
   const [countyOptions, setCountyOptions] = React.useState<
     DashboardSelectOption[]
   >([]);
@@ -243,7 +226,7 @@ export function CustomerFormPage({
   const [customerCode, setCustomerCode] = React.useState("");
   const [name, setName] = React.useState("");
   const [legalEntityName, setLegalEntityName] = React.useState("");
-  const [status, setStatus] = React.useState("");
+  const [status, setStatus] = React.useState(isEdit ? "" : "ACTIVE");
   const [assignedRep, setAssignedRep] = React.useState("");
   const [industry, setIndustry] = React.useState("");
   const [website, setWebsite] = React.useState("");
@@ -276,17 +259,16 @@ export function CustomerFormPage({
   const [clockInRadius, setClockInRadius] = React.useState("1000 FT");
   const [radiusOverride, setRadiusOverride] = React.useState(false);
   const [requiresPo, setRequiresPo] = React.useState(false);
-  const [requiredForms, setRequiredForms] = React.useState<string[]>([
-    "JSA",
-    "PERMIT TO WORK",
-    "EQUIPMENT INSPECTION",
-  ]);
+  const [requiredForms, setRequiredForms] = React.useState<string[]>([]);
   const [addingForm, setAddingForm] = React.useState(false);
   const [logoUrl, setLogoUrl] = React.useState<string | null>(null);
   const [logoMeta, setLogoMeta] = React.useState<string | null>(null);
   const [logoPending, setLogoPending] = React.useState<PendingFile | null>(
     null,
   );
+  const [logoDims, setLogoDims] = React.useState<string | null>(null);
+  const [logoDragOver, setLogoDragOver] = React.useState(false);
+  const [cropOpen, setCropOpen] = React.useState(false);
   const [msaFile, setMsaFile] = React.useState<PendingFile | null>(null);
   const [coiFile, setCoiFile] = React.useState<PendingFile | null>(null);
   const [w9File, setW9File] = React.useState<PendingFile | null>(null);
@@ -298,6 +280,69 @@ export function CustomerFormPage({
   const msaInputRef = React.useRef<HTMLInputElement>(null);
   const coiInputRef = React.useRef<HTMLInputElement>(null);
   const w9InputRef = React.useRef<HTMLInputElement>(null);
+
+  async function applyLogoFile(file: File) {
+    if (!/^image\/(png|jpeg|svg\+xml)$/i.test(file.type) && !/\.(png|jpe?g|svg)$/i.test(file.name)) {
+      toastValidationError("Use PNG, JPG, or SVG.");
+      return;
+    }
+    const pending = await fileToPending(file);
+    setLogoPending(pending);
+    setLogoUrl(pending.contentBase64);
+    let dims = "";
+    if (file.type !== "image/svg+xml") {
+      dims = await new Promise<string>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(`${img.naturalWidth} x ${img.naturalHeight}`);
+        img.onerror = () => resolve("");
+        img.src = pending.contentBase64;
+      });
+    }
+    setLogoDims(dims || null);
+    setLogoMeta(
+      [pending.name.toUpperCase(), dims || null, pending.sizeLabel]
+        .filter(Boolean)
+        .join(" · "),
+    );
+  }
+
+  function squareCropLogo() {
+    const src = logoPending?.contentBase64 || logoUrl;
+    if (!src || src.startsWith("http")) {
+      toastValidationError("Upload a logo before cropping.");
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      const size = Math.min(img.naturalWidth, img.naturalHeight);
+      const sx = Math.floor((img.naturalWidth - size) / 2);
+      const sy = Math.floor((img.naturalHeight - size) / 2);
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size);
+      const dataUrl = canvas.toDataURL("image/png");
+      const name =
+        (logoPending?.name || "logo.png").replace(/\.\w+$/, "") + "-crop.png";
+      setLogoPending({
+        name,
+        sizeLabel: formatBytes(Math.round((dataUrl.length * 3) / 4)),
+        contentBase64: dataUrl,
+        mimeType: "image/png",
+      });
+      setLogoUrl(dataUrl);
+      setLogoDims(`${size} x ${size}`);
+      setLogoMeta(
+        `${name.toUpperCase()} · ${size} x ${size} · ${formatBytes(Math.round((dataUrl.length * 3) / 4))}`,
+      );
+      setCropOpen(false);
+      toastSuccess("Logo cropped to square");
+    };
+    img.onerror = () => toastValidationError("Couldn't crop this image.");
+    img.src = src;
+  }
 
   function clearError(key: string) {
     setErrors((prev) => {
@@ -329,14 +374,7 @@ export function CustomerFormPage({
           setStatusOptions(mapOpts(data.customerStatuses));
         }
         const industries = data.industries ?? data.industry ?? [];
-        if (industries.length) setIndustryOptions(mapOpts(industries));
-        else {
-          setIndustryOptions([
-            { value: "Oil & Gas", label: "Oil & Gas" },
-            { value: "Construction", label: "Construction" },
-            { value: "Utilities", label: "Utilities" },
-          ]);
-        }
+        setIndustryOptions(mapOpts(industries));
         if (data.paymentTerms?.length) setPaymentOptions(mapOpts(data.paymentTerms));
         if (data.pricingTiers?.length) setPricingOptions(mapOpts(data.pricingTiers));
         if (data.customerTypes?.length) {
@@ -468,7 +506,7 @@ export function CustomerFormPage({
     if (!paymentTerms) next.paymentTerms = "Select payment terms.";
 
     if (website.trim() && !URL_RE.test(website.trim())) {
-      next.website = "Enter a valid URL, e.g. https://example.com";
+      next.website = "Enter a valid website, e.g. www.example.com";
     }
     if (creditLimit.trim()) {
       const n = parseMoney(creditLimit);
@@ -503,7 +541,7 @@ export function CustomerFormPage({
       status,
       assignedRepId: assignedRep || undefined,
       industry: industry || undefined,
-      website: website.trim() || undefined,
+      website: normalizeWebsite(website),
       email: email.trim() || undefined,
       phone: phone.trim() || undefined,
       customerType: customerType || undefined,
@@ -637,7 +675,7 @@ export function CustomerFormPage({
       if (addAnother && !isEdit) {
         setName("");
         setLegalEntityName("");
-        setStatus("");
+        setStatus("ACTIVE");
         setAssignedRep("");
         setCustomerType("");
         setPaymentTerms("");
@@ -653,6 +691,9 @@ export function CustomerFormPage({
         setVeriforceId("");
         setLogoPending(null);
         setLogoUrl(null);
+        setLogoMeta(null);
+        setLogoDims(null);
+        setCropOpen(false);
         setMsaFile(null);
         setCoiFile(null);
         setW9File(null);
@@ -701,40 +742,83 @@ export function CustomerFormPage({
         {
           title: "Company Logo",
           content: (
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-              <div
-                className={cn(
-                  "flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#3E3E3E] bg-[#2A2A2A] font-sans text-[18px] font-[590] text-[#FDFDFF]",
-                )}
-              >
-                {logoPending?.contentBase64 || logoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={logoPending?.contentBase64 || logoUrl || ""}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  initialsFromName(name || "CU")
-                )}
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-6">
+              <div className="flex shrink-0 flex-col items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setLogoDragOver(true);
+                  }}
+                  onDragLeave={() => setLogoDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setLogoDragOver(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) void applyLogoFile(file);
+                  }}
+                  className={cn(
+                    "flex h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-full border-2 transition-colors",
+                    logoDragOver
+                      ? "border-[#FDFDFF] bg-[#1E3A5F]"
+                      : "border-transparent bg-[#1E3A5F]",
+                  )}
+                  aria-label="Upload company logo"
+                >
+                  {logoPending?.contentBase64 || logoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={logoPending?.contentBase64 || logoUrl || ""}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="font-sans text-[22px] font-[590] tracking-[-0.02em] text-[#7EB6FF]">
+                      {initialsFromName(name || "CU")}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  className="font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#959597] hover:text-[#FDFDFF]"
+                >
+                  Click or drag to upload
+                </button>
               </div>
-              <div className="min-w-0 flex-1 space-y-2">
-                <p className="font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                  {logoMeta || logoPending?.name || "No logo uploaded"}
-                  {logoPending ? ` — ${logoPending.sizeLabel}` : null}
+
+              <div className="min-w-0 flex-1 space-y-3">
+                <p className="font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]">
+                  {logoMeta ||
+                    (logoPending
+                      ? `${logoPending.name.toUpperCase()} · ${logoPending.sizeLabel}`
+                      : "No logo uploaded")}
+                </p>
+                <p className="max-w-xl font-sans text-[10px] uppercase leading-relaxed tracking-[-0.02em] text-[#6F6F72]">
+                  New uploads open a crop tool before saving. PNG, JPG or SVG —
+                  square works best.
                 </p>
                 <div className="flex flex-wrap gap-2">
+                  <DashboardToolbarButton
+                    disabled={!logoPending && !logoUrl}
+                    onClick={() => setCropOpen(true)}
+                  >
+                    Crop
+                  </DashboardToolbarButton>
                   <DashboardToolbarButton
                     disabled={!logoPending && !logoUrl}
                     onClick={() => {
                       setLogoPending(null);
                       setLogoUrl(null);
                       setLogoMeta(null);
+                      setLogoDims(null);
                     }}
                   >
                     Remove
                   </DashboardToolbarButton>
                   <DashboardToolbarButton
+                    variant="primary"
                     onClick={() => logoInputRef.current?.click()}
                   >
                     Replace Logo
@@ -748,24 +832,38 @@ export function CustomerFormPage({
                       const file = e.target.files?.[0];
                       e.target.value = "";
                       if (!file) return;
-                      void fileToPending(file).then((p) => {
-                        setLogoPending(p);
-                        setLogoMeta(`${p.name} — ${p.sizeLabel}`);
-                        setLogoUrl(p.contentBase64);
-                      });
+                      void applyLogoFile(file).then(() => setCropOpen(true));
                     }}
                   />
                 </div>
-                <p className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#6F6F72]">
-                  PNG, JPG or SVG — square works best.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => logoInputRef.current?.click()}
-                  className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] hover:text-[#FDFDFF]"
-                >
-                  Click or drag to upload
-                </button>
+                {cropOpen && (logoPending || logoUrl) ? (
+                  <div className="rounded-lg border border-[#2D2D30] bg-[#1A1A1A] p-3">
+                    <p className="mb-3 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+                      Crop to square center · {logoDims || "image"}
+                    </p>
+                    <div className="mb-3 flex justify-center">
+                      <div className="h-28 w-28 overflow-hidden rounded-full border border-[#3E3E3E] bg-[#121212]">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={logoPending?.contentBase64 || logoUrl || ""}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <DashboardToolbarButton onClick={() => setCropOpen(false)}>
+                        Cancel
+                      </DashboardToolbarButton>
+                      <DashboardToolbarButton
+                        variant="primary"
+                        onClick={() => squareCropLogo()}
+                      >
+                        Apply Crop
+                      </DashboardToolbarButton>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           ),
@@ -843,14 +941,7 @@ export function CustomerFormPage({
                     clearError("website");
                   }}
                   error={errors.website}
-                  placeholder="https://example.com"
-                />
-                <DashboardTextField
-                  label="Email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="billing@example.com"
+                  placeholder="www.example.com"
                 />
                 <DashboardTextField
                   label="Phone"

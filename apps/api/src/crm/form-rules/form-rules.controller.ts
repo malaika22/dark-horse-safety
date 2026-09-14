@@ -16,6 +16,7 @@ import {
   CopyFormRuleDto,
   CreateFormRuleDto,
   FormRuleListQueryDto,
+  FormRulePreviewQueryDto,
   TestFormRuleDto,
   UpdateFormRuleDto,
 } from './dto/form-rule.dto';
@@ -50,6 +51,14 @@ export class FormRulesController {
   @ApiOperation({ summary: 'Export form rules CSV or PDF' })
   export(@Query() query: ExportQueryDto & FormRuleListQueryDto) {
     return this.formRules.exportCsv(query);
+  }
+
+  @Get('preview')
+  @ApiOperation({
+    summary: 'Add Form Rule — open work-order impact preview',
+  })
+  preview(@Query() query: FormRulePreviewQueryDto) {
+    return this.formRules.preview(query);
   }
 
   @Post('bulk/delete')

@@ -26,15 +26,66 @@ type FieldErrors = Record<string, string | undefined>;
 
 function formatRateInput(raw: string): string {
   const n = parseMoney(raw);
-  if (n == null) return raw;
+  if (n == null) return raw.replace(/^\$/, "").trim();
   return n.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 }
 
 function rateTypeKey(v: string) {
   return v.trim().toUpperCase().replace(/\s+/g, "_");
+}
+
+/** Figma-style unit abbrev: HOURLY → HR, DAILY → DAY, etc. */
+function rateTypeAbbrev(rateType?: string | null) {
+  const key = rateTypeKey(rateType ?? "");
+  if (!key) return "HR";
+  if (key.includes("HOUR") || key === "HR" || key === "H") return "HR";
+  if (key.includes("DAY") || key === "D") return "DAY";
+  if (key.includes("WEEK")) return "WK";
+  if (key.includes("MONTH")) return "MO";
+  if (key.includes("FLAT") || key.includes("EACH") || key === "EA") return "EA";
+  if (key.includes("JOB")) return "JOB";
+  return key.replace(/_/g, " ").slice(0, 6);
+}
+
+function cycleShortLabel(label: string) {
+  const m = label.match(/cycle\s+(\d{4}-\d+)/i);
+  if (m) return `Cycle ${m[1]}`;
+  const parts = label.split("·");
+  return parts[0]?.trim() || label;
+}
+
+function matchCycleValue(
+  isoDate: string | null | undefined,
+  options: DashboardSelectOption[],
+) {
+  if (!isoDate || !options.length) return "";
+  const day = isoDate.slice(0, 10);
+  const exact = options.find((o) => o.value === day);
+  if (exact) return exact.value;
+  const target = new Date(day).getTime();
+  let best = options[0]?.value ?? "";
+  let bestDiff = Number.POSITIVE_INFINITY;
+  for (const o of options) {
+    const diff = Math.abs(new Date(o.value).getTime() - target);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = o.value;
+    }
+  }
+  return best;
+}
+
+function nextAvailableCycleLabel(options: DashboardSelectOption[]) {
+  if (!options.length) return "—";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const next =
+    options.find((o) => new Date(o.value) >= today) ?? options[0];
+  const datePart = next.label.split("·")[1]?.trim().split("–")[0]?.trim();
+  return datePart ?? next.label;
 }
 
 function wellLabelMap(options: DashboardSelectOption[]) {
@@ -105,14 +156,26 @@ export function PricingRuleFormPage({
     { value: "SPECIFIC_WELLS", label: "Specific Wells" },
   ]);
   const [impactCount, setImpactCount] = React.useState(0);
+  const [impactCycleLabel, setImpactCycleLabel] = React.useState<string | null>(
+    null,
+  );
   const [approvalStatus, setApprovalStatus] = React.useState("APPROVED");
   const [approvedBy, setApprovedBy] = React.useState("");
   const [approvedAt, setApprovedAt] = React.useState<string | null>(null);
 
   const rt = rateTypeKey(rateType);
-  const showHourFields = rt === "PER_HOUR" || rt === "PER_HR";
-  const showDayFields = rt === "PER_DAY";
-  const showUnitFields = rt === "PER_UNIT";
+  const showHourFields =
+    rt.includes("HOUR") || rt === "PER_HR" || rt === "HR";
+  const showDayFields = rt.includes("DAY") && !rt.includes("HALF");
+  const showUnitFields = rt.includes("UNIT");
+  const isApprover =
+    user?.role === "ADMIN" || user?.role === "SUPERVISOR";
+  const [rawEffectiveFrom, setRawEffectiveFrom] = React.useState<string | null>(
+    null,
+  );
+  const [rawEffectiveTo, setRawEffectiveTo] = React.useState<string | null>(
+    null,
+  );
 
   const sessionApproverLabel = React.useMemo(() => {
     const name = sessionDisplayName(user);
@@ -161,9 +224,18 @@ export function PricingRuleFormPage({
           );
         }
         if (d.payCycles?.length) {
-          setCycleOptions(
-            d.payCycles.map((o) => ({ value: o.value, label: o.label })),
-          );
+          const cycles = d.payCycles.map((o) => ({
+            value: o.value,
+            label: o.label,
+          }));
+          setCycleOptions(cycles);
+          if (!isEdit) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const next =
+              cycles.find((c) => new Date(c.value) >= today) ?? cycles[0];
+            setEffectiveFromCycle((prev) => prev || next?.value || "");
+          }
         }
         if (d.netsuiteItems?.length) {
           setNetsuiteOptions(
@@ -213,6 +285,7 @@ export function PricingRuleFormPage({
   React.useEffect(() => {
     if (!customerId || !service) {
       setImpactCount(0);
+      setImpactCycleLabel(null);
       return;
     }
     let cancelled = false;
@@ -221,16 +294,23 @@ export function PricingRuleFormPage({
         const res = await crmApi.pricingRuleImpact({
           customerId,
           serviceItem: service,
+          effectiveFrom: effectiveFromCycle || undefined,
         });
-        if (!cancelled) setImpactCount(res.data.openQuotes ?? 0);
+        if (!cancelled) {
+          setImpactCount(res.data.openQuotes ?? 0);
+          setImpactCycleLabel(res.data.effectiveCycleLabel ?? null);
+        }
       } catch {
-        if (!cancelled) setImpactCount(0);
+        if (!cancelled) {
+          setImpactCount(0);
+          setImpactCycleLabel(null);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [customerId, service]);
+  }, [customerId, service, effectiveFromCycle]);
 
   // Migrate legacy well names → location IDs when options load
   React.useEffect(() => {
@@ -255,21 +335,16 @@ export function PricingRuleFormPage({
     let cancelled = false;
     (async () => {
       try {
-        const res = await crmApi.listPricingRules({
+        const res = await crmApi.pricingRuleConflict({
           customerId,
-          pageSize: 50,
+          serviceItem: service,
+          excludeId: ruleId,
         });
         if (cancelled) return;
-        const match = (res.data.items ?? []).find(
-          (r) =>
-            r.serviceItem.toLowerCase() === service.toLowerCase() &&
-            r.id !== ruleId &&
-            (r.status ?? "").toUpperCase() !== "ARCHIVED",
-        );
-        setConflict(match ?? null);
+        setConflict(res.data ?? null);
         setConflictAck(false);
       } catch {
-        setConflict(null);
+        if (!cancelled) setConflict(null);
       }
     })();
     return () => {
@@ -299,12 +374,8 @@ export function PricingRuleFormPage({
         setMinimumQuantity(
           r.minimumQuantity != null ? String(r.minimumQuantity) : "",
         );
-        if (r.effectiveFrom) {
-          setEffectiveFromCycle(r.effectiveFrom.slice(0, 10));
-        }
-        if (r.effectiveTo) {
-          setEffectiveToCycle(r.effectiveTo.slice(0, 10));
-        }
+        setRawEffectiveFrom(r.effectiveFrom?.slice(0, 10) ?? null);
+        setRawEffectiveTo(r.effectiveTo?.slice(0, 10) ?? null);
         setNotes(r.notes ?? "");
         setNetsuiteItem(r.netsuiteItem ?? "");
         setAppliesTo(r.appliesTo ?? "ALL_SITES");
@@ -325,6 +396,16 @@ export function PricingRuleFormPage({
       cancelled = true;
     };
   }, [isEdit, ruleId]);
+
+  React.useEffect(() => {
+    if (!cycleOptions.length) return;
+    if (rawEffectiveFrom) {
+      setEffectiveFromCycle(matchCycleValue(rawEffectiveFrom, cycleOptions));
+    }
+    if (rawEffectiveTo) {
+      setEffectiveToCycle(matchCycleValue(rawEffectiveTo, cycleOptions));
+    }
+  }, [cycleOptions, rawEffectiveFrom, rawEffectiveTo]);
 
   function validateClient(): FieldErrors {
     const next: FieldErrors = {};
@@ -435,12 +516,31 @@ export function PricingRuleFormPage({
           setService("");
           setRateType("");
           setRate("");
+          setUnit("");
+          setMinimumCharge("");
+          setOvertimeMultiplier("");
+          setOvertimeThreshold("");
+          setHalfDayRate("");
+          setMinimumQuantity("");
           setNotes("");
+          setNetsuiteItem("");
+          setAppliesTo("ALL_SITES");
           setWells([]);
-          setEffectiveFromCycle("");
+          setAddingWell(false);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const next =
+            cycleOptions.find((c) => new Date(c.value) >= today) ??
+            cycleOptions[0];
+          setEffectiveFromCycle(next?.value ?? "");
           setEffectiveToCycle("");
           setConflict(null);
           setConflictAck(false);
+          setImpactCount(0);
+          setImpactCycleLabel(null);
+          setApprovalStatus(isApprover ? "APPROVED" : "PENDING");
+          setApprovedBy("");
+          setApprovedAt(null);
           setErrors({});
         } else {
           router.push("/crm/pricing-rules");
@@ -471,11 +571,25 @@ export function PricingRuleFormPage({
 
   const customerLabel =
     customers.find((c) => c.value === customerId)?.label ?? "Customer";
+  const fromCycleOption = cycleOptions.find(
+    (c) => c.value === effectiveFromCycle,
+  );
   const fromLabel =
-    cycleOptions.find((c) => c.value === effectiveFromCycle)?.label ??
+    impactCycleLabel ??
+    fromCycleOption?.label ??
     effectiveFromCycle;
+  const fromCycleShort = cycleShortLabel(fromLabel);
+  const nextCycleHint = nextAvailableCycleLabel(cycleOptions);
   const labels = wellLabelMap(wellOptions);
+  const previewApprovalStatus = isEdit
+    ? approvalStatus
+    : isApprover
+      ? "APPROVED"
+      : "PENDING";
   const approvedLabel = (() => {
+    if (previewApprovalStatus === "PENDING") {
+      return "Pending admin approval";
+    }
     const who = approvedBy || sessionApproverLabel;
     const when = approvedAt
       ? new Date(approvedAt).toLocaleDateString("en-US", {
@@ -491,10 +605,13 @@ export function PricingRuleFormPage({
     return `${who} · ${when}`;
   })();
   const approvalBadge =
-    (approvalStatus || "APPROVED").replace(/_/g, " ").toLowerCase() ===
-    "approved"
+    previewApprovalStatus.replace(/_/g, " ").toLowerCase() === "approved"
       ? "Approved"
-      : (approvalStatus || "Pending").replace(/_/g, " ");
+      : previewApprovalStatus.replace(/_/g, " ");
+  const approvalBadgeClass =
+    previewApprovalStatus === "APPROVED"
+      ? "bg-[#166534] text-[#86EFAC]"
+      : "bg-[#713F12] text-[#FCD34D]";
 
   return (
     <CrmFormPageShell
@@ -509,39 +626,52 @@ export function PricingRuleFormPage({
       onRetrySave={() => void handleSave(false)}
       onSave={() => void handleSave(false)}
       onSaveAndAddAnother={isEdit ? undefined : () => void handleSave(true)}
+      preFooter={
+        <div className="rounded-xl border border-[#1E3A5F] bg-[#0F1A2E] px-4 py-4">
+          <p className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+            Impact Preview
+          </p>
+          <p className="mt-2 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+            {impactCount} open quote{impactCount === 1 ? "" : "s"} use the
+            current rate.
+          </p>
+          <p className="mt-1 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#60A5FA]">
+            This change applies to work orders from {fromCycleShort} onward and
+            does not alter existing quotes.
+          </p>
+        </div>
+      }
       sections={[
         {
           title: "Rule Details",
           content: (
             <div className="space-y-5">
-              <DashboardFormGrid className="gap-x-4 gap-y-5">
-                <DashboardSelectField
-                  label="Customer *"
-                  value={customerId}
-                  onChange={(e) => {
-                    setCustomerId(e.target.value);
-                    clearError("customerId");
-                  }}
-                  options={customers}
-                  loading={customersLoading}
-                  placeholder="Select customer"
-                  error={errors.customerId}
-                />
-                <DashboardSelectField
-                  label="Service / Item *"
-                  value={service}
-                  onChange={(e) => {
-                    setService(e.target.value);
-                    clearError("service");
-                  }}
-                  options={serviceOptions}
-                  placeholder="Select service"
-                  error={errors.service}
-                />
-              </DashboardFormGrid>
+              <DashboardSelectField
+                label="Customer *"
+                value={customerId}
+                onChange={(e) => {
+                  setCustomerId(e.target.value);
+                  clearError("customerId");
+                }}
+                options={customers}
+                loading={customersLoading}
+                placeholder="Select customer"
+                error={errors.customerId}
+              />
+              <DashboardSelectField
+                label="Service / Item *"
+                value={service}
+                onChange={(e) => {
+                  setService(e.target.value);
+                  clearError("service");
+                }}
+                options={serviceOptions}
+                placeholder="Select service"
+                error={errors.service}
+              />
 
               {conflict && !conflictAck ? (
-                <div className="flex flex-col gap-3 rounded-lg border border-[#8B7355] bg-[#3A2E1C] px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-3 rounded-lg border border-[#8B7355] bg-[#3A2E1C] px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                   <div className="flex min-w-0 items-start gap-2.5">
                     <svg
                       width="16"
@@ -569,8 +699,9 @@ export function PricingRuleFormPage({
                       {conflict.serviceItem} — $
                       {Number(conflict.rate).toLocaleString("en-US", {
                         minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
                       })}
-                      {conflict.rateType ? `/${conflict.rateType}` : ""}
+                      /{rateTypeAbbrev(conflict.rateType)}
                       {conflict.effectiveTo
                         ? `, effective to ${new Date(
                             conflict.effectiveTo,
@@ -580,10 +711,10 @@ export function PricingRuleFormPage({
                             year: "numeric",
                           })}`
                         : ""}
-                      . Saving will supersede it from {fromLabel}.
+                      . Saving will supersede it from {fromCycleShort}.
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex shrink-0 flex-wrap gap-2">
                     <DashboardToolbarButton
                       onClick={() =>
                         router.push(`/crm/pricing-rules/${conflict.id}/edit`)
@@ -624,21 +755,40 @@ export function PricingRuleFormPage({
                   error={errors.rateType}
                 />
                 <div className="space-y-1.5">
-                  <DashboardTextField
-                    label="Rate *"
-                    value={rate}
-                    onChange={(e) => {
-                      setRate(e.target.value);
-                      clearError("rate");
-                    }}
-                    onBlur={() => {
-                      if (parseMoney(rate) != null) {
-                        setRate(formatRateInput(rate));
-                      }
-                    }}
-                    error={errors.rate}
-                    placeholder="$0.00"
-                  />
+                  <span className="font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]">
+                    Rate <span className="text-[#E5484D]">*</span>
+                  </span>
+                  <div
+                    className={`flex h-10 items-center rounded-lg border bg-[#2A2A2A] px-3 ${
+                      errors.rate
+                        ? "border-[#E5484D] bg-[#2A1515]"
+                        : "border-[#3E3E3E] focus-within:border-[#5A5A5A]"
+                    }`}
+                  >
+                    <span className="mr-1 font-sans text-[12px] text-[#959597] md:text-[13px]">
+                      $
+                    </span>
+                    <input
+                      value={rate.replace(/^\$/, "")}
+                      onChange={(e) => {
+                        setRate(e.target.value);
+                        clearError("rate");
+                      }}
+                      onBlur={() => {
+                        if (parseMoney(rate) != null) {
+                          setRate(formatRateInput(rate));
+                        }
+                      }}
+                      placeholder="0.00"
+                      aria-invalid={Boolean(errors.rate)}
+                      className="min-w-0 flex-1 bg-transparent font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none md:text-[13px]"
+                    />
+                  </div>
+                  {errors.rate ? (
+                    <span className="font-sans text-[11px] uppercase text-[#E5484D]">
+                      {errors.rate}
+                    </span>
+                  ) : null}
                   <p className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#6F6F72]">
                     Numeric entry only. Symbol and thousands separators applied
                     automatically.
@@ -646,7 +796,7 @@ export function PricingRuleFormPage({
                 </div>
               </DashboardFormGrid>
 
-              <div className="rounded-lg border border-[#3E3E3E] bg-[#1A1A1A] px-3 py-3">
+              <div className="rounded-lg border border-[#3E3E3E] bg-transparent px-3 py-3">
                 <p className="mb-2 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#959597]">
                   Fields below depend on rate type
                 </p>
@@ -742,14 +892,17 @@ export function PricingRuleFormPage({
                   <p className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#6F6F72]">
                     Rate changes take effect at the start of a pay cycle. If a
                     non-boundary date is entered: &apos;Next available:{" "}
-                    {cycleOptions[0]?.label.split("·")[1]?.trim() ?? "—"}&apos;.
+                    {nextCycleHint}&apos;.
                   </p>
                 </div>
                 <DashboardSelectField
                   label="Effective To"
                   value={effectiveToCycle}
                   onChange={(e) => setEffectiveToCycle(e.target.value)}
-                  options={[{ value: "", label: "Open-ended" }, ...cycleOptions]}
+                  options={[
+                    { value: "", label: "Open-ended" },
+                    ...cycleOptions,
+                  ]}
                 />
               </DashboardFormGrid>
 
@@ -781,7 +934,13 @@ export function PricingRuleFormPage({
                 <DashboardSelectField
                   label="Applies To"
                   value={appliesTo}
-                  onChange={(e) => setAppliesTo(e.target.value)}
+                  onChange={(e) => {
+                    setAppliesTo(e.target.value);
+                    if (e.target.value !== "SPECIFIC_WELLS") {
+                      setWells([]);
+                      setAddingWell(false);
+                    }
+                  }}
                   options={appliesToOptions}
                 />
               </DashboardFormGrid>
@@ -791,11 +950,11 @@ export function PricingRuleFormPage({
                   <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
                     Wells This Rate Applies To
                   </span>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] px-2.5 py-2">
                     {wells.map((w) => (
                       <span
                         key={w}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-[#3E3E3E] bg-[#2A2A2A] px-2.5 py-1.5 font-sans text-[11px] uppercase text-[#FDFDFF]"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-[#3E3E3E] bg-[#1A1A1A] px-2.5 py-1 font-sans text-[11px] uppercase text-[#FDFDFF]"
                       >
                         {labels.get(w) ?? w}
                         <button
@@ -812,7 +971,7 @@ export function PricingRuleFormPage({
                     <button
                       type="button"
                       onClick={() => setAddingWell((v) => !v)}
-                      className="inline-flex items-center rounded-md border border-dashed border-[#3E3E3E] px-2.5 py-1.5 font-sans text-[11px] uppercase text-[#959597] hover:text-[#FDFDFF]"
+                      className="inline-flex items-center rounded-md border border-dashed border-[#3E3E3E] px-2.5 py-1 font-sans text-[11px] uppercase text-[#959597] hover:border-[#5A5A5A] hover:text-[#FDFDFF]"
                     >
                       + Add Well
                     </button>
@@ -852,12 +1011,7 @@ export function PricingRuleFormPage({
                     use this rate everywhere for this customer.
                   </p>
                 </div>
-              ) : (
-                <p className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#6F6F72]">
-                  Leave empty and set &apos;Applies To&apos; to All Sites to use
-                  this rate everywhere for this customer.
-                </p>
-              )}
+              ) : null}
 
               <DashboardFormGrid className="gap-x-4 gap-y-5">
                 <div className="space-y-2">
@@ -865,7 +1019,9 @@ export function PricingRuleFormPage({
                     Approval Status
                   </span>
                   <div className="flex h-10 items-center rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] px-3">
-                    <span className="rounded-full bg-[#166534] px-2.5 py-1 font-sans text-[11px] font-[510] uppercase text-[#86EFAC]">
+                    <span
+                      className={`rounded-full px-2.5 py-1 font-sans text-[11px] font-[510] uppercase ${approvalBadgeClass}`}
+                    >
                       {approvalBadge}
                     </span>
                   </div>
@@ -880,20 +1036,6 @@ export function PricingRuleFormPage({
                 Rules created by delegated users require admin approval before
                 taking effect. Rules created by an admin apply immediately.
               </p>
-
-              <div className="rounded-lg border border-[#1E3A5F] bg-[#0F1A2E] px-4 py-3">
-                <p className="font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#959597]">
-                  Impact Preview
-                </p>
-                <p className="mt-1 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                  {impactCount} open quote{impactCount === 1 ? "" : "s"} use the
-                  current rate.
-                </p>
-                <p className="mt-1 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#60A5FA]">
-                  This change applies to work orders from {fromLabel} onward and
-                  does not alter existing quotes.
-                </p>
-              </div>
             </div>
           ),
         },

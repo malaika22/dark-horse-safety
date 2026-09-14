@@ -159,9 +159,52 @@ export class PricingRulesService {
     };
   }
 
-  async impact(customerId?: string, serviceItem?: string) {
+  /** Active rule for the same customer + service (used by Add Pricing Rule conflict banner). */
+  async findConflict(
+    customerId: string,
+    serviceItem: string,
+    excludeId?: string,
+  ) {
+    const now = new Date();
+    return this.prisma.pricingRule.findFirst({
+      where: {
+        customerId,
+        serviceItem: { equals: serviceItem.trim(), mode: 'insensitive' },
+        archivedAt: null,
+        status: { not: CrmRecordStatus.ARCHIVED },
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+        OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }],
+      },
+      orderBy: [{ effectiveFrom: 'desc' }, { createdAt: 'desc' }],
+      include: {
+        customer: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async conflict(
+    customerId?: string,
+    serviceItem?: string,
+    excludeId?: string,
+  ) {
     if (!customerId?.trim() || !serviceItem?.trim()) {
-      return { data: { openQuotes: 0 } };
+      return { data: null };
+    }
+    const rule = await this.findConflict(
+      customerId.trim(),
+      serviceItem.trim(),
+      excludeId,
+    );
+    return { data: rule };
+  }
+
+  async impact(
+    customerId?: string,
+    serviceItem?: string,
+    effectiveFrom?: string,
+  ) {
+    if (!customerId?.trim() || !serviceItem?.trim()) {
+      return { data: { openQuotes: 0, effectiveCycleLabel: null } };
     }
     const openQuotes = await this.prisma.quote.count({
       where: {
@@ -182,7 +225,37 @@ export class PricingRulesService {
         },
       },
     });
-    return { data: { openQuotes } };
+    let effectiveCycleLabel: string | null = null;
+    if (effectiveFrom?.trim()) {
+      const cycle = await this.prisma.payCycle.findFirst({
+        where: { startDate: new Date(effectiveFrom.trim()) },
+        select: { label: true },
+      });
+      effectiveCycleLabel = cycle?.label ?? null;
+    }
+    return { data: { openQuotes, effectiveCycleLabel } };
+  }
+
+  /** End-date the prior rule the day before the new rule's effective-from. */
+  private async supersedeConflict(
+    customerId: string,
+    serviceItem: string,
+    effectiveFrom: string,
+    excludeId?: string,
+  ) {
+    const conflict = await this.findConflict(
+      customerId,
+      serviceItem,
+      excludeId,
+    );
+    if (!conflict) return;
+    const newFrom = new Date(effectiveFrom);
+    const endDate = new Date(newFrom);
+    endDate.setUTCDate(endDate.getUTCDate() - 1);
+    await this.prisma.pricingRule.update({
+      where: { id: conflict.id },
+      data: { effectiveTo: endDate },
+    });
   }
 
   async getById(id: string) {
@@ -221,6 +294,14 @@ export class PricingRulesService {
     const approvalStatus = isApprover
       ? (dto.approvalStatus ?? 'APPROVED')
       : 'PENDING';
+    if (dto.effectiveFrom) {
+      await this.supersedeConflict(
+        dto.customerId,
+        dto.serviceItem,
+        dto.effectiveFrom,
+      );
+    }
+
     const rule = await this.prisma.pricingRule.create({
       data: {
         code,
@@ -248,7 +329,10 @@ export class PricingRulesService {
         approvalStatus,
         approvedBy: approvalStatus === 'APPROVED' ? (approvedBy ?? undefined) : undefined,
         approvedAt: approvalStatus === 'APPROVED' ? new Date() : undefined,
-        status: (dto.status as CrmRecordStatus) ?? CrmRecordStatus.ACTIVE,
+        status:
+          approvalStatus === 'APPROVED'
+            ? ((dto.status as CrmRecordStatus) ?? CrmRecordStatus.ACTIVE)
+            : CrmRecordStatus.PENDING,
         ownerId: user?.id ?? dto.ownerId,
       },
     });

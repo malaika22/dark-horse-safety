@@ -23,58 +23,58 @@ export type HeaderMeta = {
 /** Figma app-header titles — longest prefix wins for nested `/new` routes. */
 const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | null }[] = [
   { path: "/dashboard", breadcrumb: "Dashboard", pageTitle: null },
-  { path: "/crm/accounts/new", breadcrumb: "CRM / Customers / Add Customer", pageTitle: null },
-  { path: "/crm/contacts/new", breadcrumb: "CRM / Contacts / Add Contact", pageTitle: null },
+  { path: "/crm/accounts/new", breadcrumb: "Accounts / Customers / Add Customer", pageTitle: null },
+  { path: "/crm/contacts/new", breadcrumb: "Accounts / Contacts / Add Contact", pageTitle: null },
   {
     path: "/crm/requirements/new",
-    breadcrumb: "CRM / Customer Requests / Add Requirement",
+    breadcrumb: "Configuration / Customer Requirements / Add Requirement",
     pageTitle: null,
   },
   {
     path: "/crm/pricing-rules/new",
-    breadcrumb: "CRM / Pricing Rules / Add Pricing Rule",
+    breadcrumb: "Configuration / Pricing Rules / Add Pricing Rule",
     pageTitle: null,
   },
   {
     path: "/crm/form-rules/new",
-    breadcrumb: "CRM / Form Rules / Add Form Rule",
+    breadcrumb: "Configuration / Form Rules / Add Form Rule",
     pageTitle: null,
   },
   {
     path: "/crm/route-rules/new",
-    breadcrumb: "CRM / Route / GPS Rules / Add Route Rule",
+    breadcrumb: "Configuration / Route / GPS Rules / Add Route Rule",
     pageTitle: null,
   },
   {
     path: "/crm/locations/new",
-    breadcrumb: "CRM / Locations / Wells / Add Location",
+    breadcrumb: "Accounts / Locations / Add Location",
     pageTitle: null,
   },
-  { path: "/crm/accounts", breadcrumb: "CRM / Customer", pageTitle: "Customers" },
-  { path: "/crm/contacts", breadcrumb: "CRM / Contacts", pageTitle: "Contacts" },
+  { path: "/crm/accounts", breadcrumb: "Accounts / Customers", pageTitle: "Customers" },
+  { path: "/crm/contacts", breadcrumb: "Accounts / Contacts", pageTitle: "Contacts" },
   {
     path: "/crm/requirements",
-    breadcrumb: "CRM / Customer Requests",
-    pageTitle: "Customer Requests",
+    breadcrumb: "Configuration / Customer Requirements",
+    pageTitle: "Customer Requirements",
   },
   {
     path: "/crm/pricing-rules",
-    breadcrumb: "CRM / Pricing Rules",
+    breadcrumb: "Configuration / Pricing Rules",
     pageTitle: "Pricing Rules",
   },
   {
     path: "/crm/form-rules",
-    breadcrumb: "CRM / Required Form Rules",
-    pageTitle: "Required Form Rules",
+    breadcrumb: "Configuration / Form Rules",
+    pageTitle: "Form Rules",
   },
   {
     path: "/crm/route-rules",
-    breadcrumb: "CRM / Route / GPS Rules",
+    breadcrumb: "Configuration / Route / GPS Rules",
     pageTitle: "Route / GPS Rules",
   },
   {
     path: "/crm/locations",
-    breadcrumb: "CRM / Locations / Wells",
+    breadcrumb: "Accounts / Locations / Wells",
     pageTitle: "Customer Sites",
   },
   { path: "/crm/eod-reports", breadcrumb: "Sales / EOD Reports", pageTitle: "EOD Reports" },
@@ -86,7 +86,7 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
   { path: "/crm/quotes", breadcrumb: "Sales / Quotes", pageTitle: "Quotes" },
   {
     path: "/crm/sales/new",
-    breadcrumb: "Sales / Sales Activity / Log Activity",
+    breadcrumb: "Accounts / Customers / Log Activity",
     pageTitle: null,
   },
   { path: "/crm/sales", breadcrumb: "Sales / Sales Activity", pageTitle: "Sales Activity" },
@@ -100,7 +100,7 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
     breadcrumb: "Sales / Sales Summary",
     pageTitle: null,
   },
-  { path: "/crm", breadcrumb: "CRM / CRM Dashboard", pageTitle: null },
+  { path: "/crm", breadcrumb: "CRM / Customer / Dashboard", pageTitle: null },
   {
     path: "/crm/rep-dashboard",
     breadcrumb: "Sales / My Dashboard",
@@ -229,22 +229,28 @@ function headerMetaForPath(pathname: string): HeaderMeta {
 
   // Edit routes — keep page title
   if (/^\/crm\/accounts\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Customers / Edit Customer", pageTitle: null };
+    return { breadcrumb: "Accounts / Customers / Edit Customer", pageTitle: null };
   }
   if (/^\/crm\/locations\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Locations / Wells / Edit Location", pageTitle: null };
+    return { breadcrumb: "Accounts / Locations / Wells / Edit Location", pageTitle: null };
   }
   if (/^\/crm\/pricing-rules\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Pricing Rules / Edit Pricing Rule", pageTitle: null };
+    return { breadcrumb: "Configuration / Pricing Rules / Edit Pricing Rule", pageTitle: null };
   }
   if (/^\/crm\/requirements\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Customer Requests / Edit Requirement", pageTitle: null };
+    return {
+      breadcrumb: "Configuration / Customer Requirements / Edit Requirement",
+      pageTitle: null,
+    };
   }
   if (/^\/crm\/form-rules\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Form Rules / Edit Form Rule", pageTitle: null };
+    return { breadcrumb: "Configuration / Form Rules / Edit Form Rule", pageTitle: null };
   }
   if (/^\/crm\/route-rules\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Route / GPS Rules / Edit Route Rule", pageTitle: null };
+    return {
+      breadcrumb: "Configuration / Route / GPS Rules / Edit Route Rule",
+      pageTitle: null,
+    };
   }
   if (/^\/crm\/quotes\/[^/]+\/edit$/.test(pathname)) {
     return { breadcrumb: "Sales / Quotes / Edit Quote", pageTitle: null };
@@ -253,12 +259,38 @@ function headerMetaForPath(pathname: string): HeaderMeta {
     return { breadcrumb: "Sales / Sales Activity / Edit Activity", pageTitle: null };
   }
   if (/^\/crm\/contacts\/[^/]+\/edit$/.test(pathname)) {
-    return { breadcrumb: "CRM / Contacts / Edit Contact", pageTitle: null };
+    return { breadcrumb: "Accounts / Contacts / Edit Contact", pageTitle: null };
+  }
+
+  // Expenses (customer-scoped) — before generic account detail match
+  if (/^\/crm\/accounts\/[^/]+\/expenses\/new$/.test(pathname)) {
+    return {
+      breadcrumb: "Accounts / Customers / Expenses / Add Expense",
+      pageTitle: "Expenses",
+    };
+  }
+  if (/^\/crm\/accounts\/[^/]+\/expenses\/[^/]+$/.test(pathname)) {
+    return {
+      breadcrumb: "Accounts / Customers / Expenses / Edit Expense",
+      pageTitle: "Expenses",
+    };
+  }
+  if (/^\/crm\/accounts\/[^/]+\/expenses$/.test(pathname)) {
+    return {
+      breadcrumb: "Accounts / Customers / Expenses",
+      pageTitle: "Expenses",
+    };
+  }
+  if (/^\/crm\/accounts\/[^/]+\/card-reconciliation$/.test(pathname)) {
+    return {
+      breadcrumb: "Accounts / Customers / Card Reconciliation",
+      pageTitle: "Card Reconciliation",
+    };
   }
 
   // Detail routes — breadcrumb only; actions live in row 2 via context
   if (/^\/crm\/accounts\/[^/]+$/.test(pathname) && pathname !== "/crm/accounts/new") {
-    return { breadcrumb: "CRM / Customers / Detail", pageTitle: null };
+    return { breadcrumb: "Accounts / Customers / Detail", pageTitle: null };
   }
   if (/^\/crm\/eod-reports\/[^/]+$/.test(pathname)) {
     return { breadcrumb: "Sales / EOD Reports / Detail", pageTitle: null };
@@ -273,13 +305,13 @@ function headerMetaForPath(pathname: string): HeaderMeta {
     return { breadcrumb: "Sales / Sales Activity / Detail", pageTitle: null };
   }
   if (/^\/crm\/contacts\/[^/]+$/.test(pathname) && pathname !== "/crm/contacts/new") {
-    return { breadcrumb: "CRM / Customer / Contacts", pageTitle: null };
+    return { breadcrumb: "Accounts / Contacts / Detail", pageTitle: null };
   }
   if (
     /^\/crm\/locations\/[^/]+$/.test(pathname) &&
     pathname !== "/crm/locations/new"
   ) {
-    return { breadcrumb: "CRM / Locations / Wells", pageTitle: null };
+    return { breadcrumb: "Accounts / Locations / Wells", pageTitle: null };
   }
   if (
     /^\/operations\/work-orders\/[^/]+$/.test(pathname) &&
@@ -365,7 +397,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
-    return null;
+    return (
+      <div className="flex h-dvh w-full items-center justify-center bg-shell p-6">
+        <BrandLoader label="Redirecting" />
+      </div>
+    );
   }
 
   return (

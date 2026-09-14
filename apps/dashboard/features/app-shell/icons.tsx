@@ -44,12 +44,40 @@ const NAV_ICON_PATHS: Record<NavIconName, ReactNode> = {
   ),
   crm: (
     <>
+      {/* Briefcase + magnifying glass — Figma CRM / Accounts / Config */}
+      <rect
+        x="3"
+        y="8"
+        width="14"
+        height="11"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
       <path
-        d="M3 11h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a8 8 0 0 1 16 0v4a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"
+        d="M9 8V6.5A1.5 1.5 0 0110.5 5h3A1.5 1.5 0 0115 6.5V8"
         stroke="currentColor"
         strokeWidth="1.75"
         strokeLinecap="round"
-        strokeLinejoin="round"
+      />
+      <path
+        d="M3 12h14"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+      <circle
+        cx="17.5"
+        cy="17.5"
+        r="3.25"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <path
+        d="M19.8 19.8L22 22"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
       />
     </>
   ),

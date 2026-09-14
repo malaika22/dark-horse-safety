@@ -17,6 +17,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateRequirementDto,
   RequirementListQueryDto,
+  RequirementPreviewQueryDto,
   UpdateRequirementDto,
 } from './dto/requirement.dto';
 
@@ -135,6 +136,148 @@ export class RequirementsService {
     return { data: { total, needsReview, expiring, missingDocs } };
   }
 
+  async preview(query: RequirementPreviewQueryDto) {
+    const checksOnSave: { ok: boolean; message: string }[] = [];
+    let customerName = '';
+    let blockedTechnicians: { id: string; name: string }[] = [];
+
+    if (query.customerId && query.name?.trim()) {
+      const dup = await this.prisma.customerRequirement.findFirst({
+        where: {
+          customerId: query.customerId,
+          name: { equals: query.name.trim(), mode: 'insensitive' },
+          archivedAt: null,
+          ...(query.excludeId ? { id: { not: query.excludeId } } : {}),
+        },
+      });
+      checksOnSave.push({
+        ok: !dup,
+        message: dup
+          ? 'Duplicate requirement already exists for this customer + requirement type.'
+          : 'No duplicate requirement already exists for this customer + requirement type.',
+      });
+    } else {
+      checksOnSave.push({
+        ok: true,
+        message:
+          'No duplicate requirement already exists for this customer + requirement type.',
+      });
+    }
+
+    const leadDays = query.renewalLeadDays ?? 30;
+    const validityDays = this.validityPeriodDays(query.validityPeriod);
+    const validityLabel = this.validityPeriodLabel(query.validityPeriod);
+    const leadOk =
+      validityDays == null || leadDays < validityDays;
+    checksOnSave.push({
+      ok: leadOk,
+      message: leadOk
+        ? `Renewal lead time is shorter than the validity period (${leadDays} days < ${validityLabel} — OK).`
+        : `Renewal lead time (${leadDays} days) must be shorter than the validity period (${validityLabel}).`,
+    });
+
+    if (query.customerId) {
+      const customer = await this.prisma.customer.findUnique({
+        where: { id: query.customerId },
+        select: { name: true },
+      });
+      customerName = customer?.name ?? '';
+
+      const enforcement = (query.enforcementLevel ?? '').toUpperCase();
+
+      if (enforcement === 'HARD_GATE') {
+        const contacts = await this.prisma.contact.findMany({
+          where: {
+            archivedAt: null,
+            OR: [
+              { primaryCustomerId: query.customerId },
+              {
+                customers: { some: { customerId: query.customerId } },
+              },
+            ],
+          },
+          orderBy: { fullName: 'asc' },
+          take: 24,
+          select: {
+            id: true,
+            fullName: true,
+            roleTitle: true,
+            customers: {
+              where: { customerId: query.customerId },
+              select: { roleAtCustomer: true },
+            },
+          },
+        });
+
+        const scope = (query.appliesTo ?? '').toUpperCase();
+        const roles = query.appliesToRoles ?? [];
+
+        blockedTechnicians = contacts
+          .filter((c) => {
+            if (scope !== 'SPECIFIC_ROLES') return true;
+            if (!roles.length) return true;
+            const role = (
+              c.customers[0]?.roleAtCustomer ??
+              c.roleTitle ??
+              ''
+            ).toLowerCase();
+            return roles.some(
+              (r) =>
+                role.includes(r.toLowerCase()) ||
+                r.toLowerCase().includes(role),
+            );
+          })
+          .slice(0, 12)
+          .map((c) => ({
+            id: c.id,
+            name: this.shortContactName(c.fullName),
+          }));
+      }
+    }
+
+    return {
+      data: {
+        checksOnSave,
+        blockedTechnicians,
+        blockedCount: blockedTechnicians.length,
+        customerName,
+      },
+    };
+  }
+
+  private validityPeriodLabel(period?: string | null): string {
+    const key = (period ?? 'ANNUALLY').toUpperCase();
+    const labels: Record<string, string> = {
+      ONE_TIME: 'One-time',
+      ANNUALLY: 'Annually',
+      EVERY_2_YEARS: 'Every 2 Years',
+      EVERY_3_YEARS: 'Every 3 Years',
+      EVERY_5_YEARS: 'Every 5 Years',
+      ON_CERTIFICATE_EXPIRY: 'On Certificate Expiry',
+      NEVER: 'Never',
+    };
+    return labels[key] ?? period ?? 'Annually';
+  }
+
+  private validityPeriodDays(period?: string | null): number | null {
+    switch ((period ?? 'ANNUALLY').toUpperCase()) {
+      case 'ONE_TIME':
+      case 'NEVER':
+      case 'ON_CERTIFICATE_EXPIRY':
+        return null;
+      case 'ANNUALLY':
+        return 365;
+      case 'EVERY_2_YEARS':
+        return 730;
+      case 'EVERY_3_YEARS':
+        return 1095;
+      case 'EVERY_5_YEARS':
+        return 1825;
+      default:
+        return 365;
+    }
+  }
+
   async getById(id: string) {
     const req = await this.prisma.customerRequirement.findUnique({
       where: { id },
@@ -162,10 +305,31 @@ export class RequirementsService {
         customerId: dto.customerId,
         name: dto.name,
         requirementType: dto.requirementType,
+        source: dto.source,
+        issuingBody: dto.issuingBody,
+        minimumGrade: dto.minimumGrade,
         appliesTo: dto.appliesTo,
+        appliesToRoles:
+          dto.appliesToRoles === undefined
+            ? undefined
+            : (dto.appliesToRoles as Prisma.InputJsonValue),
         enforcementLevel: dto.enforcementLevel ?? EnforcementLevel.SOFT_GATE,
         evidenceRequired: dto.evidenceRequired ?? false,
+        evidenceType: dto.evidenceType,
         evidenceUrl: dto.evidenceUrl,
+        verificationMethod: dto.verificationMethod,
+        overrideRoles:
+          dto.overrideRoles === undefined
+            ? undefined
+            : (dto.overrideRoles as Prisma.InputJsonValue),
+        requireOverrideReason: dto.requireOverrideReason ?? false,
+        rolloutMode: dto.rolloutMode,
+        effectiveFrom: dto.effectiveFrom
+          ? new Date(dto.effectiveFrom)
+          : undefined,
+        renewalLeadDays: dto.renewalLeadDays,
+        validityPeriod: dto.validityPeriod,
+        autoCheckable: dto.autoCheckable ?? true,
         renewalPeriod: dto.renewalPeriod,
         notes: dto.notes,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
@@ -190,15 +354,56 @@ export class RequirementsService {
         ...(dto.requirementType !== undefined
           ? { requirementType: dto.requirementType }
           : {}),
+        ...(dto.source !== undefined ? { source: dto.source } : {}),
+        ...(dto.issuingBody !== undefined
+          ? { issuingBody: dto.issuingBody }
+          : {}),
+        ...(dto.minimumGrade !== undefined
+          ? { minimumGrade: dto.minimumGrade }
+          : {}),
         ...(dto.appliesTo !== undefined ? { appliesTo: dto.appliesTo } : {}),
+        ...(dto.appliesToRoles !== undefined
+          ? { appliesToRoles: dto.appliesToRoles as Prisma.InputJsonValue }
+          : {}),
         ...(dto.enforcementLevel !== undefined
           ? { enforcementLevel: dto.enforcementLevel }
           : {}),
         ...(dto.evidenceRequired !== undefined
           ? { evidenceRequired: dto.evidenceRequired }
           : {}),
+        ...(dto.evidenceType !== undefined
+          ? { evidenceType: dto.evidenceType }
+          : {}),
         ...(dto.evidenceUrl !== undefined
           ? { evidenceUrl: dto.evidenceUrl }
+          : {}),
+        ...(dto.verificationMethod !== undefined
+          ? { verificationMethod: dto.verificationMethod }
+          : {}),
+        ...(dto.overrideRoles !== undefined
+          ? { overrideRoles: dto.overrideRoles as Prisma.InputJsonValue }
+          : {}),
+        ...(dto.requireOverrideReason !== undefined
+          ? { requireOverrideReason: dto.requireOverrideReason }
+          : {}),
+        ...(dto.rolloutMode !== undefined
+          ? { rolloutMode: dto.rolloutMode }
+          : {}),
+        ...(dto.effectiveFrom !== undefined
+          ? {
+              effectiveFrom: dto.effectiveFrom
+                ? new Date(dto.effectiveFrom)
+                : null,
+            }
+          : {}),
+        ...(dto.renewalLeadDays !== undefined
+          ? { renewalLeadDays: dto.renewalLeadDays }
+          : {}),
+        ...(dto.validityPeriod !== undefined
+          ? { validityPeriod: dto.validityPeriod }
+          : {}),
+        ...(dto.autoCheckable !== undefined
+          ? { autoCheckable: dto.autoCheckable }
           : {}),
         ...(dto.renewalPeriod !== undefined
           ? { renewalPeriod: dto.renewalPeriod }

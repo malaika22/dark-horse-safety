@@ -90,6 +90,9 @@ export class SalesActivitiesService {
         include: {
           customer: { select: { id: true, name: true, code: true } },
           contact: { select: { id: true, fullName: true, code: true } },
+          location: {
+            select: { id: true, name: true, code: true, city: true, state: true },
+          },
           rep: {
             select: { id: true, firstName: true, lastName: true, email: true },
           },
@@ -135,6 +138,9 @@ export class SalesActivitiesService {
       include: {
         customer: { select: { id: true, name: true, code: true } },
         contact: { select: { id: true, fullName: true, code: true } },
+        location: {
+          select: { id: true, name: true, code: true, city: true, state: true },
+        },
         rep: {
           select: { id: true, firstName: true, lastName: true, email: true },
         },
@@ -161,6 +167,11 @@ export class SalesActivitiesService {
 
   async create(dto: CreateSalesActivityDto) {
     const activityCode = await this.codes.next('salesActivity');
+    const createFollowUpTask = Boolean(dto.createFollowUpTask);
+    let followUpAt = dto.followUpAt ? new Date(dto.followUpAt) : undefined;
+    if (createFollowUpTask && !followUpAt) {
+      followUpAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    }
     const activity = await this.prisma.salesActivity.create({
       data: {
         activityCode,
@@ -169,13 +180,29 @@ export class SalesActivitiesService {
         outcome: dto.outcome,
         duration: dto.duration,
         notes: dto.notes,
-        followUpAt: dto.followUpAt ? new Date(dto.followUpAt) : undefined,
+        followUpAt,
+        createFollowUpTask,
+        logExpense: Boolean(dto.logExpense),
+        attendees: dto.attendees
+          ? (dto.attendees as unknown as Prisma.InputJsonValue)
+          : undefined,
         customerId: dto.customerId,
         contactId: dto.contactId,
+        locationId: dto.locationId,
         repId: dto.repId,
         activityAt: dto.activityAt ? new Date(dto.activityAt) : undefined,
         linkedQuoteId: dto.linkedQuoteId,
         status: (dto.status as CrmRecordStatus) ?? CrmRecordStatus.COMPLETE,
+      },
+      include: {
+        customer: { select: { id: true, name: true, code: true } },
+        contact: { select: { id: true, fullName: true, code: true } },
+        location: {
+          select: { id: true, name: true, code: true, city: true, state: true },
+        },
+        linkedQuote: {
+          select: { id: true, quoteNumber: true, amount: true, status: true },
+        },
       },
     });
     return { data: activity };
@@ -183,6 +210,18 @@ export class SalesActivitiesService {
 
   async update(id: string, dto: UpdateSalesActivityDto) {
     await this.ensureExists(id);
+    const createFollowUpTask =
+      dto.createFollowUpTask !== undefined
+        ? Boolean(dto.createFollowUpTask)
+        : undefined;
+    let followUpAt: Date | null | undefined;
+    if (dto.followUpAt !== undefined) {
+      followUpAt = dto.followUpAt ? new Date(dto.followUpAt) : null;
+    } else if (createFollowUpTask === true) {
+      followUpAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    } else if (createFollowUpTask === false) {
+      followUpAt = null;
+    }
     const activity = await this.prisma.salesActivity.update({
       where: { id },
       data: {
@@ -191,25 +230,43 @@ export class SalesActivitiesService {
         ...(dto.outcome !== undefined ? { outcome: dto.outcome } : {}),
         ...(dto.duration !== undefined ? { duration: dto.duration } : {}),
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
-        ...(dto.followUpAt !== undefined
-          ? {
-              followUpAt: dto.followUpAt ? new Date(dto.followUpAt) : null,
-            }
+        ...(followUpAt !== undefined ? { followUpAt } : {}),
+        ...(createFollowUpTask !== undefined
+          ? { createFollowUpTask }
+          : {}),
+        ...(dto.logExpense !== undefined
+          ? { logExpense: Boolean(dto.logExpense) }
+          : {}),
+        ...(dto.attendees !== undefined
+          ? { attendees: dto.attendees as unknown as Prisma.InputJsonValue }
           : {}),
         ...(dto.customerId !== undefined
           ? { customerId: dto.customerId }
           : {}),
         ...(dto.contactId !== undefined ? { contactId: dto.contactId } : {}),
+        ...(dto.locationId !== undefined
+          ? { locationId: dto.locationId || null }
+          : {}),
         ...(dto.repId !== undefined ? { repId: dto.repId } : {}),
         ...(dto.activityAt !== undefined
           ? { activityAt: new Date(dto.activityAt) }
           : {}),
         ...(dto.linkedQuoteId !== undefined
-          ? { linkedQuoteId: dto.linkedQuoteId }
+          ? { linkedQuoteId: dto.linkedQuoteId || null }
           : {}),
         ...(dto.status !== undefined
           ? { status: dto.status as CrmRecordStatus }
           : {}),
+      },
+      include: {
+        customer: { select: { id: true, name: true, code: true } },
+        contact: { select: { id: true, fullName: true, code: true } },
+        location: {
+          select: { id: true, name: true, code: true, city: true, state: true },
+        },
+        linkedQuote: {
+          select: { id: true, quoteNumber: true, amount: true, status: true },
+        },
       },
     });
     return { data: activity };

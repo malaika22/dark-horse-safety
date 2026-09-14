@@ -182,7 +182,24 @@ function PageMenu({
           {
             id: "log-activity",
             label: "Log Activity",
-            onSelect: () => router.push("/crm/sales/new"),
+            onSelect: () =>
+              router.push(
+                `/crm/sales/new?customerId=${encodeURIComponent(customerId)}`,
+              ),
+          },
+          {
+            id: "expenses",
+            label: "Expenses",
+            onSelect: () =>
+              router.push(`/crm/accounts/${customerId}/expenses`),
+          },
+          {
+            id: "card-recon",
+            label: "Card Reconciliation",
+            onSelect: () =>
+              router.push(
+                `/crm/accounts/${customerId}/card-reconciliation`,
+              ),
           },
           {
             id: "dup",
@@ -1477,7 +1494,8 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                     label: "Set as Primary",
                     onSelect: () => void handleSetPrimary(contact.id),
                   },
-                  { id: "log", label: "Log Activity", onSelect: () => router.push("/crm/sales/new") },
+                  { id: "log", label: "Log Activity", onSelect: () => router.push(`/crm/sales/new?customerId=${encodeURIComponent(customerId)}`) },
+                  { id: "expenses", label: "Expenses", onSelect: () => router.push(`/crm/accounts/${customerId}/expenses`) },
                   {
                     id: "email",
                     label: "Email",

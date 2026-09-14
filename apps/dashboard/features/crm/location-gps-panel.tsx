@@ -111,10 +111,11 @@ export function LocationGpsPanel({
   onRadiusChange?: (miles: number, label: string) => void;
   onPlaceChange?: (place: PlaceInfo) => void;
 }) {
-  const [coords, setCoords] = React.useState<SiteCoords>({
-    lat: latitude ?? 31.8973,
-    lng: longitude ?? -102.0779,
-  });
+  const [coords, setCoords] = React.useState<SiteCoords | null>(
+    latitude != null && longitude != null
+      ? { lat: latitude, lng: longitude }
+      : null,
+  );
   const [radiusMiles, setRadiusMiles] = React.useState(
     parseRadiusMiles(radiusRaw),
   );
@@ -139,6 +140,8 @@ export function LocationGpsPanel({
   React.useEffect(() => {
     if (latitude != null && longitude != null) {
       setCoords({ lat: latitude, lng: longitude });
+    } else {
+      setCoords(null);
     }
   }, [latitude, longitude]);
 
@@ -147,7 +150,9 @@ export function LocationGpsPanel({
   }, [radiusRaw]);
 
   const radiusPx = Math.min(170, Math.max(52, 30 + radiusMiles * 16)) * zoom;
-  const coordLabel = `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`;
+  const coordLabel = coords
+    ? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`
+    : "No coordinates set";
   const radiusLabel = formatRadiusLabel(radiusMiles);
 
   async function applyPlace(next: SiteCoords, place?: PlaceInfo | null) {
@@ -210,6 +215,7 @@ export function LocationGpsPanel({
   }
 
   function onMapPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (!liveCoords.current) return;
     const rect = mapRef.current?.getBoundingClientRect();
     if (!rect) return;
     const x = e.clientX - rect.left;
@@ -266,7 +272,7 @@ export function LocationGpsPanel({
     dragMode.current = null;
     dragOrigin.current = null;
     mapRef.current?.releasePointerCapture(e.pointerId);
-    if (mode === "pin") void applyPlace(liveCoords.current);
+    if (mode === "pin" && liveCoords.current) void applyPlace(liveCoords.current);
     if (mode === "radius") {
       onRadiusChange?.(liveRadius.current, formatRadiusLabel(liveRadius.current));
     }
@@ -279,7 +285,7 @@ export function LocationGpsPanel({
           Add Coordinates
         </p>
         <p className="mt-0.5 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#6F6F72]">
-          Coordinate Format: Decimal Degrees (DD) — Pasted DMS Accepted
+          Coordinate format: Decimal Degrees (DD) · Pasted DMS accepted
         </p>
       </div>
 
@@ -344,26 +350,40 @@ export function LocationGpsPanel({
         />
         <div
           className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-[#60A5FA]"
-          style={{ width: radiusPx * 2, height: radiusPx * 2 }}
+          style={{
+            width: coords ? radiusPx * 2 : 0,
+            height: coords ? radiusPx * 2 : 0,
+            opacity: coords ? 1 : 0,
+          }}
         >
           <span className="absolute top-1/2 right-0 h-3.5 w-3.5 translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#93C5FD] bg-[#FDFDFF]" />
           <span className="absolute top-1/2 -right-2 translate-x-full -translate-y-1/2 whitespace-nowrap rounded-md bg-[#0D0D0D]/90 px-2 py-1 font-sans text-[9px] uppercase text-[#E5E7EB]">
             Radius {radiusLabel}
           </span>
         </div>
-        <div className="pointer-events-none absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
-          <div className="relative flex flex-col items-center">
-            <span className="absolute -top-8 rounded-md bg-[#0D0D0D]/95 px-2 py-1 font-sans text-[9px] uppercase text-[#FDFDFF]">
-              {coordLabel}
-            </span>
-            <span className="relative flex h-4 w-4 items-center justify-center">
-              <span className="absolute h-4 w-4 rounded-full bg-[#EF4444]/35" />
-              <span className="relative h-2.5 w-2.5 rounded-full bg-[#EF4444] ring-2 ring-white" />
-            </span>
+        {coords ? (
+          <div className="pointer-events-none absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
+            <div className="relative flex flex-col items-center">
+              <span className="absolute -top-8 rounded-md bg-[#0D0D0D]/95 px-2 py-1 font-sans text-[9px] uppercase text-[#FDFDFF]">
+                {coordLabel}
+              </span>
+              <span className="relative flex h-4 w-4 items-center justify-center">
+                <span className="absolute h-4 w-4 rounded-full bg-[#EF4444]/35" />
+                <span className="relative h-2.5 w-2.5 rounded-full bg-[#EF4444] ring-2 ring-white" />
+              </span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6">
+            <p className="text-center font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+              Search an address, paste coordinates, or use current location
+            </p>
+          </div>
+        )}
         <div className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-black/70 px-2 py-1.5 font-sans text-[9px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-          Drag pin to move · Drag edge to resize radius
+          {coords
+            ? "Drag pin to move · Drag edge to resize radius"
+            : "No pin until coordinates are set"}
         </div>
         <div className="absolute right-3 bottom-3 flex flex-col overflow-hidden rounded-lg border border-[#2D2D30] bg-black/80">
           <button

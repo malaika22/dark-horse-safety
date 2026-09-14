@@ -80,7 +80,7 @@ async function estimateHospitalDriveTime(
   const mins = Math.max(1, Math.round((miles / 40) * 60));
   const miLabel =
     miles >= 10 ? miles.toFixed(0) : miles.toFixed(1).replace(/\.0$/, "");
-  return `${miLabel} mi · ${mins} min (est.)`;
+  return `${miLabel} MI · ${mins} MIN`;
 }
 
 function formatBytes(n: number) {
@@ -127,14 +127,8 @@ function nextSuggestedLabel(existing: SitePhoto[]) {
   );
 }
 
-const STATUS_OPTIONS: DashboardSelectOption[] = [
-  { value: "ACTIVE", label: "Active" },
-  { value: "INACTIVE", label: "Inactive" },
-  { value: "NEEDS_REVIEW", label: "Needs Review" },
-];
-
 /**
- * Shared Add / Edit Location screen — Figma layout + field validation.
+ * Shared Add / Edit Location screen — Figma layout + live API.
  */
 export function LocationFormPage({
   mode = "create",
@@ -157,7 +151,7 @@ export function LocationFormPage({
   const [customerId, setCustomerId] = React.useState(
     searchParams.get("customerId") ?? "",
   );
-  const [customerRadius, setCustomerRadius] = React.useState("750 FT");
+  const [customerRadius, setCustomerRadius] = React.useState("");
   const [name, setName] = React.useState("");
   const [wellPadNumber, setWellPadNumber] = React.useState("");
   const [apiNumber, setApiNumber] = React.useState("");
@@ -166,12 +160,13 @@ export function LocationFormPage({
   const [city, setCity] = React.useState("");
   const [latitude, setLatitude] = React.useState<number | null>(null);
   const [longitude, setLongitude] = React.useState<number | null>(null);
-  const [siteType, setSiteType] = React.useState("Well");
+  const [siteType, setSiteType] = React.useState("");
   const [status, setStatus] = React.useState("ACTIVE");
   const [accessNotes, setAccessNotes] = React.useState("");
   const [siteContact, setSiteContact] = React.useState("");
-  const [geofenceRadius, setGeofenceRadius] = React.useState("500 FT");
+  const [geofenceRadius, setGeofenceRadius] = React.useState("");
   const [geofenceOverride, setGeofenceOverride] = React.useState(false);
+  const [mapRadius, setMapRadius] = React.useState("5 MI");
   const [gpsRequired, setGpsRequired] = React.useState(false);
   const [nearestHospital, setNearestHospital] = React.useState("");
   const [hospitalPhone, setHospitalPhone] = React.useState("");
@@ -201,7 +196,7 @@ export function LocationFormPage({
   >([]);
   const [statusOptions, setStatusOptions] = React.useState<
     DashboardSelectOption[]
-  >(STATUS_OPTIONS);
+  >([]);
   const [contactOptions, setContactOptions] = React.useState<
     DashboardSelectOption[]
   >([]);
@@ -314,6 +309,11 @@ export function LocationFormPage({
       cancelled = true;
     };
   }, [customerId]);
+
+  React.useEffect(() => {
+    if (geofenceOverride) return;
+    if (customerRadius) setGeofenceRadius(customerRadius);
+  }, [customerRadius, geofenceOverride]);
 
   React.useEffect(() => {
     if (latitude == null || longitude == null) return;
@@ -624,20 +624,31 @@ export function LocationFormPage({
                 {sitePhotos.map((photo) => (
                   <div key={photo.id} className="w-[140px] space-y-2 sm:w-[156px]">
                     <div className="relative aspect-[4/3] overflow-hidden rounded-lg border border-[#2D2D30] bg-[#1A2740]">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={photo.preview || assetUrl(photo.url)}
-                        alt={photo.label}
-                        className={cn(
-                          "h-full w-full object-cover",
-                          photo.uploading && "opacity-60",
-                        )}
-                      />
-                      {photo.uploading ? (
-                        <span className="absolute inset-0 flex items-center justify-center font-sans text-[10px] uppercase text-[#FDFDFF]">
-                          Uploading…
+                      {photo.preview || photo.url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={photo.preview || assetUrl(photo.url)}
+                          alt={photo.label}
+                          className={cn(
+                            "h-full w-full object-cover",
+                            photo.uploading && "opacity-50",
+                          )}
+                        />
+                      ) : (
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#3B82F6]/40 bg-[#1E3A5F]">
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#60A5FA] border-t-transparent" />
+                          </span>
                         </span>
-                      ) : null}                      <button
+                      )}
+                      {photo.uploading ? (
+                        <span className="absolute inset-0 flex items-center justify-center bg-[#1A2740]/50">
+                          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#3B82F6]/40 bg-[#1E3A5F]">
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#60A5FA] border-t-transparent" />
+                          </span>
+                        </span>
+                      ) : null}
+                      <button
                         type="button"
                         aria-label={`Remove ${photo.label}`}
                         onClick={() =>
@@ -664,7 +675,7 @@ export function LocationFormPage({
                       }
                       aria-label="Photo name"
                       placeholder="Photo name"
-                      className="w-full rounded-md border border-transparent bg-[#2A2A2A] px-2 py-1 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none focus:border-[#5A5A5A]"
+                      className="w-full rounded-md border border-[#2D2D30] bg-[#1A1A1A] px-2 py-1.5 text-center font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none focus:border-[#5A5A5A]"
                     />
                   </div>
                 ))}
@@ -780,8 +791,9 @@ export function LocationFormPage({
                     customerId ? "Select contact" : "Select customer first"
                   }
                   emptyMessage="No contacts for this customer"
+                  containerClassName="md:col-span-2"
                 />
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 md:col-span-2">
                   <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
                     Geofence Radius
                   </span>
@@ -798,12 +810,7 @@ export function LocationFormPage({
                     <button
                       type="button"
                       onClick={() => setGeofenceOverride(true)}
-                      className={cn(
-                        "shrink-0 font-sans text-[10px] uppercase tracking-[-0.02em]",
-                        geofenceOverride
-                          ? "text-[#60A5FA]"
-                          : "text-[#60A5FA] hover:text-[#93C5FD]",
-                      )}
+                      className="shrink-0 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#60A5FA] hover:text-[#93C5FD]"
                     >
                       Site Override
                     </button>
@@ -813,7 +820,7 @@ export function LocationFormPage({
                         setGeofenceRadius(customerRadius);
                         setGeofenceOverride(false);
                       }}
-                      className="shrink-0 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597] hover:text-[#FDFDFF]"
+                      className="shrink-0 rounded-md border border-[#3E3E3E] px-2 py-1 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597] hover:text-[#FDFDFF]"
                     >
                       Reset
                     </button>
@@ -822,7 +829,7 @@ export function LocationFormPage({
                     {inheritHint}
                   </p>
                 </div>
-                <div className="flex items-center justify-between gap-4 py-1 md:col-span-2">
+                <div className="flex items-center gap-3 py-1 md:col-span-2">
                   <span className="font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
                     GPS Required?
                   </span>
@@ -833,15 +840,13 @@ export function LocationFormPage({
                     onClick={() => setGpsRequired(!gpsRequired)}
                     className={cn(
                       "relative h-5 w-9 shrink-0 rounded-full transition-colors",
-                      gpsRequired ? "bg-[#FDFDFF]" : "bg-[#3E3E3E]",
+                      gpsRequired ? "bg-[#22C55E]" : "bg-[#3E3E3E]",
                     )}
                   >
                     <span
                       className={cn(
-                        "absolute top-0.5 left-0.5 h-4 w-4 rounded-full transition-transform",
-                        gpsRequired
-                          ? "translate-x-4 bg-[#1A1A1A]"
-                          : "bg-[#959597]",
+                        "absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform",
+                        gpsRequired && "translate-x-4",
                       )}
                     />
                   </button>
@@ -856,14 +861,11 @@ export function LocationFormPage({
                 />
               </DashboardFormGrid>
 
-              <div className="space-y-2 border-t border-[#2D2D30] pt-5">
-                <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
-                  GPS Coordinates
-                </span>
+              <div className="border-t border-[#2D2D30] pt-5">
                 <LocationGpsPanel
                   latitude={latitude}
                   longitude={longitude}
-                  radiusRaw={geofenceRadius}
+                  radiusRaw={mapRadius}
                   county={county}
                   state={state}
                   onCoordsChange={(c) => {
@@ -871,8 +873,7 @@ export function LocationFormPage({
                     setLongitude(c.lng);
                   }}
                   onRadiusChange={(_miles, label) => {
-                    setGeofenceRadius(label);
-                    setGeofenceOverride(true);
+                    setMapRadius(label);
                   }}
                   onPlaceChange={(place) => {
                     if (place.county) setCounty(place.county);
@@ -899,28 +900,38 @@ export function LocationFormPage({
                   label="Nearest Hospital"
                   value={nearestHospital}
                   onChange={(e) => setNearestHospital(e.target.value)}
-                  placeholder="Hospital name"
+                  placeholder="Midland Memorial Hospital"
                 />
                 <DashboardTextField
                   label="Hospital Phone"
                   value={hospitalPhone}
                   onChange={(e) => setHospitalPhone(e.target.value)}
-                  placeholder="(432) 555-0000"
+                  placeholder="(432) 221-1000"
                 />
                 <DashboardTextField
                   label="Hospital Address"
                   value={hospitalAddress}
                   onChange={(e) => setHospitalAddress(e.target.value)}
-                  placeholder="Hospital address"
+                  placeholder="400 Rosalind Redfern Grover Pkwy, Midland, TX 79701"
                   containerClassName="md:col-span-2"
                 />
-                <div className="md:col-span-2">
-                  <DashboardTextField
-                    label="Distance / Drive Time"
-                    value={hospitalDriveTime}
-                    onChange={(e) => setHospitalDriveTime(e.target.value)}
-                    placeholder="e.g. 12 mi · 18 min"
-                  />
+                <div className="space-y-1.5 md:col-span-2">
+                  <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
+                    Distance / Drive Time
+                  </span>
+                  <div className="relative flex h-10 items-center rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] px-3 pr-14">
+                    <input
+                      value={hospitalDriveTime}
+                      onChange={(e) => setHospitalDriveTime(e.target.value)}
+                      placeholder="e.g. 8.2 MI · 14 MIN"
+                      className="min-w-0 flex-1 bg-transparent font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none md:text-[13px]"
+                    />
+                    {hospitalDriveTime ? (
+                      <span className="absolute top-1/2 right-2 -translate-y-1/2 rounded bg-[#166534] px-1.5 py-0.5 font-sans text-[9px] uppercase text-[#86EFAC]">
+                        Auto
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 <DashboardTextField
                   label="Fire — Emergency"
@@ -932,7 +943,7 @@ export function LocationFormPage({
                   label="Fire — Non-Emergency"
                   value={fireNonEmergency}
                   onChange={(e) => setFireNonEmergency(e.target.value)}
-                  placeholder="(432) 555-0000"
+                  placeholder="(432) 685-7530"
                 />
                 <DashboardTextField
                   label="Police — Emergency"
@@ -944,7 +955,7 @@ export function LocationFormPage({
                   label="Police — Non-Emergency"
                   value={policeNonEmergency}
                   onChange={(e) => setPoliceNonEmergency(e.target.value)}
-                  placeholder="(432) 555-0000"
+                  placeholder="(432) 685-7108"
                 />
                 <DashboardTextField
                   label="Ambulance"
@@ -960,7 +971,7 @@ export function LocationFormPage({
                     <input
                       value={musterPoint}
                       onChange={(e) => setMusterPoint(e.target.value)}
-                      placeholder="Muster point"
+                      placeholder="North parking lot, by the flagpole"
                       className="min-w-0 flex-1 bg-transparent font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none md:text-[13px]"
                     />
                     <button
@@ -976,7 +987,7 @@ export function LocationFormPage({
                           );
                         }
                       }}
-                      className="shrink-0 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#60A5FA]"
+                      className="shrink-0 rounded-md border border-[#3E3E3E] bg-[#1A1A1A] px-2.5 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] hover:bg-white/5"
                     >
                       Set Pin
                     </button>
@@ -994,12 +1005,29 @@ export function LocationFormPage({
                 <button
                   type="button"
                   onClick={() => evacuationRef.current?.click()}
-                  className="flex w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[#3E3E3E] px-4 py-10 text-center hover:border-[#5A5A5A]"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.classList.add("border-[#5A5A5A]");
+                  }}
+                  onDragLeave={(e) => {
+                    e.currentTarget.classList.remove("border-[#5A5A5A]");
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.classList.remove("border-[#5A5A5A]");
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) void uploadEvacuationMap(file);
+                  }}
+                  className="flex w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[#3E3E3E] px-4 py-10 text-center transition-colors hover:border-[#5A5A5A]"
                 >
                   {evacuationMapUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={assetUrl(evacuationMapUrl)}
+                      src={
+                        evacuationMapUrl.startsWith("data:")
+                          ? evacuationMapUrl
+                          : assetUrl(evacuationMapUrl)
+                      }
                       alt=""
                       className="max-h-40 rounded object-contain"
                     />

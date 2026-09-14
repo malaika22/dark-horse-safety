@@ -580,7 +580,8 @@ function quoteStatusBadge(
   approvalStatus?: string | null,
 ): { label: string; variant: DashboardBadgeVariant } {
   const s = status.toUpperCase();
-  if (s === "WON") return { label: "Converted", variant: "gold" };
+  if (s === "CONVERTED") return { label: "Converted", variant: "gold" };
+  if (s === "WON") return { label: "Won", variant: "success" };
   if (s === "EXPIRED") return { label: "Expired", variant: "error" };
   if (s === "SENT") return { label: "Sent", variant: "billing" };
   if (s === "DRAFT") return { label: "Draft", variant: "operations" };

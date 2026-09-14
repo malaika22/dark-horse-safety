@@ -7,11 +7,18 @@ import {
   DashboardBadge,
   DashboardField,
   DashboardModal,
+  DashboardSelectField,
   DashboardTextField,
   DashboardToggle,
   DashboardToolbarButton,
   useScrollLock,
+  type DashboardSelectOption,
 } from "@dark-horse-safety/ui";
+import type {
+  CrmQuoteConvertEligibility,
+  CrmQuoteConvertEligibilityCheck,
+  CrmQuoteConvertResult,
+} from "@/lib/crm-api";
 
 const textareaClass =
   "min-h-[96px] w-full rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] px-3 py-2.5 font-sans text-[12px] font-normal uppercase leading-normal tracking-[-0.02em] text-[#FDFDFF] outline-none transition-colors placeholder:text-[#959597] focus:border-[#5A5A5A] md:text-[13px]";
@@ -25,12 +32,31 @@ function money(n: number) {
 }
 
 function fmtShort(iso?: string | Date | null) {
-  if (!iso) return "â€”";
+  if (!iso) return "—";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "â€”";
+  if (Number.isNaN(d.getTime())) return "—";
   return d
     .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     .toUpperCase();
+}
+
+function fmtConvertedOn(iso?: string | Date | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const date = d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "America/Chicago",
+  });
+  const time = d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Chicago",
+    timeZoneName: "short",
+  });
+  return `${date} · ${time}`;
 }
 
 function CloseTextBtn({ onClick, label = "Close" }: { onClick: () => void; label?: string }) {
@@ -42,6 +68,47 @@ function CloseTextBtn({ onClick, label = "Close" }: { onClick: () => void; label
     >
       {label}
     </button>
+  );
+}
+
+function WarningTriangleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M8 1.5 14.5 13.5h-13L8 1.5Z"
+        stroke="#E8C07A"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 6v3.5M8 11.5h.01"
+        stroke="#E8C07A"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function SuccessCheckIcon() {
+  return (
+    <span
+      className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#203B2C] text-[13px] text-[#4ADE80]"
+      aria-hidden
+    >
+      ✓
+    </span>
+  );
+}
+
+function ErrorXIcon() {
+  return (
+    <span
+      className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#3A1515] text-[14px] leading-none text-[#FF6B6B]"
+      aria-hidden
+    >
+      ×
+    </span>
   );
 }
 
@@ -367,9 +434,319 @@ export function QuoteCompareVersionsModal({
   );
 }
 
+export type ConvertQuotePayload = {
+  jobType: string;
+  locationId: string;
+  serviceDate: string;
+  overrideReason?: string;
+};
+
+export function ConvertQuoteToWorkOrderModal({
+  open,
+  onClose,
+  onConvert,
+  quoteNumber,
+  customerName,
+  amount,
+  jobTypeOptions,
+  siteOptions,
+  sitesLoading,
+  defaultJobType = "",
+  defaultSiteId = "",
+  defaultServiceDate = "",
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConvert: (payload: ConvertQuotePayload) => void | Promise<void>;
+  quoteNumber: string;
+  customerName: string;
+  amount: number;
+  jobTypeOptions: DashboardSelectOption[];
+  siteOptions: DashboardSelectOption[];
+  sitesLoading?: boolean;
+  defaultJobType?: string;
+  defaultSiteId?: string;
+  defaultServiceDate?: string;
+}) {
+  const [jobType, setJobType] = React.useState(defaultJobType);
+  const [siteId, setSiteId] = React.useState(defaultSiteId);
+  const [serviceDate, setServiceDate] = React.useState(defaultServiceDate);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setJobType(defaultJobType);
+    setSiteId(defaultSiteId);
+    setServiceDate(
+      defaultServiceDate ||
+        new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10),
+    );
+    setSubmitting(false);
+  }, [open, defaultJobType, defaultSiteId, defaultServiceDate]);
+
+  const canSubmit =
+    Boolean(jobType.trim()) &&
+    Boolean(siteId.trim()) &&
+    Boolean(serviceDate.trim()) &&
+    !submitting;
+
+  return (
+    <DashboardModal
+      open={open}
+      onClose={onClose}
+      title="Convert Quote to Work Order?"
+      widthClassName="max-w-lg"
+      footer={
+        <>
+          <CloseTextBtn onClick={onClose} label="Cancel" />
+          <DashboardToolbarButton
+            variant="primary"
+            disabled={!canSubmit}
+            onClick={() => {
+              void (async () => {
+                setSubmitting(true);
+                try {
+                  await onConvert({
+                    jobType: jobType.trim(),
+                    locationId: siteId.trim(),
+                    serviceDate,
+                  });
+                } finally {
+                  setSubmitting(false);
+                }
+              })();
+            }}
+          >
+            {submitting ? "Converting…" : "Convert to Work Order"}
+          </DashboardToolbarButton>
+        </>
+      }
+    >
+      <p className="mb-4 font-sans text-[11px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+        This creates a work order from the approved quote and carries over the
+        customer, location, line items, and pricing. The quote is marked
+        converted.
+      </p>
+      <div className="mb-4 rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3.5 py-2.5 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#C8C8CA]">
+        {quoteNumber} → New Work Order · {customerName || "—"} ·{" "}
+        {money(amount)}
+      </div>
+      <div className="space-y-3">
+        <DashboardSelectField
+          label="Job Type *"
+          value={jobType}
+          onChange={(e) => setJobType(e.target.value)}
+          options={jobTypeOptions}
+          placeholder="Select job type"
+          emptyMessage="No job types found"
+        />
+        <div>
+          <DashboardSelectField
+            label="Site *"
+            value={siteId}
+            onChange={(e) => setSiteId(e.target.value)}
+            options={siteOptions}
+            placeholder="Select site"
+            loading={sitesLoading}
+            emptyMessage="No sites for this customer"
+          />
+          <p className="mt-1.5 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#707074]">
+            This customer&apos;s locations only.
+          </p>
+        </div>
+        <DashboardTextField
+          label="Service Date *"
+          type="date"
+          value={serviceDate}
+          onChange={(e) => setServiceDate(e.target.value)}
+        />
+      </div>
+      <p className="mt-4 font-sans text-[10px] uppercase leading-relaxed tracking-[-0.02em] text-[#707074]">
+        Carried over: customer · line items · pricing. Once converted, this
+        quote becomes read-only.
+      </p>
+    </DashboardModal>
+  );
+}
+
+export function CannotConvertQuoteModal({
+  open,
+  onClose,
+  onViewCustomer,
+  onOverride,
+  eligibility,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onViewCustomer?: () => void;
+  onOverride?: (reason: string) => void | Promise<void>;
+  eligibility: CrmQuoteConvertEligibility | null;
+}) {
+  const [overrideOpen, setOverrideOpen] = React.useState(false);
+  const [reason, setReason] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setOverrideOpen(false);
+    setReason("");
+    setSubmitting(false);
+  }, [open]);
+
+  const checks: CrmQuoteConvertEligibilityCheck[] =
+    eligibility?.checks ?? [];
+  const canOverride = Boolean(eligibility?.canOverride && onOverride);
+
+  return (
+    <DashboardModal
+      open={open}
+      onClose={onClose}
+      title="Cannot Convert"
+      titleLeading={<WarningTriangleIcon />}
+      widthClassName="max-w-lg"
+      footer={
+        <>
+          <CloseTextBtn onClick={onClose} label="Cancel" />
+          <DashboardToolbarButton onClick={() => onViewCustomer?.()}>
+            View Customer
+          </DashboardToolbarButton>
+          {canOverride ? (
+            <DashboardToolbarButton
+              variant="primary"
+              disabled={submitting}
+              onClick={() => {
+                if (!overrideOpen) {
+                  setOverrideOpen(true);
+                  return;
+                }
+                if (!reason.trim()) return;
+                void (async () => {
+                  setSubmitting(true);
+                  try {
+                    await onOverride?.(reason.trim());
+                  } finally {
+                    setSubmitting(false);
+                  }
+                })();
+              }}
+            >
+              {overrideOpen
+                ? submitting
+                  ? "Overriding…"
+                  : "Confirm Override"
+                : "Override"}
+            </DashboardToolbarButton>
+          ) : null}
+        </>
+      }
+    >
+      <p className="mb-4 font-sans text-[11px] uppercase leading-relaxed tracking-[-0.02em] text-[#E8C07A]">
+        {eligibility?.blockerMessage ??
+          "Resolve eligibility issues before converting, or override with a reason."}
+      </p>
+      <div className="space-y-2.5 rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3.5 py-3">
+        {checks.map((c) => (
+          <div
+            key={c.key}
+            className="flex items-start justify-between gap-3"
+          >
+            <span className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597]">
+              {c.label}
+            </span>
+            <span
+              className={`text-right font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] ${
+                c.ok ? "text-[#FDFDFF]" : "text-[#E8C07A]"
+              }`}
+            >
+              {c.detail}
+            </span>
+          </div>
+        ))}
+      </div>
+      {overrideOpen ? (
+        <div className="mt-4">
+          <DashboardField label="Override Reason *">
+            <textarea
+              className={textareaClass}
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Required. Logged with the conversion."
+            />
+          </DashboardField>
+        </div>
+      ) : null}
+      <p className="mt-4 font-sans text-[10px] uppercase leading-relaxed tracking-[-0.02em] text-[#707074]">
+        Override is shown only to permitted roles. A reason is required and is
+        logged.
+      </p>
+    </DashboardModal>
+  );
+}
+
+export function ConversionFailedModal({
+  open,
+  onClose,
+  onRetry,
+  quoteNumber,
+  customerName,
+  reason,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onRetry?: () => void;
+  quoteNumber: string;
+  customerName: string;
+  reason: string;
+}) {
+  return (
+    <DashboardModal
+      open={open}
+      onClose={onClose}
+      title="Conversion Failed"
+      titleLeading={<ErrorXIcon />}
+      widthClassName="max-w-md"
+      footer={
+        <>
+          <DashboardToolbarButton onClick={onClose}>Cancel</DashboardToolbarButton>
+          <DashboardToolbarButton variant="primary" onClick={() => onRetry?.()}>
+            Retry
+          </DashboardToolbarButton>
+        </>
+      }
+    >
+      <p className="mb-4 font-sans text-[11px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+        Something went wrong creating the work order. The quote is unchanged —
+        nothing was lost.
+      </p>
+      <div className="space-y-2.5 rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3.5 py-3">
+        {[
+          ["Quote", `${quoteNumber} · unchanged`],
+          ["Reason", reason || "Unknown error"],
+          ["Customer", customerName || "—"],
+        ].map(([label, valueText]) => (
+          <div key={label} className="flex items-start justify-between gap-3">
+            <span className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597]">
+              {label}
+            </span>
+            <span
+              className={`max-w-[70%] text-right font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] ${
+                label === "Reason" ? "text-[#FDFDFF]" : "text-[#C8C8CA]"
+              }`}
+            >
+              {valueText}
+            </span>
+          </div>
+        ))}
+      </div>
+    </DashboardModal>
+  );
+}
+
 export function WorkOrderCreatedModal({
   open,
   onClose,
+  result,
   quoteNumber,
   workOrderCode,
   customer,
@@ -378,69 +755,136 @@ export function WorkOrderCreatedModal({
   createdBy,
   quoteId,
   workOrderId,
+  locationLabel,
+  lineItemsSummary,
+  convertedBy,
+  convertedOn,
+  stillRequired,
 }: {
   open: boolean;
   onClose: () => void;
-  quoteNumber: string;
-  workOrderCode: string;
-  customer: string;
-  value: string;
-  scheduled: string;
-  createdBy: string;
+  result?: CrmQuoteConvertResult | null;
+  quoteNumber?: string;
+  workOrderCode?: string;
+  customer?: string;
+  value?: string;
+  scheduled?: string;
+  createdBy?: string;
   quoteId?: string;
   workOrderId?: string;
+  locationLabel?: string;
+  lineItemsSummary?: string;
+  convertedBy?: string;
+  convertedOn?: string;
+  stillRequired?: string[];
 }) {
+  const woCode =
+    result?.code ?? result?.workOrderNumber ?? workOrderCode ?? "—";
+  const woId = result?.id ?? workOrderId;
+  const qId = result?.quoteId ?? quoteId;
+  const qNum = result?.quoteNumber ?? quoteNumber ?? "—";
+  const cust = result?.customer?.name ?? customer ?? "—";
+  const loc =
+    result?.locationLabel ??
+    locationLabel ??
+    result?.location?.name ??
+    "—";
+  const lines =
+    result?.lineItemsSummary ??
+    lineItemsSummary ??
+    (value ? `Quoted · ${value}` : "—");
+  const by =
+    result?.convertedBy ?? result?.createdBy ?? convertedBy ?? createdBy ?? "—";
+  const on =
+    convertedOn ??
+    (result?.convertedOn ? fmtConvertedOn(result.convertedOn) : null) ??
+    scheduled ??
+    "—";
+  const required =
+    result?.stillRequiredBeforeDispatch ??
+    stillRequired ??
+    [];
+  const outcomeLabel = (result?.outcome ?? "WON").replace(/_/g, " ");
+  const statusLabel = (result?.quoteStatus ?? "CONVERTED").replace(/_/g, " ");
+
   return (
     <DashboardModal
       open={open}
       onClose={onClose}
       title="Work Order Created"
-      widthClassName="max-w-md"
+      titleLeading={<SuccessCheckIcon />}
+      widthClassName="max-w-lg"
       footer={
         <>
-          <CloseTextBtn onClick={onClose} />
-          {quoteId ? (
-            <Link href={`/crm/quotes/${quoteId}`}>
-              <DashboardToolbarButton>View Quote</DashboardToolbarButton>
-            </Link>
-          ) : (
-            <DashboardToolbarButton onClick={onClose}>View Quote</DashboardToolbarButton>
-          )}
-          {workOrderId ? (
-            <Link href={`/operations/work-orders/${workOrderId}`}>
+          <DashboardToolbarButton onClick={onClose}>
+            Continue in CRM
+          </DashboardToolbarButton>
+          {woId ? (
+            <Link href={`/operations/work-orders/${woId}`}>
               <DashboardToolbarButton variant="primary">
-                View Work Order
+                Complete Work Order
               </DashboardToolbarButton>
             </Link>
           ) : (
-            <DashboardToolbarButton variant="primary" onClick={onClose}>
-              View Work Order
+            <DashboardToolbarButton variant="primary" disabled>
+              Complete Work Order
             </DashboardToolbarButton>
           )}
         </>
       }
     >
-      <div className="mb-4 flex items-center gap-2 rounded-lg border border-[#22C55E]/40 bg-[#203B2C]/40 px-3 py-2.5">
-        <span className="text-[#4ADE80]" aria-hidden>
-          âœ“
-        </span>
-        <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#ACEBCE]">
-          Quote {quoteNumber} Converted to Work Order {workOrderCode}.
-        </p>
+      <p className="mb-3 font-sans text-[11px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+        Carried over: customer · location · line items · pricing. Job type and
+        service date were set during conversion.
+      </p>
+      <div className="mb-4 flex flex-wrap gap-2">
+        <DashboardBadge variant="success">
+          Outcome: {outcomeLabel}
+        </DashboardBadge>
+        <DashboardBadge variant="success">
+          Status: {statusLabel}
+        </DashboardBadge>
       </div>
+      {required.length > 0 ? (
+        <div className="mb-4 rounded-lg border border-[#8B6914]/50 bg-[#1C160C] px-3.5 py-3">
+          <p className="mb-1.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#E8C07A]">
+            Still Required Before Dispatch
+          </p>
+          <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#C8C8CA]">
+            {required.join(" · ")}
+          </p>
+        </div>
+      ) : null}
       <div className="space-y-2.5 rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3.5 py-3">
-        {[
-          ["Work Order", workOrderCode],
-          ["Customer", customer],
-          ["Value", value],
-          ["Scheduled", scheduled],
-          ["Created By", createdBy],
-        ].map(([label, valueText]) => (
+        {(
+          [
+            ["Work Order #", woCode],
+            ["Customer", cust],
+            ["Location", loc],
+            [
+              "Source Quote",
+              qId ? (
+                <Link
+                  key="sq"
+                  href={`/crm/quotes/${qId}`}
+                  className="text-[#7EB6FF] hover:underline"
+                >
+                  {qNum}
+                </Link>
+              ) : (
+                qNum
+              ),
+            ],
+            ["Line Items & Pricing", lines],
+            ["Converted By", by],
+            ["Converted On", on],
+          ] as [string, React.ReactNode][]
+        ).map(([label, valueText]) => (
           <div key={label} className="flex items-start justify-between gap-3">
             <span className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597]">
               {label}
             </span>
-            <span className="text-right font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+            <span className="max-w-[70%] text-right font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
               {valueText}
             </span>
           </div>
@@ -451,23 +895,13 @@ export function WorkOrderCreatedModal({
 }
 
 function StatusDot({ tone }: { tone: "success" | "error" }) {
-  const ok = tone === "success";
-  return (
-    <span
-      className={`inline-flex h-6 w-6 items-center justify-center rounded-full ${
-        ok ? "bg-[#203B2C] text-[#4ADE80]" : "bg-[#3A1515] text-[#FF6B6B]"
-      }`}
-      aria-hidden
-    >
-      {ok ? "âœ“" : "Ã—"}
-    </span>
-  );
+  return tone === "success" ? <SuccessCheckIcon /> : <ErrorXIcon />;
 }
 
 function fmtStamp(iso?: string | Date | null) {
-  if (!iso) return "â€”";
+  if (!iso) return "—";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "â€”";
+  if (Number.isNaN(d.getTime())) return "—";
   return d
     .toLocaleString("en-US", {
       month: "short",
@@ -476,7 +910,7 @@ function fmtStamp(iso?: string | Date | null) {
       hour: "numeric",
       minute: "2-digit",
     })
-    .replace(",", " Â·")
+    .replace(",", " ·")
     .toUpperCase();
 }
 

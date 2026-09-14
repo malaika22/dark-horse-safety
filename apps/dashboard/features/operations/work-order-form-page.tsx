@@ -144,23 +144,42 @@ export function WorkOrderFormPage() {
 
       let woId: string | undefined;
 
-      if (
-        quoteId &&
-        !workOrderId &&
-        typeof crmApi.convertQuoteToWorkOrder === "function"
-      ) {
+      if (quoteId && !workOrderId && category && location && serviceDate) {
         try {
-          const converted = await crmApi.convertQuoteToWorkOrder(quoteId);
+          const converted = await crmApi.convertQuoteToWorkOrder(quoteId, {
+            jobType: category,
+            locationId: location,
+            serviceDate,
+          });
           woId = converted.data?.id;
         } catch (err) {
-          if (!(err instanceof ApiError && err.status === 404)) {
+          if (err instanceof ApiError && err.code === "CONVERT_BLOCKED") {
+            toastApiError(
+              new Error(
+                err.message ||
+                  "Cannot convert this quote — resolve eligibility or use Convert on the quote.",
+              ),
+            );
+            return;
+          }
+          if (
+            err instanceof ApiError &&
+            (err.status === 404 ||
+              err.code === "ALREADY_CONVERTED" ||
+              err.code === "VALIDATION_ERROR")
+          ) {
+            /* fall through to createWorkOrder */
+          } else {
             throw err;
           }
         }
       }
 
       if (!woId) {
-        const created = await crmApi.createWorkOrder(body);
+        const created = await crmApi.createWorkOrder({
+          ...body,
+          locationId: location || undefined,
+        });
         woId = created.data?.id;
       }
 

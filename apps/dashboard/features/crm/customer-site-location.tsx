@@ -197,12 +197,6 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-const AUTO_FLAG_OPTIONS = [
-  { value: "AFTER 15MINS", label: "After 15 mins" },
-  { value: "AFTER 30MINS", label: "After 30 mins" },
-  { value: "AFTER 60MINS", label: "After 60 mins" },
-];
-
 export function CustomerSiteLocationPanel({
   latitude,
   longitude,
@@ -232,10 +226,11 @@ export function CustomerSiteLocationPanel({
     autoFlagNoShow?: string;
   }) => void | Promise<void>;
 }) {
-  const [coords, setCoords] = React.useState<SiteCoords>({
-    lat: latitude ?? 31.8973,
-    lng: longitude ?? -102.0779,
-  });
+  const [coords, setCoords] = React.useState<SiteCoords | null>(
+    latitude != null && longitude != null
+      ? { lat: latitude, lng: longitude }
+      : null,
+  );
   const [radiusMiles, setRadiusMiles] = React.useState(parseRadiusMiles(radiusRaw));
   const [radiusInput, setRadiusInput] = React.useState(
     radiusRaw?.trim() || formatRadiusLabel(parseRadiusMiles(radiusRaw)),
@@ -243,10 +238,7 @@ export function CustomerSiteLocationPanel({
   const [minBillable, setMinBillable] = React.useState(minBillableProp ?? "15 MIN");
   const [autoFlag, setAutoFlag] = React.useState(autoFlagProp ?? "AFTER 30MINS");
   const { lookups } = useCrmLookups({ includeLocations: false });
-  const autoFlagOptions =
-    lookupOptions(lookups, "autoFlagNoShow").length > 0
-      ? lookupOptions(lookups, "autoFlagNoShow")
-      : AUTO_FLAG_OPTIONS;
+  const autoFlagOptions = lookupOptions(lookups, "autoFlagNoShow");
   const [county, setCounty] = React.useState(countyProp ?? "");
   const [state, setState] = React.useState(stateProp ?? "");
   const [search, setSearch] = React.useState("");
@@ -264,10 +256,11 @@ export function CustomerSiteLocationPanel({
   liveRadius.current = radiusMiles;
 
   React.useEffect(() => {
-    setCoords({
-      lat: latitude ?? 31.8973,
-      lng: longitude ?? -102.0779,
-    });
+    setCoords(
+      latitude != null && longitude != null
+        ? { lat: latitude, lng: longitude }
+        : null,
+    );
   }, [latitude, longitude]);
 
   React.useEffect(() => {
@@ -290,7 +283,9 @@ export function CustomerSiteLocationPanel({
   }, [countyProp, stateProp]);
 
   const radiusPx = Math.min(170, Math.max(52, 30 + radiusMiles * 16)) * zoom;
-  const coordLabel = `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`;
+  const coordLabel = coords
+    ? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`
+    : "No coordinates set";
   const radiusLabel = formatRadiusLabel(radiusMiles);
 
   async function applyPlace(next: SiteCoords, place?: PlaceInfo | null) {
@@ -376,7 +371,7 @@ export function CustomerSiteLocationPanel({
 
   function onMapPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     const el = mapRef.current;
-    if (!el) return;
+    if (!el || !liveCoords.current) return;
     const target = e.target as HTMLElement;
     if (target.closest("[data-map-ui]")) return;
     const rect = el.getBoundingClientRect();
@@ -429,7 +424,7 @@ export function CustomerSiteLocationPanel({
     dragMode.current = null;
     dragOrigin.current = null;
     mapRef.current?.releasePointerCapture(e.pointerId);
-    if (mode === "pin") void applyPlace(liveCoords.current);
+    if (mode === "pin" && liveCoords.current) void applyPlace(liveCoords.current);
     if (mode === "radius") void commitRadius(liveRadius.current);
   }
 
@@ -576,7 +571,11 @@ export function CustomerSiteLocationPanel({
           {/* Radius ring + handle */}
           <div
             className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-[#60A5FA]"
-            style={{ width: radiusPx * 2, height: radiusPx * 2 }}
+            style={{
+              width: coords ? radiusPx * 2 : 0,
+              height: coords ? radiusPx * 2 : 0,
+              opacity: coords ? 1 : 0,
+            }}
           >
             <span
               className="absolute right-0 top-1/2 h-px w-[calc(50%)] origin-left bg-[#60A5FA]/70"
@@ -589,23 +588,33 @@ export function CustomerSiteLocationPanel({
           </div>
 
           {/* Pin */}
-          <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
-            <div className="relative flex flex-col items-center">
-              <span className="absolute -top-8 rounded-md bg-[#0D0D0D]/95 px-2 py-1 font-sans text-[9px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                {coordLabel}
-              </span>
-              <span className="relative flex h-4 w-4 items-center justify-center">
-                <span className="absolute h-4 w-4 rounded-full bg-[#EF4444]/35" />
-                <span className="relative h-2.5 w-2.5 rounded-full bg-[#EF4444] ring-2 ring-white" />
-              </span>
+          {coords ? (
+            <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
+              <div className="relative flex flex-col items-center">
+                <span className="absolute -top-8 rounded-md bg-[#0D0D0D]/95 px-2 py-1 font-sans text-[9px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                  {coordLabel}
+                </span>
+                <span className="relative flex h-4 w-4 items-center justify-center">
+                  <span className="absolute h-4 w-4 rounded-full bg-[#EF4444]/35" />
+                  <span className="relative h-2.5 w-2.5 rounded-full bg-[#EF4444] ring-2 ring-white" />
+                </span>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6">
+              <p className="text-center font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+                Search an address, paste coordinates, or use current location
+              </p>
+            </div>
+          )}
 
           <div
             data-map-ui
             className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-[#0D0D0D]/85 px-2.5 py-1.5 font-sans text-[9px] uppercase tracking-[-0.02em] text-[#C8C8C8]"
           >
-            Drag Pin To Move · Drag Edge To Resize Radius
+            {coords
+              ? "Drag Pin To Move · Drag Edge To Resize Radius"
+              : "No pin until coordinates are set"}
           </div>
 
           <div

@@ -86,6 +86,11 @@ export class CreateFormRuleDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsDateString()
+  appliesToEnd?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   trigger?: string;
 
@@ -97,7 +102,33 @@ export class CreateFormRuleDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  scope?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   version?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  versionMode?: string;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  overrideRoles?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  requireOverrideReason?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  rolloutMode?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -129,4 +160,44 @@ export class TestFormRuleDto {
   @ApiProperty({ description: 'Job type to test against the rule' })
   @IsString()
   jobType!: string;
+}
+
+/** Live impact preview for Add Form Rule. */
+export class FormRulePreviewQueryDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  customerId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  formTemplate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  jobType?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  required?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  hardGate?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  rolloutMode?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  excludeId?: string;
 }

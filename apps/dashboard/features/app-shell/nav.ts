@@ -15,6 +15,10 @@ export type NavItem = {
   children?: { id: string; label: string; href: string }[];
 };
 
+/**
+ * Admin sidebar — Figma Navigation / Config Access.
+ * CRM is split into CRM hub, Accounts, Sales, and Configuration sections.
+ */
 export const APP_NAV: NavItem[] = [
   {
     id: "dashboard",
@@ -27,26 +31,17 @@ export const APP_NAV: NavItem[] = [
     label: "CRM / Customer",
     icon: "crm",
     children: [
-      { id: "crm-dashboard", label: "CRM Dashboard", href: "/crm" },
+      { id: "crm-dashboard", label: "Dashboard", href: "/crm" },
+    ],
+  },
+  {
+    id: "accounts",
+    label: "Accounts",
+    icon: "crm",
+    children: [
       { id: "crm-customers", label: "Customers", href: "/crm/accounts" },
       { id: "crm-contacts", label: "Contacts", href: "/crm/contacts" },
       { id: "crm-locations", label: "Locations / Wells", href: "/crm/locations" },
-      { id: "crm-pricing", label: "Pricing Rules", href: "/crm/pricing-rules" },
-      {
-        id: "crm-requirements",
-        label: "Customer Requests",
-        href: "/crm/requirements",
-      },
-      {
-        id: "crm-form-rules",
-        label: "Required Form Rules",
-        href: "/crm/form-rules",
-      },
-      {
-        id: "crm-route-rules",
-        label: "Route / GPS Rules",
-        href: "/crm/route-rules",
-      },
     ],
   },
   {
@@ -62,10 +57,24 @@ export const APP_NAV: NavItem[] = [
         label: "Sales Calendar",
         href: "/crm/sales-calendar",
       },
+    ],
+  },
+  {
+    id: "configuration",
+    label: "Configuration",
+    icon: "crm",
+    children: [
+      { id: "crm-pricing", label: "Pricing Rules", href: "/crm/pricing-rules" },
       {
-        id: "sales-summary",
-        label: "Sales Summary",
-        href: "/crm/sales-summary",
+        id: "crm-requirements",
+        label: "Customer Requirements",
+        href: "/crm/requirements",
+      },
+      { id: "crm-form-rules", label: "Form Rules", href: "/crm/form-rules" },
+      {
+        id: "crm-route-rules",
+        label: "Route / GPS Rules",
+        href: "/crm/route-rules",
       },
     ],
   },
@@ -151,7 +160,7 @@ export const APP_NAV: NavItem[] = [
   },
   {
     id: "safety",
-    label: "Safety & Comp.",
+    label: "Safety & Compliance",
     icon: "safety",
     children: [
       { id: "safety-hub", label: "Safety Hub", href: "/safety" },

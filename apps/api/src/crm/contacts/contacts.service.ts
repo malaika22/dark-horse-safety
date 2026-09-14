@@ -130,7 +130,20 @@ export class ContactsService {
           },
         },
         quotes: { take: 20, orderBy: { createdAt: 'desc' } },
-        activities: { take: 20, orderBy: { activityAt: 'desc' } },
+        activities: {
+          take: 20,
+          orderBy: { activityAt: 'desc' },
+          include: {
+            rep: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        },
       },
     });
     if (!contact) {

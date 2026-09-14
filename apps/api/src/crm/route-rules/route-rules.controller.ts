@@ -15,6 +15,8 @@ import {
   BulkRouteRuleIdsDto,
   CopyRouteRuleDto,
   CreateRouteRuleDto,
+  PreviewGeofenceDto,
+  RouteRuleDefaultsQueryDto,
   RouteRuleListQueryDto,
   TestRouteCoordinateDto,
   UpdateRouteRuleDto,
@@ -56,6 +58,22 @@ export class RouteRulesController {
   @ApiOperation({ summary: 'Map pins for route rules' })
   mapPins() {
     return this.routeRules.mapPins();
+  }
+
+  @Get('defaults')
+  @ApiOperation({
+    summary: 'Inherited defaults + auto travel time for Add Route Rule',
+  })
+  defaults(@Query() query: RouteRuleDefaultsQueryDto) {
+    return this.routeRules.defaults(query);
+  }
+
+  @Post('test-geofence')
+  @ApiOperation({
+    summary: 'Test coordinates against a site geofence (before save)',
+  })
+  previewGeofence(@Body() dto: PreviewGeofenceDto) {
+    return this.routeRules.previewGeofence(dto);
   }
 
   @Post('bulk/delete')

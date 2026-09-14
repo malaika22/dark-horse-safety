@@ -233,3 +233,25 @@ export class AddQuoteAttachmentDto {
   @IsString()
   contentBase64!: string;
 }
+
+export class ConvertQuoteToWorkOrderDto {
+  @ApiProperty({ description: 'Job type / work order category' })
+  @IsString()
+  jobType!: string;
+
+  @ApiProperty({ description: 'Site / location id (customer locations only)' })
+  @IsUUID()
+  locationId!: string;
+
+  @ApiProperty({ description: 'Service date (ISO date or datetime)' })
+  @IsDateString()
+  serviceDate!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Required when eligibility is blocked; ADMIN/SUPERVISOR only; logged on quote',
+  })
+  @IsOptional()
+  @IsString()
+  overrideReason?: string;
+}

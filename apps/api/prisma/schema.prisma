@@ -59,7 +59,12 @@ model User {
   routeRulesOwned     RouteRule[]          @relation("RouteRuleOwner")
   eodReports          EodReport[]          @relation("EodReportRep")
   salesActivities     SalesActivity[]      @relation("SalesActivityRep")
+  expenses            Expense[]            @relation("ExpenseRep")
+  cardReconciliations CardReconciliation[] @relation("CardReconCardholder")
+  paymentCardsOwned   PaymentCard[]        @relation("PaymentCardOwner")
+  bonusDeductions     BonusDeduction[]     @relation("BonusDeductionUser")
   quotesOwned         Quote[]              @relation("QuoteOwner")
+  quotesConverted     Quote[]              @relation("QuoteConvertedBy")
   quoteVersions       QuoteVersion[]       @relation("QuoteVersionAuthor")
   workOrdersOwned     WorkOrder[]          @relation("WorkOrderAssignedRep")
   savedViews          SavedView[]
@@ -115,6 +120,7 @@ enum CrmRecordStatus {
   LOST
   SENT
   OPEN
+  CONVERTED
 }
 
 enum QuoteApprovalStatus {
@@ -130,6 +136,15 @@ enum SalesActivityType {
   MEETING
   EMAIL
   OTHER
+}
+
+enum ExpenseStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  UNMATCHED
+  MISSING_RECEIPT
+  NEEDS_REVIEW
 }
 
 enum EnforcementLevel {
@@ -206,6 +221,8 @@ model Customer {
   quotes        Quote[]
   workOrders    WorkOrder[]
   activities    SalesActivity[]
+  expenses      Expense[]
+  cardReconciliations CardReconciliation[]
   documents     CrmDocument[]
   contactLinks  ContactCustomer[]
   gpsFlags      GpsFlag[]
@@ -316,9 +333,12 @@ model Location {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  routeRules RouteRule[]
+  routeRules RouteRule[] @relation("RouteRuleSiteLocation")
+  routeRulesAsOrigin RouteRule[] @relation("RouteRuleOriginLocation")
   workOrders WorkOrder[]
   gpsFlags   GpsFlag[]
+  activities SalesActivity[]
+  expenses   Expense[]
 
   @@index([customerId])
   @@index([status])
@@ -366,27 +386,40 @@ model PricingRule {
 // ─── Customer Requirement ────────────────────────────────────────────────────
 
 model CustomerRequirement {
-  id                String           @id @default(uuid())
-  code              String           @unique
-  name              String
-  requirementType   String?
-  appliesTo         String?
-  enforcementLevel  EnforcementLevel @default(SOFT_GATE)
-  evidenceRequired  Boolean          @default(false)
-  evidenceUrl       String?
-  renewalPeriod     String?
-  notes             String?
-  dueDate           DateTime?
-  reviewCycle       String?
-  docsRequired      Boolean          @default(false)
-  status            CrmRecordStatus  @default(ACTIVE)
-  archivedAt        DateTime?
-  customerId        String
-  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  ownerId           String?
-  owner             User?            @relation("RequirementOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  id                   String           @id @default(uuid())
+  code                 String           @unique
+  name                 String
+  requirementType      String?
+  source               String?
+  issuingBody          String?
+  minimumGrade         String?
+  appliesTo            String?
+  appliesToRoles       Json?
+  enforcementLevel     EnforcementLevel @default(SOFT_GATE)
+  evidenceRequired     Boolean          @default(false)
+  evidenceType         String?
+  evidenceUrl          String?
+  verificationMethod   String?
+  overrideRoles        Json?
+  requireOverrideReason Boolean         @default(false)
+  rolloutMode          String?
+  effectiveFrom        DateTime?
+  renewalLeadDays      Int?
+  validityPeriod       String?
+  autoCheckable        Boolean          @default(true)
+  renewalPeriod        String?
+  notes                String?
+  dueDate              DateTime?
+  reviewCycle          String?
+  docsRequired         Boolean          @default(false)
+  status               CrmRecordStatus  @default(ACTIVE)
+  archivedAt           DateTime?
+  customerId           String
+  customer             Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  ownerId              String?
+  owner                User?            @relation("RequirementOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
 
   @@index([customerId])
   @@index([status])
@@ -396,26 +429,32 @@ model CustomerRequirement {
 // ─── Form Rule ───────────────────────────────────────────────────────────────
 
 model FormRule {
-  id            String          @id @default(uuid())
-  code          String          @unique
-  jobType       String?
-  formTemplate  String
-  required      Boolean         @default(true)
-  hardGate      Boolean         @default(false)
-  blocksToggle  Boolean         @default(false)
-  due           String?
-  appliesFrom   DateTime?
-  trigger       String?
-  appliesTo     String?
-  version       String?
-  status        CrmRecordStatus @default(ACTIVE)
-  archivedAt    DateTime?
-  customerId    String
-  customer      Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  ownerId       String?
-  owner         User?           @relation("FormRuleOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id                   String          @id @default(uuid())
+  code                 String          @unique
+  jobType              String?
+  formTemplate         String
+  required             Boolean         @default(true)
+  hardGate             Boolean         @default(false)
+  blocksToggle         Boolean         @default(false)
+  due                  String?
+  appliesFrom          DateTime?
+  appliesToEnd         DateTime?
+  trigger              String?
+  appliesTo            String?
+  scope                String?
+  version              String?
+  versionMode          String?
+  overrideRoles        Json?
+  requireOverrideReason Boolean        @default(false)
+  rolloutMode          String?
+  status               CrmRecordStatus @default(ACTIVE)
+  archivedAt           DateTime?
+  customerId           String
+  customer             Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  ownerId              String?
+  owner                User?           @relation("FormRuleOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
 
   @@index([customerId])
   @@index([status])
@@ -425,29 +464,44 @@ model FormRule {
 // ─── Route / GPS Rule ────────────────────────────────────────────────────────
 
 model RouteRule {
-  id                   String          @id @default(uuid())
-  code                 String          @unique
-  geofenceRadius       String?
-  gpsRequired          Boolean         @default(false)
-  clockInWindow        String?
-  routeFrom            String?
-  expectedTravelTime   String?
-  mileageRateOverride  String?
-  routeLabel           String?
-  status               CrmRecordStatus @default(ACTIVE)
-  archivedAt           DateTime?
-  customerId           String
-  customer             Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  locationId           String?
-  location             Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  ownerId              String?
-  owner                User?           @relation("RouteRuleOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
-  gpsFlags             GpsFlag[]
+  id                      String          @id @default(uuid())
+  code                    String          @unique
+  geofenceRadius          String?
+  geofenceIsOverride      Boolean         @default(true)
+  gpsRequired             Boolean         @default(false)
+  clockInWindow           String?
+  clockInBeforeMin        Int?
+  clockInAfterMin         Int?
+  routeFrom               String?
+  originType              String?
+  originLocationId        String?
+  originLocation          Location?       @relation("RouteRuleOriginLocation", fields: [originLocationId], references: [id], onDelete: SetNull)
+  preferredRoute          String?
+  expectedTravelTime      String?
+  travelTimeAuto          Boolean         @default(true)
+  mileageRateOverride     String?
+  mileageRateIsOverride   Boolean         @default(false)
+  gpsAccuracyMeters       String?
+  gpsAccuracyIsOverride   Boolean         @default(false)
+  gpsUnavailableBehavior  String?
+  routeLabel              String?
+  effectiveFrom           DateTime?
+  effectiveTo             DateTime?
+  status                  CrmRecordStatus @default(ACTIVE)
+  archivedAt              DateTime?
+  customerId              String
+  customer                Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  locationId              String?
+  location                Location?       @relation("RouteRuleSiteLocation", fields: [locationId], references: [id], onDelete: SetNull)
+  ownerId                 String?
+  owner                   User?           @relation("RouteRuleOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+  gpsFlags                GpsFlag[]
 
   @@index([customerId])
   @@index([locationId])
+  @@index([originLocationId])
   @@index([status])
 }
 
@@ -533,6 +587,9 @@ model SalesActivity {
   duration     String?
   notes        String?
   followUpAt   DateTime?
+  createFollowUpTask Boolean      @default(false)
+  logExpense   Boolean            @default(false)
+  attendees    Json?
   status       CrmRecordStatus    @default(COMPLETE)
   activityAt   DateTime           @default(now())
   archivedAt   DateTime?
@@ -540,18 +597,187 @@ model SalesActivity {
   customer     Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
   contactId    String?
   contact      Contact?           @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  locationId   String?
+  location     Location?          @relation(fields: [locationId], references: [id], onDelete: SetNull)
   repId        String?
   rep          User?              @relation("SalesActivityRep", fields: [repId], references: [id], onDelete: SetNull)
   linkedQuoteId String?
   linkedQuote  Quote?             @relation(fields: [linkedQuoteId], references: [id], onDelete: SetNull)
+  expenses     Expense[]
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 
   @@index([customerId])
   @@index([contactId])
+  @@index([locationId])
   @@index([repId])
   @@index([activityAt])
   @@index([type])
+}
+
+// ─── Expense ─────────────────────────────────────────────────────────────────
+
+model Expense {
+  id              String        @id @default(uuid())
+  code            String        @unique
+  expenseDate     DateTime
+  merchant        String
+  category        String
+  paymentMethod   String?
+  amount          Decimal       @db.Decimal(14, 2)
+  status          ExpenseStatus @default(PENDING)
+  reimbursable    Boolean       @default(false)
+  attendees       Json?
+  noReceipt       Boolean       @default(false)
+  missingReceiptReason String?
+  receiptUrl      String?
+  receiptFileName String?
+  receiptFileSizeBytes Int?
+  receiptCaptureMethod String?
+  receiptLat      Float?
+  receiptLng      Float?
+  receiptCapturedAt DateTime?
+  notes           String?
+  flaggedAt       DateTime?
+  approvedAt      DateTime?
+  archivedAt      DateTime?
+  customerId      String
+  customer        Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  locationId      String?
+  location        Location?     @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  repId           String?
+  rep             User?         @relation("ExpenseRep", fields: [repId], references: [id], onDelete: SetNull)
+  salesActivityId String?
+  salesActivity   SalesActivity? @relation(fields: [salesActivityId], references: [id], onDelete: SetNull)
+  reconExceptions CardReconException[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([customerId])
+  @@index([locationId])
+  @@index([repId])
+  @@index([salesActivityId])
+  @@index([expenseDate])
+  @@index([status])
+  @@index([archivedAt])
+}
+
+// ─── Card Reconciliation ─────────────────────────────────────────────────────
+
+enum CardReconStatus {
+  OPEN
+  FINISHED
+}
+
+enum CardExceptionKind {
+  MATCHED
+  MISSING_RECEIPT
+  UNMATCHED_CHARGE
+  UNMATCHED_EXPENSE
+}
+
+enum CardExceptionResolution {
+  NONE
+  RECEIPT_REQUESTED
+  WAIVED
+  EXPENSE_LOGGED
+  PERSONAL
+  DISPUTED
+  DELETED
+  MATCHED
+}
+
+enum CardExceptionSource {
+  STATEMENT
+  EXPENSE
+}
+
+model PaymentCard {
+  id            String    @id @default(uuid())
+  brand         String
+  last4         String
+  label         String
+  isCompanyCard Boolean   @default(true)
+  active        Boolean   @default(true)
+  archivedAt    DateTime?
+  ownerId       String?
+  owner         User?     @relation("PaymentCardOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  reconciliations CardReconciliation[]
+
+  @@index([active])
+  @@index([ownerId])
+  @@index([archivedAt])
+}
+
+model CardReconciliation {
+  id              String          @id @default(uuid())
+  code            String          @unique
+  cardLabel       String
+  statementLabel  String
+  periodStart     DateTime
+  periodEnd       DateTime
+  statementTotal  Decimal         @default(0) @db.Decimal(14, 2)
+  status          CardReconStatus @default(OPEN)
+  forceFinished   Boolean         @default(false)
+  finishedAt      DateTime?
+  customerId      String
+  customer        Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  paymentCardId   String?
+  paymentCard     PaymentCard?    @relation(fields: [paymentCardId], references: [id], onDelete: SetNull)
+  cardholderId    String?
+  cardholder      User?           @relation("CardReconCardholder", fields: [cardholderId], references: [id], onDelete: SetNull)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  exceptions      CardReconException[]
+  bonusDeductions BonusDeduction[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([periodStart])
+  @@index([cardholderId])
+  @@index([paymentCardId])
+}
+
+model CardReconException {
+  id                 String                   @id @default(uuid())
+  reconciliationId   String
+  reconciliation     CardReconciliation       @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+  kind               CardExceptionKind
+  source             CardExceptionSource      @default(EXPENSE)
+  exceptionDate      DateTime
+  merchant           String
+  amount             Decimal                  @db.Decimal(14, 2)
+  resolved           Boolean                  @default(false)
+  resolution         CardExceptionResolution  @default(NONE)
+  waiveReason        String?
+  receiptRequestedAt DateTime?
+  expenseId          String?
+  expense            Expense?                 @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  @@index([reconciliationId])
+  @@index([expenseId])
+  @@index([kind])
+  @@index([resolved])
+  @@index([source])
+}
+
+model BonusDeduction {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation("BonusDeductionUser", fields: [userId], references: [id], onDelete: Cascade)
+  amount           Decimal  @db.Decimal(14, 2)
+  quarterLabel     String
+  reason           String
+  reconciliationId String?
+  reconciliation   CardReconciliation? @relation(fields: [reconciliationId], references: [id], onDelete: SetNull)
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+  @@index([reconciliationId])
 }
 
 // ─── Quote ───────────────────────────────────────────────────────────────────
@@ -573,6 +799,10 @@ model Quote {
   scheduledMessage String?
   terms          String?
   notes          String?
+  convertedAt    DateTime?
+  conversionOverrideReason String?
+  convertedById  String?
+  convertedBy    User?               @relation("QuoteConvertedBy", fields: [convertedById], references: [id], onDelete: SetNull)
   archivedAt     DateTime?
   customerId     String
   customer       Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
@@ -651,6 +881,12 @@ model WorkOrder {
   scheduledStart String?
   scheduledEnd   String?
   notes          String?
+  amount         Decimal?        @db.Decimal(14, 2)
+  lineItemsSnapshot Json?
+  crewAssignedAt DateTime?
+  equipmentAssignedAt DateTime?
+  formsCompletedAt DateTime?
+  eligibilityVerifiedAt DateTime?
   customerId     String
   customer       Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
   locationId     String?

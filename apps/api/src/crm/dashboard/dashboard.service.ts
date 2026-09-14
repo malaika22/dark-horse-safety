@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   AccountStatus,
   CrmRecordStatus,
+  ExpenseStatus,
   QuoteApprovalStatus,
   SalesActivityType,
 } from '@prisma/client';
@@ -666,32 +667,36 @@ export class DashboardService {
         orderBy: { name: 'asc' },
         take: 25,
       }),
-      this.prisma.eodReport.aggregate({
+      this.prisma.expense.aggregate({
         where: {
           repId: userId,
-          reportDate: { gte: from, lte: to },
+          archivedAt: null,
+          expenseDate: { gte: from, lte: to },
           status: {
-            in: [CrmRecordStatus.SUBMITTED, CrmRecordStatus.COMPLETE],
+            in: [
+              ExpenseStatus.APPROVED,
+              ExpenseStatus.PENDING,
+              ExpenseStatus.NEEDS_REVIEW,
+              ExpenseStatus.MISSING_RECEIPT,
+            ],
           },
         },
-        _sum: { closedToday: true },
+        _sum: { amount: true },
       }),
-      this.prisma.eodReport.count({
+      this.prisma.expense.count({
         where: {
           repId: userId,
-          status: {
-            in: [CrmRecordStatus.PENDING, CrmRecordStatus.DRAFT],
-          },
+          archivedAt: null,
+          expenseDate: { gte: from, lte: to },
+          status: ExpenseStatus.PENDING,
         },
       }),
-      this.prisma.eodReport.count({
+      this.prisma.expense.count({
         where: {
           repId: userId,
-          reportDate: { gte: from, lte: to },
-          status: {
-            in: [CrmRecordStatus.SUBMITTED, CrmRecordStatus.COMPLETE],
-          },
-          OR: [{ notes: null }, { notes: '' }],
+          archivedAt: null,
+          expenseDate: { gte: from, lte: to },
+          status: ExpenseStatus.MISSING_RECEIPT,
         },
       }),
     ]);
@@ -776,9 +781,9 @@ export class DashboardService {
         })),
         expenses: {
           submittedThisCycle:
-            expenseClosedAgg._sum.closedToday == null
+            expenseClosedAgg._sum.amount == null
               ? 0
-              : Number(expenseClosedAgg._sum.closedToday.toString()),
+              : Number(expenseClosedAgg._sum.amount.toString()),
           pendingApproval: expensePending,
           missingReceipts: expenseMissingNotes,
         },

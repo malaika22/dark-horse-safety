@@ -18,6 +18,7 @@ import {
   validateToken,
 } from "@/lib/auth-validation";
 import { toastApiError, toastSuccess } from "@/lib/toast";
+import { seedSessionUser } from "@/features/app-shell/session-context";
 
 type FieldErrors = {
   password?: string;
@@ -91,8 +92,9 @@ export function AcceptInviteForm({
         confirmPassword: confirm,
       });
       setAccessToken(res.data.tokens.accessToken);
+      seedSessionUser(res.data.user);
       toastSuccess("Account activated successfully");
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } catch (err) {
       if (err instanceof ApiError && err.code === "INVITE_EXPIRED") {
         toastApiError(err);

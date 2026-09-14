@@ -1,11 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsOptional,
   IsString,
   IsUUID,
+  ValidateNested,
 } from 'class-validator';
 import { SalesActivityType } from '@prisma/client';
 import { ListQueryDto } from '../../../common/dto/list-query.dto';
@@ -47,6 +50,21 @@ export class SalesActivityListQueryDto extends ListQueryDto {
   to?: string;
 }
 
+export class SalesActivityAttendeeDto {
+  @ApiProperty()
+  @IsString()
+  id!: string;
+
+  @ApiProperty()
+  @IsString()
+  label!: string;
+
+  @ApiPropertyOptional({ enum: ['contact', 'user'] })
+  @IsOptional()
+  @IsString()
+  kind?: string;
+}
+
 export class CreateSalesActivityDto {
   @ApiPropertyOptional({ enum: SalesActivityType })
   @IsOptional()
@@ -80,6 +98,25 @@ export class CreateSalesActivityDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  createFollowUpTask?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  logExpense?: boolean;
+
+  @ApiPropertyOptional({ type: [SalesActivityAttendeeDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SalesActivityAttendeeDto)
+  attendees?: SalesActivityAttendeeDto[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsUUID()
   customerId?: string;
 
@@ -87,6 +124,11 @@ export class CreateSalesActivityDto {
   @IsOptional()
   @IsUUID()
   contactId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

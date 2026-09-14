@@ -23,6 +23,7 @@ import {
   validateLoginPassword,
 } from "@/lib/auth-validation";
 import { toastApiError, toastSuccess } from "@/lib/toast";
+import { seedSessionUser } from "@/features/app-shell/session-context";
 
 type FieldErrors = {
   email?: string;
@@ -81,8 +82,9 @@ export function LoginForm() {
         password,
       });
       setAccessToken(res.data.tokens.accessToken);
+      seedSessionUser(res.data.user);
       toastSuccess("Signed in successfully");
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === "ACCOUNT_LOCKED" || err.status === 423) {
@@ -116,8 +118,9 @@ export function LoginForm() {
       const code = await requestGoogleAuthCode();
       const res = await api.loginWithGoogle({ code });
       setAccessToken(res.data.tokens.accessToken);
+      seedSessionUser(res.data.user);
       toastSuccess("Signed in successfully");
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } catch (err) {
       if (err instanceof Error) {
         toastApiError(err);

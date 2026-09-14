@@ -15,6 +15,7 @@ import {
   BulkRequirementIdsDto,
   CreateRequirementDto,
   RequirementListQueryDto,
+  RequirementPreviewQueryDto,
   UpdateRequirementDto,
 } from './dto/requirement.dto';
 import { RequirementsService } from './requirements.service';
@@ -42,6 +43,14 @@ export class RequirementsController {
   @ApiOperation({ summary: 'Export requirements CSV or PDF' })
   export(@Query() query: ExportQueryDto & RequirementListQueryDto) {
     return this.requirements.exportCsv(query);
+  }
+
+  @Get('preview')
+  @ApiOperation({
+    summary: 'Add Requirement — checked-on-save rules + technician impact',
+  })
+  preview(@Query() query: RequirementPreviewQueryDto) {
+    return this.requirements.preview(query);
   }
 
   @Get('affected-summary')

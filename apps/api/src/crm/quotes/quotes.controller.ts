@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../../auth/guards/auth.guards';
 import { ExportQueryDto } from '../../common/dto/list-query.dto';
 import {
   AddQuoteAttachmentDto,
+  ConvertQuoteToWorkOrderDto,
   CreateQuoteDto,
   QuoteLineItemInputDto,
   QuoteListQueryDto,
@@ -22,6 +23,7 @@ import {
   UpdateQuoteLineItemDto,
 } from './dto/quote.dto';
 import { QuotesService } from './quotes.service';
+import { CurrentUser, type AuthUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('crm-quotes')
 @ApiBearerAuth('access-token')
@@ -112,8 +114,21 @@ export class QuotesController {
 
   @Post(':id/convert-to-work-order')
   @ApiOperation({ summary: 'Convert quote to work order' })
-  convertToWorkOrder(@Param('id') id: string) {
-    return this.quotes.convertToWorkOrder(id);
+  convertToWorkOrder(
+    @Param('id') id: string,
+    @Body() dto: ConvertQuoteToWorkOrderDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.quotes.convertToWorkOrder(id, dto, user);
+  }
+
+  @Get(':id/convert-eligibility')
+  @ApiOperation({ summary: 'Check quote → work order conversion eligibility' })
+  convertEligibility(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.quotes.convertEligibility(id, user);
   }
 
   @Get(':id/attachments')

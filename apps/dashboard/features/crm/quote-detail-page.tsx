@@ -14,6 +14,8 @@ import {
   downloadPdf,
   downloadXlsx,
   type CrmQuote,
+  type CrmQuoteConvertEligibility,
+  type CrmQuoteConvertResult,
 } from "@/lib/crm-api";
 import { toastApiError, toastSuccess, toastInfo } from "@/lib/toast";
 import { CrmDetailStateGate } from "@/features/crm/crm-states";
@@ -28,7 +30,11 @@ import {
 } from "@/features/app-shell/session-context";
 import { SendQuoteModal, type SendQuotePayload } from "./send-quote-modal";
 import {
+  CannotConvertQuoteModal,
+  ConversionFailedModal,
+  ConvertQuoteToWorkOrderModal,
   type CompareVersionRow,
+  type ConvertQuotePayload,
   MarkAsAcceptedModal,
   type MarkAcceptedPayload,
   QuoteCompareVersionsModal,
@@ -39,6 +45,23 @@ import {
   type QuoteVersionListItem,
   WorkOrderCreatedModal,
 } from "./quote-flow-modals";
+import { ApiError } from "@dark-horse-safety/api-client";
+import { useCrmLookups, lookupOptions } from "@/lib/use-crm-lookups";
+
+function mergeJobTypeOptions(
+  primary: { value: string; label: string }[],
+  fallback: { value: string; label: string }[],
+) {
+  const seen = new Set<string>();
+  const out: { value: string; label: string }[] = [];
+  for (const o of [...primary, ...fallback]) {
+    const key = o.value.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ value: o.value, label: o.label || o.value });
+  }
+  return out;
+}
 
 function shortName(full?: string | null) {
   if (!full?.trim()) return "—";
@@ -378,6 +401,8 @@ type LineRow = NonNullable<CrmQuote["lineItems"]>[number];
 export function QuoteDetailPage({ quoteId }: { quoteId: string }) {
   const router = useRouter();
   const { user } = useSession();
+  const { lookups } = useCrmLookups({ includeLocations: false });
+  const lookupJobTypes = lookupOptions(lookups, "jobTypes");
   const [quote, setQuote] = React.useState<CrmQuote | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -407,14 +432,26 @@ export function QuoteDetailPage({ quoteId }: { quoteId: string }) {
   }>({ leftLabel: "V1", rightLabel: "V2", rows: [] });
 
   const [woOpen, setWoOpen] = React.useState(false);
-  const [woMeta, setWoMeta] = React.useState<{
-    workOrderCode: string;
-    workOrderId?: string;
-    customer: string;
-    value: string;
-    scheduled: string;
-    createdBy: string;
-  } | null>(null);
+  const [woResult, setWoResult] = React.useState<CrmQuoteConvertResult | null>(
+    null,
+  );
+  const [convertOpen, setConvertOpen] = React.useState(false);
+  const [cannotOpen, setCannotOpen] = React.useState(false);
+  const [failedOpen, setFailedOpen] = React.useState(false);
+  const [failedReason, setFailedReason] = React.useState("");
+  const [eligibility, setEligibility] =
+    React.useState<CrmQuoteConvertEligibility | null>(null);
+  const [pendingOverrideReason, setPendingOverrideReason] = React.useState<
+    string | null
+  >(null);
+  const [lastConvertPayload, setLastConvertPayload] =
+    React.useState<ConvertQuotePayload | null>(null);
+  const [sitesLoading, setSitesLoading] = React.useState(false);
+  const [convertOptions, setConvertOptions] = React.useState<{
+    jobTypes: { value: string; label: string }[];
+    sites: { value: string; label: string }[];
+    defaultServiceDate: string;
+  }>({ jobTypes: [], sites: [], defaultServiceDate: "" });
 
   const [templateOpen, setTemplateOpen] = React.useState(false);
   const [importOpen, setImportOpen] = React.useState(false);
@@ -627,22 +664,83 @@ export function QuoteDetailPage({ quoteId }: { quoteId: string }) {
     }
   }
 
-  async function convertToWo() {
+  async function openConvertFlow() {
+    setPendingOverrideReason(null);
+    setFailedOpen(false);
+    setSitesLoading(true);
     try {
-      const res = await crmApi.convertQuoteToWorkOrder(quoteId);
-      const wo = res.data;
-      setWoMeta({
-        workOrderCode: wo.code ?? wo.workOrderNumber ?? "WO",
-        workOrderId: wo.id,
-        customer: quote?.customer?.name ?? "—",
-        value: money(quote?.amount),
-        scheduled: wo.serviceDate ? fmtDate(wo.serviceDate) : "—",
-        createdBy: shortName(sessionDisplayName(user)),
+      const elig = await crmApi.quoteConvertEligibility(quoteId);
+      setEligibility(elig.data);
+      setConvertOptions({
+        jobTypes: mergeJobTypeOptions(
+          elig.data.jobTypeOptions ?? [],
+          lookupJobTypes,
+        ),
+        sites: (elig.data.siteOptions ?? []).map((s) => ({
+          value: s.value,
+          label: s.label,
+        })),
+        defaultServiceDate: elig.data.defaultServiceDate ?? "",
       });
+      if (elig.data.alreadyConverted) {
+        toastInfo("This quote is already converted");
+        return;
+      }
+      if (!elig.data.canConvert) {
+        setCannotOpen(true);
+        return;
+      }
+      setConvertOpen(true);
+    } catch (err) {
+      toastApiError(err);
+    } finally {
+      setSitesLoading(false);
+    }
+  }
+
+  async function submitConvert(payload: ConvertQuotePayload) {
+    setLastConvertPayload(payload);
+    try {
+      const res = await crmApi.convertQuoteToWorkOrder(quoteId, {
+        ...payload,
+        ...(pendingOverrideReason
+          ? { overrideReason: pendingOverrideReason }
+          : {}),
+      });
+      setPendingOverrideReason(null);
+      setConvertOpen(false);
+      setCannotOpen(false);
+      setFailedOpen(false);
+      setWoResult(res.data);
       setWoOpen(true);
       setReloadKey((k) => k + 1);
     } catch (err) {
-      toastApiError(err);
+      setConvertOpen(false);
+      if (err instanceof ApiError && err.code === "CONVERT_BLOCKED") {
+        try {
+          const elig = await crmApi.quoteConvertEligibility(quoteId);
+          setEligibility(elig.data);
+          setConvertOptions({
+            jobTypes: mergeJobTypeOptions(
+              elig.data.jobTypeOptions ?? [],
+              lookupJobTypes,
+            ),
+            sites: (elig.data.siteOptions ?? []).map((s) => ({
+              value: s.value,
+              label: s.label,
+            })),
+            defaultServiceDate: elig.data.defaultServiceDate ?? "",
+          });
+        } catch {
+          /* keep prior */
+        }
+        setCannotOpen(true);
+        return;
+      }
+      setFailedReason(
+        err instanceof Error ? err.message : "Conversion failed",
+      );
+      setFailedOpen(true);
     }
   }
 
@@ -1046,7 +1144,7 @@ ${ownerName !== "—" ? ownerName : sessionDisplayName(user)} · Dark Horse Safe
               {
                 id: "convert",
                 label: "Convert To Work Order",
-                onSelect: () => void convertToWo(),
+                onSelect: () => void openConvertFlow(),
               },
               {
                 id: "delete",
@@ -1526,20 +1624,63 @@ ${ownerName !== "—" ? ownerName : sessionDisplayName(user)} · Dark Horse Safe
         }}
       />
 
+      <ConvertQuoteToWorkOrderModal
+        open={convertOpen}
+        onClose={() => {
+          setConvertOpen(false);
+          setPendingOverrideReason(null);
+        }}
+        onConvert={submitConvert}
+        quoteNumber={quote.quoteNumber}
+        customerName={quote.customer?.name ?? "—"}
+        amount={Number(quote.amount) || 0}
+        jobTypeOptions={convertOptions.jobTypes}
+        siteOptions={convertOptions.sites}
+        sitesLoading={sitesLoading}
+        defaultJobType={convertOptions.jobTypes[0]?.value ?? ""}
+        defaultSiteId={convertOptions.sites[0]?.value ?? ""}
+        defaultServiceDate={convertOptions.defaultServiceDate}
+      />
+
+      <CannotConvertQuoteModal
+        open={cannotOpen}
+        onClose={() => setCannotOpen(false)}
+        eligibility={eligibility}
+        onViewCustomer={() => {
+          const cid = quote.customer?.id ?? eligibility?.customer?.id;
+          if (cid) router.push(`/crm/customers/${cid}`);
+        }}
+        onOverride={async (reason) => {
+          setPendingOverrideReason(reason);
+          setCannotOpen(false);
+          setConvertOpen(true);
+        }}
+      />
+
+      <ConversionFailedModal
+        open={failedOpen}
+        onClose={() => setFailedOpen(false)}
+        quoteNumber={quote.quoteNumber}
+        customerName={quote.customer?.name ?? "—"}
+        reason={failedReason}
+        onRetry={() => {
+          setFailedOpen(false);
+          if (lastConvertPayload) {
+            void submitConvert(lastConvertPayload);
+          } else {
+            void openConvertFlow();
+          }
+        }}
+      />
+
       <WorkOrderCreatedModal
-        open={woOpen && Boolean(woMeta)}
+        open={woOpen && Boolean(woResult)}
         onClose={() => {
           setWoOpen(false);
-          setWoMeta(null);
+          setWoResult(null);
         }}
-        quoteNumber={quote.quoteNumber}
-        workOrderCode={woMeta?.workOrderCode ?? "—"}
-        customer={woMeta?.customer ?? "—"}
-        value={woMeta?.value ?? "—"}
-        scheduled={woMeta?.scheduled ?? "—"}
-        createdBy={woMeta?.createdBy ?? "—"}
+        result={woResult}
         quoteId={quote.id}
-        workOrderId={woMeta?.workOrderId}
       />
 
       <CrmPickModal

@@ -27,6 +27,7 @@ export function CrmFormPageShell({
   topTrailing,
   showTopCancel = true,
   sections,
+  preFooter,
   onSave,
   onSaveAndAddAnother,
   submitting = false,
@@ -44,6 +45,8 @@ export function CrmFormPageShell({
   /** When false, hides the top ← Cancel row (footer Cancel remains). */
   showTopCancel?: boolean;
   sections: CrmFormSection[];
+  /** Optional content between sections and footer actions (e.g. Impact Preview). */
+  preFooter?: React.ReactNode;
   onSave?: () => void | Promise<void>;
   onSaveAndAddAnother?: () => void | Promise<void>;
   submitting?: boolean;
@@ -91,6 +94,8 @@ export function CrmFormPageShell({
           <div className="p-4">{section.content}</div>
         </DashboardPanel>
       ))}
+
+      {preFooter}
 
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Link href={cancelHref} className="inline-flex shrink-0">

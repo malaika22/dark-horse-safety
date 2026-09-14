@@ -74,13 +74,21 @@ function fileToPendingPhoto(file: File): Promise<PendingPhoto> {
     const reader = new FileReader();
     reader.onload = () => {
       const contentBase64 = String(reader.result ?? "");
+      if (file.type === "image/svg+xml") {
+        resolve({
+          name: file.name,
+          sizeLabel: formatBytes(file.size),
+          contentBase64,
+        });
+        return;
+      }
       const img = new Image();
       img.onload = () => {
         resolve({
           name: file.name,
           sizeLabel: formatBytes(file.size),
           contentBase64,
-          dimensionsLabel: `${img.width} × ${img.height}`,
+          dimensionsLabel: `${img.naturalWidth} x ${img.naturalHeight}`,
         });
       };
       img.onerror = () => {
@@ -95,6 +103,42 @@ function fileToPendingPhoto(file: File): Promise<PendingPhoto> {
     reader.onerror = () => reject(reader.error ?? new Error("Read failed"));
     reader.readAsDataURL(file);
   });
+}
+
+function photoMetaLabel(photo: PendingPhoto | null, fallback?: string | null) {
+  if (photo) {
+    return [photo.name.toUpperCase(), photo.dimensionsLabel, photo.sizeLabel]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  return fallback || "No photo uploaded";
+}
+
+function formatLastContacted(
+  at?: string | null,
+  activity?: {
+    type?: string | null;
+    rep?: { firstName?: string | null; lastName?: string | null; email?: string | null } | null;
+  } | null,
+) {
+  if (!at) return "—";
+  const date = new Date(at).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  if (!activity?.type) return date.toUpperCase();
+  const rep =
+    [activity.rep?.firstName, activity.rep?.lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim() ||
+    activity.rep?.email ||
+    "Rep";
+  const initial = rep.includes(" ")
+    ? `${rep.split(/\s+/)[0]![0]}. ${rep.split(/\s+/).slice(-1)[0]}`
+    : rep;
+  return `${date.toUpperCase()} · ${activity.type.replace(/_/g, " ")} LOGGED BY ${initial}`.toUpperCase();
 }
 
 function avatarUrlForContact(c: CrmContact): string | undefined {
@@ -140,9 +184,10 @@ export function ContactFormPage({
   ]);
   const [photo, setPhoto] = React.useState<PendingPhoto | null>(null);
   const [photoUrl, setPhotoUrl] = React.useState<string | null>(null);
+  const [photoDragOver, setPhotoDragOver] = React.useState(false);
+  const [cropOpen, setCropOpen] = React.useState(false);
   const [assignedRepId, setAssignedRepId] = React.useState("");
   const [locationLabel, setLocationLabel] = React.useState("");
-  const [repOptions, setRepOptions] = React.useState<DashboardSelectOption[]>([]);
   const [allowDuplicate, setAllowDuplicate] = React.useState(false);
   const [duplicateMatch, setDuplicateMatch] = React.useState<{
     id: string;
@@ -178,10 +223,7 @@ export function ContactFormPage({
     let cancelled = false;
     (async () => {
       try {
-        const [lookups, reps] = await Promise.all([
-          crmApi.lookups(),
-          crmApi.lookupReps(),
-        ]);
+        const lookups = await crmApi.lookups();
         if (cancelled) return;
         const d = lookups.data;
         if (d.contactRoles?.length) {
@@ -205,15 +247,6 @@ export function ContactFormPage({
             d.timezones.map((o) => ({ value: o.value, label: o.label })),
           );
         }
-        setRepOptions(
-          reps.data.map((r) => ({
-            value: r.id,
-            label:
-              [r.firstName, r.lastName].filter(Boolean).join(" ").trim() ||
-              r.email ||
-              r.id,
-          })),
-        );
       } catch {
         /* empty until retry */
       }
@@ -222,6 +255,54 @@ export function ContactFormPage({
       cancelled = true;
     };
   }, []);
+
+  async function applyPhotoFile(file: File) {
+    if (
+      !/^image\/(png|jpeg|svg\+xml)$/i.test(file.type) &&
+      !/\.(png|jpe?g|svg)$/i.test(file.name)
+    ) {
+      toastValidationError("Use PNG, JPG, or SVG.");
+      return;
+    }
+    const pending = await fileToPendingPhoto(file);
+    setPhoto(pending);
+    setPhotoUrl(pending.contentBase64);
+  }
+
+  function squareCropPhoto() {
+    const src = photo?.contentBase64 || photoUrl;
+    if (!src || src.startsWith("http")) {
+      toastValidationError("Upload a photo before cropping.");
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      const size = Math.min(img.naturalWidth, img.naturalHeight);
+      const sx = Math.floor((img.naturalWidth - size) / 2);
+      const sy = Math.floor((img.naturalHeight - size) / 2);
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size);
+      const dataUrl = canvas.toDataURL("image/png");
+      const name =
+        (photo?.name || "photo.png").replace(/\.\w+$/, "") + "-crop.png";
+      const sizeLabel = formatBytes(Math.round((dataUrl.length * 3) / 4));
+      setPhoto({
+        name,
+        sizeLabel,
+        contentBase64: dataUrl,
+        dimensionsLabel: `${size} x ${size}`,
+      });
+      setPhotoUrl(dataUrl);
+      setCropOpen(false);
+      toastSuccess("Photo cropped to square");
+    };
+    img.onerror = () => toastValidationError("Couldn't crop this image.");
+    img.src = src;
+  }
 
   React.useEffect(() => {
     if (!isEdit || !contactId) return;
@@ -247,13 +328,7 @@ export function ContactFormPage({
         setLocationLabel(c.locationLabel ?? "");
         setLinkedFromScan(c.linkedFromScan ?? "");
         setLastContacted(
-          c.lastActivityAt
-            ? new Date(c.lastActivityAt).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })
-            : "—",
+          formatLastContacted(c.lastActivityAt, c.activities?.[0] ?? null),
         );
         const links = (c.customers ?? []).map((row, i) => ({
           key: row.customerId || row.customer?.id || `edit-${i}`,
@@ -278,9 +353,12 @@ export function ContactFormPage({
   }, [isEdit, contactId]);
 
   React.useEffect(() => {
-    if (isEdit || !prefCustomerId) return;
+    if (!prefCustomerId) return;
     setCustomerLinks((prev) => {
       if (prev.some((r) => r.customerId === prefCustomerId)) return prev;
+      if (isEdit) {
+        return [...prev, newLinkRow(prefCustomerId, prev.every((r) => !r.isPrimary))];
+      }
       const [first, ...rest] = prev;
       if (!first) return [newLinkRow(prefCustomerId, true)];
       return [{ ...first, customerId: prefCustomerId, isPrimary: true }, ...rest];
@@ -423,12 +501,14 @@ export function ContactFormPage({
           setLinkedFromScan("");
           setPhoto(null);
           setPhotoUrl(null);
+          setCropOpen(false);
           setAssignedRepId("");
           setLocationLabel("");
           setDuplicateMatch(null);
           setAllowDuplicate(false);
           setCustomerLinks([newLinkRow("", true)]);
           setErrors({});
+          setLastContacted("—");
         } else {
           router.push(`/crm/contacts/${created.data.id}`);
         }
@@ -478,6 +558,18 @@ export function ContactFormPage({
     );
   }
 
+  function linkDuplicateToCustomer() {
+    if (!duplicateMatch) return;
+    const primaryCustomer =
+      customerLinks.find((r) => r.isPrimary)?.customerId ||
+      customerLinks.find((r) => r.customerId)?.customerId;
+    router.push(
+      primaryCustomer
+        ? `/crm/contacts/${duplicateMatch.id}/edit?customerId=${encodeURIComponent(primaryCustomer)}`
+        : `/crm/contacts/${duplicateMatch.id}/edit`,
+    );
+  }
+
   if (!ready) {
     return (
       <div className="bg-shell p-6 font-sans text-sm text-[#959597]">
@@ -486,11 +578,8 @@ export function ContactFormPage({
     );
   }
 
-  const photoMeta = photo
-    ? [photo.name, photo.dimensionsLabel, photo.sizeLabel]
-        .filter(Boolean)
-        .join(" · ")
-    : "No photo uploaded";
+  const photoMeta = photoMetaLabel(photo, photoUrl ? "Photo on file" : null);
+  const hasPhoto = Boolean(photo?.contentBase64 || photoUrl);
 
   return (
     <>
@@ -510,41 +599,74 @@ export function ContactFormPage({
           {
             title: "Upload Photo",
             content: (
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
-                <div className="flex flex-col items-center gap-2 sm:items-start">
-                  <div className="flex h-[88px] w-[88px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#3E3E3E] bg-[#1E3A5F] font-sans text-[22px] font-[590] text-[#7EB6FF]">
-                    {photo?.contentBase64 || photoUrl ? (
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-6">
+                <div className="flex shrink-0 flex-col items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setPhotoDragOver(true);
+                    }}
+                    onDragLeave={() => setPhotoDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setPhotoDragOver(false);
+                      const file = e.dataTransfer.files?.[0];
+                      if (!file) return;
+                      void applyPhotoFile(file).then(() => setCropOpen(true));
+                    }}
+                    className={cn(
+                      "flex h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-full border-2 transition-colors",
+                      photoDragOver
+                        ? "border-[#FDFDFF] bg-[#1E3A5F]"
+                        : "border-transparent bg-[#1E3A5F]",
+                    )}
+                    aria-label="Upload contact photo"
+                  >
+                    {hasPhoto ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={photo?.contentBase64 || assetUrl(photoUrl)}
+                        src={photo?.contentBase64 || assetUrl(photoUrl) || ""}
                         alt=""
                         className="h-full w-full object-cover"
                       />
                     ) : (
-                      initialsFromName(fullName || "PB")
+                      <span className="font-sans text-[22px] font-[590] tracking-[-0.02em] text-[#7EB6FF]">
+                        {initialsFromName(fullName || "PB")}
+                      </span>
                     )}
-                  </div>
+                  </button>
                   <button
                     type="button"
                     onClick={() => photoInputRef.current?.click()}
-                    className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597] hover:text-[#FDFDFF]"
+                    className="font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#959597] hover:text-[#FDFDFF]"
                   >
                     Click or drag to upload
                   </button>
                 </div>
+
                 <div className="min-w-0 flex-1 space-y-3">
-                  <p className="font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]">
+                  <p className="font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]">
                     {photoMeta}
                   </p>
                   <p className="max-w-xl font-sans text-[10px] uppercase leading-relaxed tracking-[-0.02em] text-[#6F6F72]">
-                    PNG, JPG or SVG — square works best.
+                    New uploads open a crop tool before saving. PNG, JPG or SVG
+                    — square works best.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <DashboardToolbarButton
-                      disabled={!photo}
+                      disabled={!hasPhoto}
+                      onClick={() => setCropOpen(true)}
+                    >
+                      Crop
+                    </DashboardToolbarButton>
+                    <DashboardToolbarButton
+                      disabled={!hasPhoto}
                       onClick={() => {
                         setPhoto(null);
                         setPhotoUrl(null);
+                        setCropOpen(false);
                       }}
                     >
                       Remove
@@ -553,21 +675,54 @@ export function ContactFormPage({
                       variant="primary"
                       onClick={() => photoInputRef.current?.click()}
                     >
-                      Replace Photo
+                      Replace Logo
                     </DashboardToolbarButton>
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/svg+xml"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!file) return;
+                        void applyPhotoFile(file).then(() => setCropOpen(true));
+                      }}
+                    />
                   </div>
-                  <input
-                    ref={photoInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/svg+xml"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = "";
-                      if (!file) return;
-                      void fileToPendingPhoto(file).then(setPhoto);
-                    }}
-                  />
+                  {cropOpen && hasPhoto ? (
+                    <div className="rounded-lg border border-[#2D2D30] bg-[#1A1A1A] p-3">
+                      <p className="mb-3 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+                        Crop to square center ·{" "}
+                        {photo?.dimensionsLabel || "image"}
+                      </p>
+                      <div className="mb-3 flex justify-center">
+                        <div className="h-28 w-28 overflow-hidden rounded-full border border-[#3E3E3E] bg-[#121212]">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={
+                              photo?.contentBase64 || assetUrl(photoUrl) || ""
+                            }
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <DashboardToolbarButton
+                          onClick={() => setCropOpen(false)}
+                        >
+                          Cancel
+                        </DashboardToolbarButton>
+                        <DashboardToolbarButton
+                          variant="primary"
+                          onClick={() => squareCropPhoto()}
+                        >
+                          Apply Crop
+                        </DashboardToolbarButton>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ),
@@ -617,19 +772,6 @@ export function ContactFormPage({
                       onChange={(e) => setLinkedIn(e.target.value)}
                       placeholder="linkedin.com/in/jwhitfield"
                       containerClassName="md:col-span-2"
-                    />
-                    <DashboardSelectField
-                      label="Assigned Rep"
-                      value={assignedRepId}
-                      onChange={(e) => setAssignedRepId(e.target.value)}
-                      options={repOptions}
-                      placeholder="Select rep"
-                    />
-                    <DashboardTextField
-                      label="Location / Region"
-                      value={locationLabel}
-                      onChange={(e) => setLocationLabel(e.target.value)}
-                      placeholder="Midland Basin"
                     />
                   </DashboardFormGrid>
                 </div>
@@ -694,11 +836,7 @@ export function ContactFormPage({
                         <div className="flex flex-wrap gap-2">
                           <DashboardToolbarButton
                             variant="primary"
-                            onClick={() =>
-                              router.push(
-                                `/crm/contacts/${duplicateMatch.id}/edit`,
-                              )
-                            }
+                            onClick={linkDuplicateToCustomer}
                           >
                             Link to This Customer Instead
                           </DashboardToolbarButton>
@@ -742,7 +880,7 @@ export function ContactFormPage({
                         value={lastContacted || "—"}
                         disabled
                       />
-                      <div className="flex h-10 items-center justify-between gap-4 md:col-span-2 md:mt-1">
+                      <div className="flex h-10 items-center gap-3 md:col-span-2 md:mt-1">
                         <span className="font-sans text-[12px] font-normal uppercase tracking-[-0.02em] text-[#E5484D]">
                           Do Not Contact?
                         </span>
@@ -753,15 +891,13 @@ export function ContactFormPage({
                           onClick={() => setDoNotContact(!doNotContact)}
                           className={cn(
                             "relative h-5 w-9 shrink-0 rounded-full transition-colors",
-                            doNotContact ? "bg-[#FDFDFF]" : "bg-[#3E3E3E]",
+                            doNotContact ? "bg-[#22C55E]" : "bg-[#3E3E3E]",
                           )}
                         >
                           <span
                             className={cn(
-                              "absolute top-0.5 left-0.5 h-4 w-4 rounded-full transition-transform",
-                              doNotContact
-                                ? "translate-x-4 bg-[#1A1A1A]"
-                                : "bg-[#959597]",
+                              "absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform",
+                              doNotContact && "translate-x-4",
                             )}
                           />
                         </button>
@@ -778,14 +914,11 @@ export function ContactFormPage({
                     <span className="font-sans text-[11px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[12px]">
                       Customers <span className="text-[#E5484D]">*</span>
                     </span>
-                    <div className="overflow-hidden rounded-lg border border-[#3E3E3E] bg-[#2A2A2A]">
-                      {customerLinks.map((row, index) => (
+                    <div className="space-y-2">
+                      {customerLinks.map((row) => (
                         <div
                           key={row.key}
-                          className={cn(
-                            "grid grid-cols-1 gap-2 p-2.5 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto_auto] sm:items-center sm:gap-3",
-                            index > 0 && "border-t border-[#3E3E3E]",
-                          )}
+                          className="grid grid-cols-1 gap-2 rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] p-2.5 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto_auto] sm:items-center sm:gap-3"
                         >
                           <DashboardSelectField
                             label=""

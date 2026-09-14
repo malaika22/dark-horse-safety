@@ -16,6 +16,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateFormRuleDto,
   FormRuleListQueryDto,
+  FormRulePreviewQueryDto,
   UpdateFormRuleDto,
 } from './dto/form-rule.dto';
 
@@ -327,22 +328,99 @@ export class FormRulesService {
     return { data: rule };
   }
 
+  async preview(query: FormRulePreviewQueryDto) {
+    if (!query.customerId?.trim()) {
+      return {
+        data: {
+          openWorkOrders: 0,
+          startedWorkOrders: 0,
+          customerName: '',
+          formTemplate: query.formTemplate ?? '',
+          showImpact: false,
+        },
+      };
+    }
+
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: query.customerId },
+      select: { name: true },
+    });
+
+    const openStatuses: CrmRecordStatus[] = [
+      CrmRecordStatus.OPEN,
+      CrmRecordStatus.IN_PROGRESS,
+      CrmRecordStatus.PENDING,
+      CrmRecordStatus.DRAFT,
+      CrmRecordStatus.ACTIVE,
+    ];
+    const startedStatuses: CrmRecordStatus[] = [
+      CrmRecordStatus.IN_PROGRESS,
+      CrmRecordStatus.ACTIVE,
+    ];
+
+    const whereBase: Prisma.WorkOrderWhereInput = {
+      customerId: query.customerId,
+      archivedAt: null,
+      status: { in: openStatuses },
+    };
+
+    const [openWorkOrders, startedWorkOrders] = await Promise.all([
+      this.prisma.workOrder.count({ where: whereBase }),
+      this.prisma.workOrder.count({
+        where: {
+          ...whereBase,
+          status: { in: startedStatuses },
+        },
+      }),
+    ]);
+
+    const showImpact =
+      Boolean(query.required) &&
+      Boolean(query.hardGate) &&
+      (query.rolloutMode ?? 'ALL') !== 'NEW_ONLY' &&
+      openWorkOrders > 0;
+
+    return {
+      data: {
+        openWorkOrders,
+        startedWorkOrders,
+        customerName: customer?.name ?? '',
+        formTemplate: query.formTemplate ?? '',
+        showImpact,
+      },
+    };
+  }
+
   async create(dto: CreateFormRuleDto) {
     const code = await this.codes.next('formRule');
+    const required = dto.required ?? true;
+    const hardGate = required ? (dto.hardGate ?? false) : false;
+    const blocksToggle = required ? (dto.blocksToggle ?? false) : false;
     const rule = await this.prisma.formRule.create({
       data: {
         code,
         customerId: dto.customerId,
         jobType: dto.jobType,
         formTemplate: dto.formTemplate,
-        required: dto.required ?? true,
-        hardGate: dto.hardGate ?? false,
-        blocksToggle: dto.blocksToggle ?? false,
-        due: dto.due,
+        required,
+        hardGate,
+        blocksToggle,
+        due: required ? dto.due : undefined,
         appliesFrom: dto.appliesFrom ? new Date(dto.appliesFrom) : undefined,
+        appliesToEnd: dto.appliesToEnd
+          ? new Date(dto.appliesToEnd)
+          : undefined,
         trigger: dto.trigger,
-        appliesTo: dto.appliesTo,
-        version: dto.version,
+        appliesTo: dto.appliesTo ?? dto.scope,
+        scope: dto.scope ?? dto.appliesTo,
+        version: dto.versionMode === 'ALWAYS_LATEST' ? null : dto.version,
+        versionMode: dto.versionMode ?? (dto.version ? 'PINNED' : 'ALWAYS_LATEST'),
+        overrideRoles:
+          dto.overrideRoles === undefined
+            ? undefined
+            : (dto.overrideRoles as Prisma.InputJsonValue),
+        requireOverrideReason: dto.requireOverrideReason ?? false,
+        rolloutMode: dto.rolloutMode ?? 'ALL',
         status: (dto.status as CrmRecordStatus) ?? CrmRecordStatus.ACTIVE,
         ownerId: dto.ownerId,
       },
@@ -352,6 +430,7 @@ export class FormRulesService {
 
   async update(id: string, dto: UpdateFormRuleDto) {
     await this.ensureExists(id);
+    const required = dto.required;
     const rule = await this.prisma.formRule.update({
       where: { id },
       data: {
@@ -363,19 +442,58 @@ export class FormRulesService {
           ? { formTemplate: dto.formTemplate }
           : {}),
         ...(dto.required !== undefined ? { required: dto.required } : {}),
-        ...(dto.hardGate !== undefined ? { hardGate: dto.hardGate } : {}),
+        ...(dto.hardGate !== undefined
+          ? {
+              hardGate:
+                required === false ? false : dto.hardGate,
+            }
+          : required === false
+            ? { hardGate: false }
+            : {}),
         ...(dto.blocksToggle !== undefined
-          ? { blocksToggle: dto.blocksToggle }
+          ? {
+              blocksToggle:
+                required === false ? false : dto.blocksToggle,
+            }
+          : required === false
+            ? { blocksToggle: false }
+            : {}),
+        ...(dto.due !== undefined
+          ? { due: required === false ? null : dto.due }
           : {}),
-        ...(dto.due !== undefined ? { due: dto.due } : {}),
         ...(dto.appliesFrom !== undefined
           ? {
               appliesFrom: dto.appliesFrom ? new Date(dto.appliesFrom) : null,
             }
           : {}),
+        ...(dto.appliesToEnd !== undefined
+          ? {
+              appliesToEnd: dto.appliesToEnd
+                ? new Date(dto.appliesToEnd)
+                : null,
+            }
+          : {}),
         ...(dto.trigger !== undefined ? { trigger: dto.trigger } : {}),
         ...(dto.appliesTo !== undefined ? { appliesTo: dto.appliesTo } : {}),
+        ...(dto.scope !== undefined
+          ? { scope: dto.scope, appliesTo: dto.scope }
+          : {}),
         ...(dto.version !== undefined ? { version: dto.version } : {}),
+        ...(dto.versionMode !== undefined
+          ? {
+              versionMode: dto.versionMode,
+              ...(dto.versionMode === 'ALWAYS_LATEST' ? { version: null } : {}),
+            }
+          : {}),
+        ...(dto.overrideRoles !== undefined
+          ? { overrideRoles: dto.overrideRoles as Prisma.InputJsonValue }
+          : {}),
+        ...(dto.requireOverrideReason !== undefined
+          ? { requireOverrideReason: dto.requireOverrideReason }
+          : {}),
+        ...(dto.rolloutMode !== undefined
+          ? { rolloutMode: dto.rolloutMode }
+          : {}),
         ...(dto.status !== undefined
           ? { status: dto.status as CrmRecordStatus }
           : {}),
@@ -422,9 +540,15 @@ export class FormRulesService {
         blocksToggle: existing.blocksToggle,
         due: existing.due,
         appliesFrom: existing.appliesFrom,
+        appliesToEnd: existing.appliesToEnd,
         trigger: existing.trigger,
         appliesTo: existing.appliesTo,
+        scope: existing.scope,
         version: existing.version,
+        versionMode: existing.versionMode,
+        overrideRoles: existing.overrideRoles ?? undefined,
+        requireOverrideReason: existing.requireOverrideReason,
+        rolloutMode: existing.rolloutMode,
         status: CrmRecordStatus.DRAFT,
         ownerId: existing.ownerId,
       },
@@ -452,9 +576,15 @@ export class FormRulesService {
         blocksToggle: existing.blocksToggle,
         due: existing.due,
         appliesFrom: existing.appliesFrom,
+        appliesToEnd: existing.appliesToEnd,
         trigger: existing.trigger,
         appliesTo: existing.appliesTo,
+        scope: existing.scope,
         version: existing.version,
+        versionMode: existing.versionMode,
+        overrideRoles: existing.overrideRoles ?? undefined,
+        requireOverrideReason: existing.requireOverrideReason,
+        rolloutMode: existing.rolloutMode,
         status: CrmRecordStatus.DRAFT,
         ownerId: existing.ownerId,
       },

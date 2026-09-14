@@ -13,6 +13,9 @@ export const CRM_CODE_PREFIX = {
   routeRule: 'RR',
   eodReport: 'EOD',
   salesActivity: 'SA',
+  expense: 'EXP',
+  cardReconciliation: 'CR',
+  paymentCard: 'CARD',
   quote: 'Q',
   workOrder: 'WO',
 } as const;
