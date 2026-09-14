@@ -13,6 +13,7 @@ import {
   paginate,
   parsePage,
 } from '../../common/utils/pagination.util';
+import { parseCrmRecordStatus } from '../../common/utils/crm-status.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateRequirementDto,
@@ -53,7 +54,8 @@ export class RequirementsService {
       and.push({
         enforcementLevel: query.enforcementLevel as EnforcementLevel,
       });
-    if (query.status) and.push({ status: query.status as CrmRecordStatus });
+    const status = parseCrmRecordStatus(query.status);
+    if (status) and.push({ status });
     if (query.q?.trim()) {
       const q = query.q.trim();
       and.push({

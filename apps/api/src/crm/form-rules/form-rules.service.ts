@@ -12,6 +12,7 @@ import {
   paginate,
   parsePage,
 } from '../../common/utils/pagination.util';
+import { parseCrmRecordStatus } from '../../common/utils/crm-status.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateFormRuleDto,
@@ -39,7 +40,8 @@ export class FormRulesService {
     const and: Prisma.FormRuleWhereInput[] = [];
     if (!query.includeArchived) and.push({ archivedAt: null });
     if (query.customerId) and.push({ customerId: query.customerId });
-    if (query.status) and.push({ status: query.status as CrmRecordStatus });
+    const status = parseCrmRecordStatus(query.status);
+    if (status) and.push({ status });
     if (query.formTemplate)
       and.push({ formTemplate: containsCi(query.formTemplate) });
     if (query.jobType) and.push({ jobType: containsCi(query.jobType) });

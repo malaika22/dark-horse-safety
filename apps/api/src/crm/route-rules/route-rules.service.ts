@@ -12,6 +12,7 @@ import {
   paginate,
   parsePage,
 } from '../../common/utils/pagination.util';
+import { parseCrmRecordStatus } from '../../common/utils/crm-status.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { openWorkOrderWhere } from '../common/open-jobs.util';
 import {
@@ -51,7 +52,8 @@ export class RouteRulesService {
     if (!query.includeArchived) and.push({ archivedAt: null });
     if (query.customerId) and.push({ customerId: query.customerId });
     if (query.locationId) and.push({ locationId: query.locationId });
-    if (query.status) and.push({ status: query.status as CrmRecordStatus });
+    const status = parseCrmRecordStatus(query.status);
+    if (status) and.push({ status });
     if (query.gpsRequired !== undefined)
       and.push({ gpsRequired: query.gpsRequired });
     if (query.q?.trim()) {

@@ -12,6 +12,7 @@ import {
   paginate,
   parsePage,
 } from '../../common/utils/pagination.util';
+import { parseCrmRecordStatus } from '../../common/utils/crm-status.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { endOfDay, startOfDay } from '../common/open-jobs.util';
 import {
@@ -48,7 +49,8 @@ export class EodReportsService {
   private where(query: EodReportListQueryDto): Prisma.EodReportWhereInput {
     const and: Prisma.EodReportWhereInput[] = [];
     if (query.repId) and.push({ repId: query.repId });
-    if (query.status) and.push({ status: query.status as CrmRecordStatus });
+    const status = parseCrmRecordStatus(query.status);
+    if (status) and.push({ status });
     if (query.dateFrom || query.dateTo) {
       and.push({
         reportDate: {

@@ -18,6 +18,7 @@ import {
   paginate,
   parsePage,
 } from '../../common/utils/pagination.util';
+import { parseCrmRecordStatus } from '../../common/utils/crm-status.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { ConvertQuoteToWorkOrderDto } from '../quotes/dto/quote.dto';
 import {
@@ -115,7 +116,8 @@ export class WorkOrdersService {
     if (query.customerId) and.push({ customerId: query.customerId });
     if (query.locationId) and.push({ locationId: query.locationId });
     if (query.quoteId) and.push({ quoteId: query.quoteId });
-    if (query.status) and.push({ status: query.status as CrmRecordStatus });
+    const status = parseCrmRecordStatus(query.status);
+    if (status) and.push({ status });
     if (query.q?.trim()) {
       const q = query.q.trim();
       and.push({

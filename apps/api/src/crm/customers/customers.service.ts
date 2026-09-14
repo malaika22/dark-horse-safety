@@ -18,6 +18,7 @@ import {
   paginate,
   parsePage,
 } from '../../common/utils/pagination.util';
+import { parseCrmRecordStatus } from '../../common/utils/crm-status.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { openWorkOrderWhere } from '../common/open-jobs.util';
 import {
@@ -53,7 +54,8 @@ export class CustomersService {
   private where(query: CustomerListQueryDto): Prisma.CustomerWhereInput {
     const and: Prisma.CustomerWhereInput[] = [];
     if (!query.includeArchived) and.push({ archivedAt: null });
-    if (query.status) and.push({ status: query.status as CrmRecordStatus });
+    const status = parseCrmRecordStatus(query.status);
+    if (status) and.push({ status });
     if (query.assignedRepId) and.push({ assignedRepId: query.assignedRepId });
     if (query.industry) and.push({ industry: containsCi(query.industry) });
     if (query.q?.trim()) {
@@ -263,7 +265,8 @@ export class CustomersService {
         code,
         name: dto.name.trim(),
         legalEntityName: dto.legalEntityName,
-        status: (dto.status as CrmRecordStatus) ?? CrmRecordStatus.ACTIVE,
+        status:
+          parseCrmRecordStatus(dto.status) ?? CrmRecordStatus.ACTIVE,
         assignedRepId: dto.assignedRepId,
         industry: dto.industry,
         website: dto.website,
@@ -312,7 +315,10 @@ export class CustomersService {
           ? { legalEntityName: dto.legalEntityName }
           : {}),
         ...(dto.status !== undefined
-          ? { status: dto.status as CrmRecordStatus }
+          ? {
+              status:
+                parseCrmRecordStatus(dto.status) ?? CrmRecordStatus.ACTIVE,
+            }
           : {}),
         ...(dto.assignedRepId !== undefined
           ? { assignedRepId: dto.assignedRepId }
@@ -408,7 +414,7 @@ export class CustomersService {
   async bulkUpdate(ids: string[], payload: BulkUpdatePayload) {
     const data: Prisma.CustomerUncheckedUpdateManyInput = {
       ...(payload.status !== undefined
-        ? { status: payload.status as CrmRecordStatus }
+        ? { status: parseCrmRecordStatus(payload.status) }
         : {}),
       ...(payload.assignedRepId !== undefined
         ? { assignedRepId: payload.assignedRepId }

@@ -12,6 +12,7 @@ import {
   paginate,
   parsePage,
 } from '../../common/utils/pagination.util';
+import { parseCrmRecordStatus } from '../../common/utils/crm-status.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateSalesActivityDto,
@@ -46,7 +47,8 @@ export class SalesActivitiesService {
     if (query.contactId) and.push({ contactId: query.contactId });
     if (query.repId) and.push({ repId: query.repId });
     if (query.type) and.push({ type: query.type });
-    if (query.status) and.push({ status: query.status as CrmRecordStatus });
+    const status = parseCrmRecordStatus(query.status);
+    if (status) and.push({ status });
     if (query.from || query.to) {
       const activityAt: Prisma.DateTimeFilter = {};
       if (query.from) {

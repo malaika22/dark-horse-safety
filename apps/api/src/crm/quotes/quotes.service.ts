@@ -15,6 +15,7 @@ import {
   paginate,
   parsePage,
 } from '../../common/utils/pagination.util';
+import { parseCrmRecordStatus } from '../../common/utils/crm-status.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
@@ -61,7 +62,8 @@ export class QuotesService {
     const and: Prisma.QuoteWhereInput[] = [{ archivedAt: null }];
     if (query.customerId) and.push({ customerId: query.customerId });
     if (query.ownerId) and.push({ ownerId: query.ownerId });
-    if (query.status) and.push({ status: query.status as CrmRecordStatus });
+    const status = parseCrmRecordStatus(query.status);
+    if (status) and.push({ status });
     if (query.hasPo === 'true' || query.hasPo === '1') {
       and.push({ hasPo: true });
     }

@@ -12,6 +12,7 @@ import {
   paginate,
   parsePage,
 } from '../../common/utils/pagination.util';
+import { parseCrmRecordStatus } from '../../common/utils/crm-status.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   ContactListQueryDto,
@@ -38,7 +39,8 @@ export class ContactsService {
   private where(query: ContactListQueryDto): Prisma.ContactWhereInput {
     const and: Prisma.ContactWhereInput[] = [];
     if (!query.includeArchived) and.push({ archivedAt: null });
-    if (query.status) and.push({ status: query.status as CrmRecordStatus });
+    const status = parseCrmRecordStatus(query.status);
+    if (status) and.push({ status });
     if (query.assignedRepId) and.push({ assignedRepId: query.assignedRepId });
     if (query.customerId) {
       and.push({
@@ -290,7 +292,8 @@ export class ContactsService {
         primaryCustomerId,
         assignedRepId: dto.assignedRepId,
         locationLabel: dto.locationLabel,
-        status: (dto.status as CrmRecordStatus) ?? CrmRecordStatus.ACTIVE,
+        status:
+          parseCrmRecordStatus(dto.status) ?? CrmRecordStatus.ACTIVE,
         ...(links.length
           ? {
               customers: {
@@ -375,7 +378,10 @@ export class ContactsService {
           ? { locationLabel: dto.locationLabel }
           : {}),
         ...(dto.status !== undefined
-          ? { status: dto.status as CrmRecordStatus }
+          ? {
+              status:
+                parseCrmRecordStatus(dto.status) ?? CrmRecordStatus.ACTIVE,
+            }
           : {}),
       },
       include: {

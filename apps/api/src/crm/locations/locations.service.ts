@@ -13,6 +13,7 @@ import {
   paginate,
   parsePage,
 } from '../../common/utils/pagination.util';
+import { parseCrmRecordStatus } from '../../common/utils/crm-status.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { openWorkOrderWhere } from '../common/open-jobs.util';
 import {
@@ -102,7 +103,8 @@ export class LocationsService {
     if (!query.includeArchived) and.push({ archivedAt: null });
     if (query.customerId) and.push({ customerId: query.customerId });
     if (query.county) and.push({ county: containsCi(query.county) });
-    if (query.status) and.push({ status: query.status as CrmRecordStatus });
+    const status = parseCrmRecordStatus(query.status);
+    if (status) and.push({ status });
     if (query.gpsRequired !== undefined)
       and.push({ gpsRequired: query.gpsRequired });
     if (query.q?.trim()) {
@@ -326,7 +328,8 @@ export class LocationsService {
         latitude: dto.latitude,
         longitude: dto.longitude,
         siteType: dto.siteType,
-        status: (dto.status as CrmRecordStatus) ?? CrmRecordStatus.ACTIVE,
+        status:
+          parseCrmRecordStatus(dto.status) ?? CrmRecordStatus.ACTIVE,
         accessNotes: dto.accessNotes,
         siteContact: dto.siteContact,
         siteContactId: dto.siteContactId,
@@ -397,7 +400,10 @@ export class LocationsService {
         ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),
         ...(dto.siteType !== undefined ? { siteType: dto.siteType } : {}),
         ...(dto.status !== undefined
-          ? { status: dto.status as CrmRecordStatus }
+          ? {
+              status:
+                parseCrmRecordStatus(dto.status) ?? CrmRecordStatus.ACTIVE,
+            }
           : {}),
         ...(dto.accessNotes !== undefined
           ? { accessNotes: dto.accessNotes }

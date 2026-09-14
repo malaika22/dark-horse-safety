@@ -12,6 +12,7 @@ import {
   paginate,
   parsePage,
 } from '../../common/utils/pagination.util';
+import { parseCrmRecordStatus } from '../../common/utils/crm-status.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreatePricingRuleDto,
@@ -71,7 +72,8 @@ export class PricingRulesService {
     if (query.serviceItem)
       and.push({ serviceItem: containsCi(query.serviceItem) });
     if (query.rateType) and.push({ rateType: containsCi(query.rateType) });
-    if (query.status) and.push({ status: query.status as CrmRecordStatus });
+    const status = parseCrmRecordStatus(query.status);
+    if (status) and.push({ status });
     if (query.effectiveFrom || query.effectiveTo) {
       const range: Prisma.DateTimeFilter = {};
       if (query.effectiveFrom) range.gte = new Date(query.effectiveFrom);
