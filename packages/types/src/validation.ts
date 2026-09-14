@@ -1,16 +1,17 @@
 export const AUTH_LIMITS = {
   emailMaxLength: 254,
-  passwordMinLength: 8,
+  passwordMinLength: 7,
   passwordMaxLength: 128,
   tokenMinLength: 32,
   tokenMaxLength: 128,
 } as const;
 
-export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Standard email shape: local@domain.tld */
+export const EMAIL_REGEX =
+  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
 
-/** Upper, lower, digit, special char, 8-128 chars */
-export const PASSWORD_REGEX =
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,128}$/;
+/** At least one letter + one number; 7–128 chars (alphanumeric required; specials allowed) */
+export const PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d).{7,128}$/;
 
 export const TOKEN_REGEX = /^[a-f0-9]{32,128}$/i;
 
@@ -18,10 +19,12 @@ export const VALIDATION_MESSAGES = {
   required: "This field can't be empty.",
   emailInvalid: "Enter a valid email address.",
   emailTooLong: "Email must be at most 254 characters.",
-  passwordTooShort: "Password must be at least 8 characters.",
+  passwordTooShort: "Password must be at least 7 characters.",
   passwordTooLong: "Password must be at most 128 characters.",
+  passwordNeedsLetter: "Password must include letters.",
+  passwordNeedsNumber: "Password must include a number.",
   passwordWeak:
-    "Password must include upper, lower, number, and special character.",
+    "Password must be at least 7 characters and include letters and numbers.",
   passwordMismatch: "Passwords do not match.",
   tokenMissing: "Link is missing or invalid.",
   tokenInvalid: "Link is missing or invalid.",
@@ -44,11 +47,7 @@ export function validateEmail(value: string): string | null {
 }
 
 export function validateLoginPassword(value: string): string | null {
-  if (!value) return VALIDATION_MESSAGES.required;
-  if (value.length > AUTH_LIMITS.passwordMaxLength) {
-    return VALIDATION_MESSAGES.passwordTooLong;
-  }
-  return null;
+  return validatePassword(value);
 }
 
 export function validatePassword(value: string): string | null {
@@ -59,7 +58,15 @@ export function validatePassword(value: string): string | null {
   if (value.length > AUTH_LIMITS.passwordMaxLength) {
     return VALIDATION_MESSAGES.passwordTooLong;
   }
-  if (!PASSWORD_REGEX.test(value)) return VALIDATION_MESSAGES.passwordWeak;
+  if (!/[A-Za-z]/.test(value)) {
+    return VALIDATION_MESSAGES.passwordNeedsLetter;
+  }
+  if (!/\d/.test(value)) {
+    return VALIDATION_MESSAGES.passwordNeedsNumber;
+  }
+  if (!PASSWORD_REGEX.test(value)) {
+    return VALIDATION_MESSAGES.passwordWeak;
+  }
   return null;
 }
 

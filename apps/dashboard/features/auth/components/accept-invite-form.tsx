@@ -13,11 +13,12 @@ import { api, setAccessToken } from "@/lib/api";
 import {
   firstFieldError,
   getApiFieldError,
-  mapApiValidationError,
   validatePassword,
   validatePasswordConfirm,
   validateToken,
 } from "@/lib/auth-validation";
+import { toastApiError, toastSuccess } from "@/lib/toast";
+import { seedSessionUser } from "@/features/app-shell/session-context";
 
 type FieldErrors = {
   password?: string;
@@ -48,7 +49,6 @@ export function AcceptInviteForm({
   const [password, setPassword] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
-  const [formError, setFormError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const tokenValidationError = validateToken(token);
 
@@ -67,7 +67,7 @@ export function AcceptInviteForm({
           router.replace("/invite/expired");
           return;
         }
-        setFormError(mapApiValidationError(err).message);
+        toastApiError(err);
       });
   }, [token, tokenValidationError, router]);
 
@@ -75,7 +75,6 @@ export function AcceptInviteForm({
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setFormError(null);
 
     const nextErrors: FieldErrors = {
       token: validateToken(token) ?? undefined,
@@ -93,9 +92,12 @@ export function AcceptInviteForm({
         confirmPassword: confirm,
       });
       setAccessToken(res.data.tokens.accessToken);
-      router.push("/dashboard");
+      seedSessionUser(res.data.user);
+      toastSuccess("Account activated successfully");
+      router.replace("/dashboard");
     } catch (err) {
       if (err instanceof ApiError && err.code === "INVITE_EXPIRED") {
+        toastApiError(err);
         router.push("/invite/expired");
         return;
       }
@@ -106,7 +108,7 @@ export function AcceptInviteForm({
           token: getApiFieldError(err.details, "inviteToken"),
         });
       }
-      setFormError(mapApiValidationError(err).message);
+      toastApiError(err);
     } finally {
       setLoading(false);
     }
@@ -119,9 +121,9 @@ export function AcceptInviteForm({
         titleClassName="whitespace-nowrap text-[clamp(16px,4.2vw,24px)]"
         description={`You've been invited by ${inviter} as ${role}. Set a password to activate your account.`}
       >
-        {tokenError || formError ? (
+        {tokenError ? (
           <p className="text-xs uppercase tracking-[0.08em] text-error">
-            {tokenError ?? formError}
+            {tokenError}
           </p>
         ) : null}
 

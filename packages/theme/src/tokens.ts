@@ -43,6 +43,14 @@ export const colors = {
 
   overlay: "rgba(0, 0, 0, 0.72)",
   mapRadius: "rgba(59, 130, 246, 0.35)",
+
+  /** Dashboard app shell */
+  shell: "#0C0C0C",
+  shellHeader: "#121212",
+  panel: "#1A1A1A",
+  panelInset: "#121212",
+  gold: "#C4A35A",
+  goldHover: "#D4B56A",
 } as const;
 
 export const radii = {

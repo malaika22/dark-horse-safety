@@ -14,11 +14,11 @@ import { api } from "@/lib/api";
 import {
   firstFieldError,
   getApiFieldError,
-  mapApiValidationError,
   validatePassword,
   validatePasswordConfirm,
   validateToken,
 } from "@/lib/auth-validation";
+import { toastApiError, toastSuccess } from "@/lib/toast";
 
 type FieldErrors = {
   password?: string;
@@ -34,14 +34,12 @@ export function SetNewPasswordForm() {
   const [password, setPassword] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
-  const [formError, setFormError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
   const tokenError = fieldErrors.token ?? validateToken(token) ?? undefined;
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setFormError(null);
 
     const nextErrors: FieldErrors = {
       token: validateToken(token) ?? undefined,
@@ -53,11 +51,12 @@ export function SetNewPasswordForm() {
 
     setLoading(true);
     try {
-      await api.resetPassword({
+      const res = await api.resetPassword({
         token,
         password,
         confirmPassword: confirm,
       });
+      toastSuccess(res.data.message || "Password updated successfully");
       router.push("/password-updated");
     } catch (err) {
       if (err instanceof ApiError && err.details) {
@@ -67,7 +66,7 @@ export function SetNewPasswordForm() {
           token: getApiFieldError(err.details, "token"),
         });
       }
-      setFormError(mapApiValidationError(err).message);
+      toastApiError(err);
     } finally {
       setLoading(false);
     }
@@ -87,9 +86,9 @@ export function SetNewPasswordForm() {
           </AuthFooter>
         }
       >
-        {tokenError || formError ? (
+        {tokenError ? (
           <p className="text-xs uppercase tracking-[0.08em] text-error">
-            {tokenError ?? formError}
+            {tokenError}
           </p>
         ) : null}
 

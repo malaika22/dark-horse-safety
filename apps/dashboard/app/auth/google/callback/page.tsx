@@ -4,6 +4,7 @@ import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthShell } from "@dark-horse-safety/ui";
 import { setAccessToken } from "@/lib/api";
+import { toastApiError, toastSuccess } from "@/lib/toast";
 
 function GoogleCallbackInner() {
   const router = useRouter();
@@ -13,10 +14,12 @@ function GoogleCallbackInner() {
     const token = params.get("accessToken");
     if (token) {
       setAccessToken(token);
+      toastSuccess("Signed in successfully");
       router.replace("/dashboard");
       return;
     }
-    router.replace("/?error=google");
+    toastApiError("Google sign-in failed. Try again.");
+    router.replace("/");
   }, [params, router]);
 
   return (

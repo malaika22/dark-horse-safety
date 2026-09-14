@@ -14,20 +14,18 @@ import { api } from "@/lib/api";
 import {
   firstFieldError,
   getApiFieldError,
-  mapApiValidationError,
   validateEmail,
 } from "@/lib/auth-validation";
+import { toastApiError, toastSuccess } from "@/lib/toast";
 
 export function ResetPasswordForm() {
   const router = useRouter();
   const [email, setEmail] = React.useState("");
   const [emailError, setEmailError] = React.useState<string | null>(null);
-  const [formError, setFormError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setFormError(null);
 
     const error = validateEmail(email);
     setEmailError(error);
@@ -35,7 +33,10 @@ export function ResetPasswordForm() {
 
     setLoading(true);
     try {
-      await api.forgotPassword({ email: email.trim() });
+      const res = await api.forgotPassword({ email: email.trim() });
+      toastSuccess(
+        res.data.message || "Password reset link sent. Check your inbox.",
+      );
       router.push(
         `/reset-password/check-inbox?email=${encodeURIComponent(email.trim())}`,
       );
@@ -43,7 +44,7 @@ export function ResetPasswordForm() {
       if (err instanceof ApiError && err.details) {
         setEmailError(getApiFieldError(err.details, "email") ?? null);
       }
-      setFormError(mapApiValidationError(err).message);
+      toastApiError(err);
     } finally {
       setLoading(false);
     }
@@ -65,8 +66,6 @@ export function ResetPasswordForm() {
           />
         }
       >
-        {formError ? <p className="text-xs uppercase tracking-[0.08em] text-error">{formError}</p> : null}
-
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <Input
             label="Email address"
@@ -77,7 +76,6 @@ export function ResetPasswordForm() {
             onChange={(e) => {
               setEmail(e.target.value);
               if (emailError) setEmailError(null);
-              if (formError) setFormError(null);
             }}
             error={emailError ?? undefined}
           />

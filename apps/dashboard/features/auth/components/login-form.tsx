@@ -19,31 +19,53 @@ import { requestGoogleAuthCode } from "@/lib/google-auth";
 import {
   firstFieldError,
   getApiFieldError,
-  mapApiValidationError,
   validateEmail,
   validateLoginPassword,
 } from "@/lib/auth-validation";
+import { toastApiError, toastSuccess } from "@/lib/toast";
+import { seedSessionUser } from "@/features/app-shell/session-context";
 
 type FieldErrors = {
   email?: string;
   password?: string;
 };
 
+function formatCredentialsError(err: ApiError) {
+  const left =
+    typeof err.attemptsLeft === "number" && Number.isFinite(err.attemptsLeft)
+      ? err.attemptsLeft
+      : null;
+
+  if (left === null) {
+    return err.message || "Incorrect email or password.";
+  }
+
+  // Prefer API message when it already includes the attempts count
+  if (/\battempts?\s+left\b/i.test(err.message)) {
+    return err.message;
+  }
+
+  if (left <= 0) {
+    return err.message || "Incorrect email or password.";
+  }
+
+  return `Incorrect email or password. ${left} attempt${
+    left === 1 ? "" : "s"
+  } left.`;
+}
+
 export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
-  const [attemptsLeft, setAttemptsLeft] = React.useState<number | null>(null);
-  const [showCredError, setShowCredError] = React.useState(false);
+  const [credError, setCredError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [googleLoading, setGoogleLoading] = React.useState(false);
-  const [formError, setFormError] = React.useState<string | null>(null);
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setShowCredError(false);
-    setFormError(null);
+    setCredError(null);
 
     const nextErrors: FieldErrors = {
       email: validateEmail(email) ?? undefined,
@@ -60,12 +82,14 @@ export function LoginForm() {
         password,
       });
       setAccessToken(res.data.tokens.accessToken);
-      router.push("/dashboard");
+      seedSessionUser(res.data.user);
+      toastSuccess("Signed in successfully");
+      router.replace("/dashboard");
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === "ACCOUNT_LOCKED" || err.status === 423) {
-          const minutes = err.lockDurationMinutes ?? 15;
-          router.push(`/account-locked?minutes=${minutes}`);
+          toastApiError(err);
+          router.push("/account-locked");
           return;
         }
         if (err.code === "VALIDATION_ERROR" && err.details) {
@@ -73,14 +97,14 @@ export function LoginForm() {
             email: getApiFieldError(err.details, "email"),
             password: getApiFieldError(err.details, "password"),
           });
-          setFormError(mapApiValidationError(err).message);
+          toastApiError(err);
           return;
         }
-        setAttemptsLeft(err.attemptsLeft ?? null);
-        setShowCredError(true);
-        setFormError(err.message);
+
+        const message = formatCredentialsError(err);
+        setCredError(message);
       } else {
-        setFormError("Unable to sign in. Try again.");
+        toastApiError(err, "Unable to sign in. Try again.");
       }
     } finally {
       setLoading(false);
@@ -88,21 +112,20 @@ export function LoginForm() {
   };
 
   const onGoogle = async () => {
-    setShowCredError(false);
-    setFormError(null);
+    setCredError(null);
     setGoogleLoading(true);
     try {
       const code = await requestGoogleAuthCode();
       const res = await api.loginWithGoogle({ code });
       setAccessToken(res.data.tokens.accessToken);
-      router.push("/dashboard");
+      seedSessionUser(res.data.user);
+      toastSuccess("Signed in successfully");
+      router.replace("/dashboard");
     } catch (err) {
-      if (err instanceof ApiError) {
-        setFormError(err.message);
-      } else if (err instanceof Error) {
-        setFormError(err.message);
+      if (err instanceof Error) {
+        toastApiError(err);
       } else {
-        setFormError("Google sign-in failed. Try again.");
+        toastApiError(err, "Google sign-in failed. Try again.");
       }
     } finally {
       setGoogleLoading(false);
@@ -115,27 +138,19 @@ export function LoginForm() {
         title="Login to Dark Horse Force"
         description="Please sign in to your account below."
       >
-        {showCredError ? (
-          <Alert>
-            Incorrect email or password
-            {attemptsLeft !== null
-              ? `. ${attemptsLeft} attempt${attemptsLeft === 1 ? "" : "s"} left.`
-              : "."}
-          </Alert>
-        ) : null}
-
-        {formError && !showCredError ? (
-          <Alert variant="error">{formError}</Alert>
-        ) : null}
+        {credError ? <Alert>{credError}</Alert> : null}
 
         <Button
           type="button"
           variant="secondary"
-          leftIcon={<GoogleGlyph />}
           onClick={onGoogle}
           disabled={loading || googleLoading}
+          className="justify-center"
         >
-          {googleLoading ? "Connecting…" : "Login with Google"}
+          <span className="auth-google-label inline-flex items-center justify-center gap-2">
+            <GoogleGlyph />
+            <span>{googleLoading ? "Connecting…" : "Login with Google"}</span>
+          </span>
         </Button>
 
         <Divider label="Or continue with" />

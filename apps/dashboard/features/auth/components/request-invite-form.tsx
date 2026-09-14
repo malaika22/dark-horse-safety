@@ -13,20 +13,18 @@ import { api } from "@/lib/api";
 import {
   firstFieldError,
   getApiFieldError,
-  mapApiValidationError,
   validateEmail,
 } from "@/lib/auth-validation";
+import { toastApiError, toastSuccess } from "@/lib/toast";
 
 export function RequestInviteForm() {
   const router = useRouter();
   const [email, setEmail] = React.useState("");
   const [emailError, setEmailError] = React.useState<string | null>(null);
-  const [formError, setFormError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setFormError(null);
 
     const error = validateEmail(email);
     setEmailError(error);
@@ -34,7 +32,10 @@ export function RequestInviteForm() {
 
     setLoading(true);
     try {
-      await api.resendInvite({ email: email.trim() });
+      const res = await api.resendInvite({ email: email.trim() });
+      toastSuccess(
+        res.data.message || "Invite resent. Check your email.",
+      );
       router.push(`/invite/resent?email=${encodeURIComponent(email.trim())}`);
     } catch (err) {
       if (err instanceof ApiError && err.details) {
@@ -42,10 +43,13 @@ export function RequestInviteForm() {
       }
 
       try {
-        await api.requestInvite({ email: email.trim() });
+        const res = await api.requestInvite({ email: email.trim() });
+        toastSuccess(
+          res.data.message || "Invite request submitted successfully.",
+        );
         router.push(`/invite/resent?email=${encodeURIComponent(email.trim())}`);
       } catch (fallbackErr) {
-        setFormError(mapApiValidationError(fallbackErr).message);
+        toastApiError(fallbackErr);
       }
     } finally {
       setLoading(false);
@@ -58,12 +62,6 @@ export function RequestInviteForm() {
         title="Request new invite"
         description="Enter your work email and your administrator will receive a resend request."
       >
-        {formError ? (
-          <p className="text-xs uppercase tracking-[0.08em] text-error">
-            {formError}
-          </p>
-        ) : null}
-
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <Input
             label="Email address"
@@ -74,7 +72,6 @@ export function RequestInviteForm() {
             onChange={(e) => {
               setEmail(e.target.value);
               if (emailError) setEmailError(null);
-              if (formError) setFormError(null);
             }}
             error={emailError ?? undefined}
           />

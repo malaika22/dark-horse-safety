@@ -17,115 +17,202 @@ function Svg({ children, className }: SvgProps) {
   );
 }
 
+export type NavIconName =
+  | "dashboard"
+  | "crm"
+  | "sales"
+  | "hr"
+  | "fleet"
+  | "operations"
+  | "safety"
+  | "report"
+  | "settings";
+
+/**
+ * Sidebar nav icons — one small hand-authored SVG set (18×18, 1.75px stroke)
+ * shared by every menu row, replacing the old per-item PNG assets in
+ * public/icons/menu/. Every icon in the sidebar reads from this file.
+ */
+const NAV_ICON_PATHS: Record<NavIconName, ReactNode> = {
+  dashboard: (
+    <>
+      <rect width="7" height="7" x="3" y="3" rx="1.5" stroke="currentColor" strokeWidth="1.75" />
+      <rect width="7" height="7" x="14" y="3" rx="1.5" stroke="currentColor" strokeWidth="1.75" />
+      <rect width="7" height="7" x="14" y="14" rx="1.5" stroke="currentColor" strokeWidth="1.75" />
+      <rect width="7" height="7" x="3" y="14" rx="1.5" stroke="currentColor" strokeWidth="1.75" />
+    </>
+  ),
+  crm: (
+    <>
+      {/* Briefcase + magnifying glass — Figma CRM / Accounts / Config */}
+      <rect
+        x="3"
+        y="8"
+        width="14"
+        height="11"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <path
+        d="M9 8V6.5A1.5 1.5 0 0110.5 5h3A1.5 1.5 0 0115 6.5V8"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+      <path
+        d="M3 12h14"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+      <circle
+        cx="17.5"
+        cy="17.5"
+        r="3.25"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <path
+        d="M19.8 19.8L22 22"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </>
+  ),
+  sales: (
+    <>
+      {/* Briefcase */}
+      <rect
+        x="3"
+        y="8"
+        width="14"
+        height="11"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <path
+        d="M9 8V6.5A1.5 1.5 0 0110.5 5h3A1.5 1.5 0 0115 6.5V8"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+      <path
+        d="M3 12h14"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+      {/* Magnifying glass overlay */}
+      <circle
+        cx="17.5"
+        cy="17.5"
+        r="3.25"
+        fill="#0D0D0D"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <path
+        d="M19.75 19.75L22 22"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </>
+  ),
+  hr: (
+    <>
+      <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.75" />
+      <path
+        d="M4 21v-1a8 8 0 0 1 16 0v1"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </>
+  ),
+  fleet: (
+    <>
+      <path
+        d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M15 18H9" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+      <path
+        d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="17" cy="18" r="2" stroke="currentColor" strokeWidth="1.75" />
+      <circle cx="7" cy="18" r="2" stroke="currentColor" strokeWidth="1.75" />
+    </>
+  ),
+  operations: (
+    <>
+      <path
+        d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <rect width="20" height="14" x="2" y="6" rx="2" stroke="currentColor" strokeWidth="1.75" />
+    </>
+  ),
+  safety: (
+    <path
+      d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  ),
+  report: (
+    <>
+      <path
+        d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M21.21 15.89A10 10 0 1 1 8 2.83"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </>
+  ),
+  settings: (
+    <>
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.75" />
+      <path
+        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </>
+  ),
+};
+
 export function NavIcon({
   name,
   className,
 }: {
-  name:
-    | "dashboard"
-    | "crm"
-    | "hr"
-    | "fleet"
-    | "operations"
-    | "safety"
-    | "report"
-    | "settings";
+  name: NavIconName;
   className?: string;
 }) {
-  switch (name) {
-    case "dashboard":
-      return (
-        <Svg className={className}>
-          <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.75" />
-          <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.75" />
-          <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.75" />
-          <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.75" />
-        </Svg>
-      );
-    case "crm":
-      return (
-        <Svg className={className}>
-          <path
-            d="M4 19V5M4 19h16M7 15l3-4 3 2 4-6"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </Svg>
-      );
-    case "hr":
-    case "operations":
-      return (
-        <Svg className={className}>
-          <path
-            d="M8 7V6a2 2 0 012-2h4a2 2 0 012 2v1M4 10h16v9a2 2 0 01-2 2H6a2 2 0 01-2-2v-9z"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinejoin="round"
-          />
-          <circle cx="15.5" cy="14.5" r="2.5" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M17.2 16.2L19 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </Svg>
-      );
-    case "fleet":
-      return (
-        <Svg className={className}>
-          <path
-            d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinejoin="round"
-          />
-        </Svg>
-      );
-    case "safety":
-      return (
-        <Svg className={className}>
-          <path
-            d="M9 5h6l1 2h3v12a2 2 0 01-2 2H7a2 2 0 01-2-2V7h3l1-2z"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M9 13l2 2 4-4"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </Svg>
-      );
-    case "report":
-      return (
-        <Svg className={className}>
-          <path
-            d="M8 4h7l3 3v13a1 1 0 01-1 1H8a1 1 0 01-1-1V5a1 1 0 011-1z"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinejoin="round"
-          />
-          <path d="M15 4v3h3M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </Svg>
-      );
-    case "settings":
-      return (
-        <Svg className={className}>
-          <path
-            d="M4 7h10M18 7h2M12 12h8M4 12h4M4 17h8M16 17h4"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-          />
-          <circle cx="16" cy="7" r="2" stroke="currentColor" strokeWidth="1.5" />
-          <circle cx="10" cy="12" r="2" stroke="currentColor" strokeWidth="1.5" />
-          <circle cx="14" cy="17" r="2" stroke="currentColor" strokeWidth="1.5" />
-        </Svg>
-      );
-    default:
-      return null;
-  }
+  return <Svg className={className}>{NAV_ICON_PATHS[name]}</Svg>;
 }
 
 export function ChevronIcon({
@@ -182,6 +269,21 @@ export function SyncIcon({ className }: { className?: string }) {
         d="M3 18v-4h4M21 6v4h-4"
         stroke="currentColor"
         strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function SettingsGearIcon({ className }: { className?: string }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden className={className}>
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+        stroke="currentColor"
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

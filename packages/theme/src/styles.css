@@ -3,6 +3,8 @@
  * Import in each app: @import "@dark-horse-safety/theme/styles.css";
  */
 
+@import "./fonts.css";
+
 :root {
   --dhs-background: #161618;
   --dhs-surface: #1c1c1e;
@@ -31,6 +33,7 @@
   /* Divider lines (login / auth) */
   --dhs-divider: #2d2d30;
   --dhs-divider-shadow: 0px -1px 0px 0px #000000;
+  --dhs-divider-inset: 16px;
 
   --dhs-success: #22c55e;
   --dhs-warning: #f59e0b;
@@ -40,16 +43,25 @@
   --dhs-overlay: rgba(0, 0, 0, 0.72);
   --dhs-map-radius: rgba(59, 130, 246, 0.35);
 
+  /* Dashboard shell / panels */
+  --dhs-shell: #0c0c0c;
+  --dhs-shell-header: #000000;
+  --dhs-panel: #1a1a1a;
+  --dhs-panel-inset: #121212;
+  --dhs-gold: #c4a35a;
+  --dhs-gold-hover: #d4b56a;
+
   --dhs-radius-sm: 6px;
   --dhs-radius-md: 8px;
   --dhs-radius-lg: 12px;
   --dhs-radius-xl: 16px;
 
-  --dhs-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text",
-    "SF Pro Display", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+  /* Self-hosted SF Pro Display first (loaded via fonts.css) */
+  --dhs-font-sans: "SF Pro Display", "SF Pro Text", -apple-system,
+    BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial,
     sans-serif;
-  --dhs-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display",
-    "SF Pro Text", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+  --dhs-font-display: "SF Pro Display", "SF Pro Text", -apple-system,
+    BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial,
     sans-serif;
 
   color-scheme: dark;
@@ -62,6 +74,10 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--dhs-font-sans);
 }
 
 /* Interactive controls — pointer everywhere */
@@ -117,6 +133,13 @@ input:disabled {
   --color-overlay: var(--dhs-overlay);
   --color-map-radius: var(--dhs-map-radius);
 
+  --color-shell: var(--dhs-shell);
+  --color-shell-header: var(--dhs-shell-header);
+  --color-panel: var(--dhs-panel);
+  --color-panel-inset: var(--dhs-panel-inset);
+  --color-gold: var(--dhs-gold);
+  --color-gold-hover: var(--dhs-gold-hover);
+
   --radius-sm: var(--dhs-radius-sm);
   --radius-md: var(--dhs-radius-md);
   --radius-lg: var(--dhs-radius-lg);
@@ -165,6 +188,12 @@ input:disabled {
   background-origin: border-box;
   background-clip: padding-box, border-box;
   box-shadow: var(--dhs-btn-primary-shadow);
+  font-weight: 510;
+  font-size: 12px;
+  line-height: 100%;
+  letter-spacing: -0.2px;
+  text-transform: uppercase;
+  vertical-align: middle;
 
   &:hover:not(:disabled) {
     filter: brightness(0.97);
@@ -231,6 +260,16 @@ input:disabled {
     color: var(--dhs-foreground-bright);
     font-weight: 400;
   }
+}
+
+/* Login with Google — icon + label together */
+@utility auth-google-label {
+  font-family: "SF Pro Display", "SF Pro Text", var(--dhs-font-sans);
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 100%;
+  letter-spacing: -0.2px;
+  text-transform: none;
 }
 
 /* Check inbox — description + email highlight */
@@ -394,6 +433,232 @@ input:disabled {
   border: none;
   border-top: 1px solid var(--dhs-divider);
   box-shadow: var(--dhs-divider-shadow);
+}
+
+/* Inset horizontal divider — short gap from left/right edges */
+@utility divider-line-inset {
+  height: 0;
+  margin-inline: var(--dhs-divider-inset);
+  border: none;
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+}
+
+/* Full-width horizontal rule — same token as KPI card dividers */
+@utility divider-line-full {
+  height: 0;
+  border: none;
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+}
+
+/* List row bottom divider — #2D2D30 + hairline shadow */
+.divider-row {
+  position: relative;
+  isolation: isolate;
+}
+
+.divider-row:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  height: 0;
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+  pointer-events: none;
+}
+
+/* Section top divider */
+.divider-section-top {
+  position: relative;
+}
+
+.divider-section-top::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 0;
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+  pointer-events: none;
+}
+
+/* Shell edges — header bottom / sidebar right */
+.divider-edge-bottom {
+  position: relative;
+  border-bottom: none !important;
+}
+
+.divider-edge-bottom::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 0;
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+  pointer-events: none;
+}
+
+.divider-edge-right {
+  position: relative;
+  border-right: none !important;
+}
+
+.divider-edge-right::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: var(--dhs-divider);
+  box-shadow: 1px 0 0 0 #000000;
+  pointer-events: none;
+}
+
+/* Data table — same hairline H/V dividers as KPI stat rows */
+.dashboard-data-table th,
+.dashboard-data-table td {
+  position: relative;
+  border: none !important;
+}
+
+.dashboard-data-table tbody {
+  background: transparent;
+}
+
+/* Vertical — every cell except last column (KPI divider-edge-right) */
+.dashboard-data-table th:not(:last-child)::after,
+.dashboard-data-table td:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: var(--dhs-divider);
+  box-shadow: 1px 0 0 0 #000000;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Horizontal — header + every body row except last (KPI divider hairline) */
+.dashboard-data-table thead th::before,
+.dashboard-data-table tbody tr:not(:last-child) td::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 0;
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Payroll progress — filled segment (Figma green + inset shine) */
+@utility payroll-segment-filled {
+  background:
+    radial-gradient(
+      90.24% 88.18% at 8.54% 0%,
+      rgba(255, 255, 255, 0.1) 0%,
+      rgba(255, 255, 255, 0) 100%
+    ),
+    linear-gradient(0deg, #00be51, #00be51);
+  border: 0.5px solid #14ad55;
+  box-shadow:
+    2px 2px 2px 0px #ffffff2e inset,
+    -2px -1px 4px 0px #9d9d9d4d inset,
+    0px 4px 2.7px 0px #ffffff1c inset;
+}
+
+/* Payroll progress — second-last / current day segment */
+@utility payroll-segment-current {
+  background: #005d27;
+  border: 0.5px solid #00682c;
+  box-shadow: 2px 2px 2px 0px #3836362e inset;
+}
+
+/* Payroll progress — empty / last segments */
+@utility payroll-segment-empty {
+  background: #95959766;
+  border: 0.5px solid #5b5b5b;
+  box-shadow: 0px 2px 2.7px 0px #ffffff40 inset;
+}
+
+/* KPI stat rows — flush bands inside one panel; full-height verticals (no gap) */
+.dashboard-stat-row > * {
+  position: relative;
+}
+
+/* Hairline between top (5-col) and bottom (4-col wider) bands — no spacing gap */
+.dashboard-stat-row + .dashboard-stat-row {
+  border-top: 1px solid var(--dhs-divider);
+  box-shadow: var(--dhs-divider-shadow);
+}
+
+@media (max-width: 639px) {
+  .dashboard-stat-row > *:not(:last-child)::before {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 0;
+    border-top: 1px solid var(--dhs-divider);
+    box-shadow: var(--dhs-divider-shadow);
+    pointer-events: none;
+  }
+}
+
+@media (min-width: 640px) and (max-width: 1279px) {
+  .dashboard-stat-row > *:not(:nth-child(2n)):not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: var(--dhs-divider);
+    box-shadow: 1px 0 0 0 #000000;
+    pointer-events: none;
+  }
+
+  /* Bottom hairline under every cell except the last visual row (last 1–2 cells) */
+  .dashboard-stat-row > *:not(:nth-last-child(-n + 2))::before {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 0;
+    border-top: 1px solid var(--dhs-divider);
+    box-shadow: var(--dhs-divider-shadow);
+    pointer-events: none;
+  }
+}
+
+@media (min-width: 1280px) {
+  /* Full-height verticals — every cell except last in the band (no inset gap) */
+  .dashboard-stat-row > *:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: var(--dhs-divider);
+    box-shadow: 1px 0 0 0 #000000;
+    pointer-events: none;
+  }
 }
 
 /* Scrollable but no visible scrollbar — auth shells */

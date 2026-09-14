@@ -12,12 +12,38 @@ import {
 
 @ValidatorConstraint({ name: 'IsStrongPassword', async: false })
 export class IsStrongPasswordConstraint implements ValidatorConstraintInterface {
+  private lastMessage: string = VALIDATION_MESSAGES.passwordWeak;
+
   validate(value: unknown) {
-    return typeof value === 'string' && PASSWORD_REGEX.test(value);
+    if (typeof value !== 'string' || !value) {
+      this.lastMessage = VALIDATION_MESSAGES.required;
+      return false;
+    }
+    if (value.length < AUTH_LIMITS.passwordMinLength) {
+      this.lastMessage = VALIDATION_MESSAGES.passwordTooShort;
+      return false;
+    }
+    if (value.length > AUTH_LIMITS.passwordMaxLength) {
+      this.lastMessage = VALIDATION_MESSAGES.passwordTooLong;
+      return false;
+    }
+    if (!/[A-Za-z]/.test(value)) {
+      this.lastMessage = VALIDATION_MESSAGES.passwordNeedsLetter;
+      return false;
+    }
+    if (!/\d/.test(value)) {
+      this.lastMessage = VALIDATION_MESSAGES.passwordNeedsNumber;
+      return false;
+    }
+    if (!PASSWORD_REGEX.test(value)) {
+      this.lastMessage = VALIDATION_MESSAGES.passwordWeak;
+      return false;
+    }
+    return true;
   }
 
   defaultMessage() {
-    return VALIDATION_MESSAGES.passwordWeak;
+    return this.lastMessage;
   }
 }
 

@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+﻿import { CrmRepDashboardPage } from "@/features/crm/crm-rep-dashboard-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="CRM Hub" />;
+  return <CrmRepDashboardPage />;
 }

@@ -1,5 +1,10 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+﻿import { Suspense } from "react";
+import { WorkOrdersPage } from "@/features/operations/work-orders-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Work Order" />;
+  return (
+    <Suspense fallback={null}>
+      <WorkOrdersPage />
+    </Suspense>
+  );
 }

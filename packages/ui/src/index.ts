@@ -16,3 +16,4 @@ export { AuthFooter, type AuthFooterProps } from "./auth-footer";
 export { AuthCard, AuthShell, type AuthCardProps, type AuthShellProps } from "./auth-card";
 export { GoogleGlyph } from "./google-glyph";
 export { cn } from "./lib/cn";
+export * from "./dashboard";
