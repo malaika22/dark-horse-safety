@@ -86,11 +86,6 @@ export const APP_NAV: NavItem[] = [
         label: "NetSuite Item Mapping",
         href: "/crm/netsuite-item-mapping",
       },
-      {
-        id: "crm-ns-item-rate-mapping",
-        label: "Item Rate Mapping",
-        href: "/crm/item-rate-mapping",
-      },
     ],
   },
   {

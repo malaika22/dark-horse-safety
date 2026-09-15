@@ -83,11 +83,6 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
     pageTitle: "NetSuite Item Mapping",
   },
   {
-    path: "/crm/item-rate-mapping",
-    breadcrumb: "Configuration / Item Rate Mapping",
-    pageTitle: "Item Rate Mapping",
-  },
-  {
     path: "/crm/locations",
     breadcrumb: "Accounts / Locations / Wells",
     pageTitle: "Customer Sites",
