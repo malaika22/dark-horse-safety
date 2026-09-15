@@ -67,6 +67,8 @@ model User {
   quotesConverted     Quote[]              @relation("QuoteConvertedBy")
   quoteVersions       QuoteVersion[]       @relation("QuoteVersionAuthor")
   workOrdersOwned     WorkOrder[]          @relation("WorkOrderAssignedRep")
+  tasksAssigned       CrmTask[]            @relation("CrmTaskAssignee")
+  tasksCreated        CrmTask[]            @relation("CrmTaskCreator")
   savedViews          SavedView[]
   gpsFlags            GpsFlag[]            @relation("GpsFlagTechnician")
 }
@@ -138,6 +140,12 @@ enum SalesActivityType {
   OTHER
 }
 
+enum CrmTaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 enum ExpenseStatus {
   DRAFT
   PENDING
@@ -190,6 +198,10 @@ model Customer {
   taxId                String?
   pricingTier          String?
   netsuiteId           String?
+  netsuiteLastSyncAt   DateTime?
+  netsuiteLastResult   String?
+  netsuiteSyncError    String?
+  netsuiteAutoExport   Boolean         @default(true)
   isnId                String?
   veriforceId          String?
   msaOnFile            Boolean         @default(false)
@@ -222,6 +234,7 @@ model Customer {
   workOrders    WorkOrder[]
   activities    SalesActivity[]
   expenses      Expense[]
+  tasks         CrmTask[]
   cardReconciliations CardReconciliation[]
   documents     CrmDocument[]
   contactLinks  ContactCustomer[]
@@ -233,6 +246,20 @@ model Customer {
   @@index([archivedAt])
   @@index([parentCompanyId])
   @@index([customerType])
+  @@index([netsuiteId])
+}
+
+/** Local NetSuite customer catalog for name-based auto-match (until external connector exists). */
+model NetSuiteCustomerDirectory {
+  id           String   @id @default(cuid())
+  netsuiteId   String   @unique
+  name         String
+  legalName    String?
+  customerType String   @default("CUSTOMER")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([name])
 }
 
 // ─── Contact ─────────────────────────────────────────────────────────────────
@@ -586,6 +613,7 @@ model SalesActivity {
   outcome      String?
   duration     String?
   notes        String?
+  nextAction   String?
   followUpAt   DateTime?
   createFollowUpTask Boolean      @default(false)
   logExpense   Boolean            @default(false)
@@ -604,6 +632,7 @@ model SalesActivity {
   linkedQuoteId String?
   linkedQuote  Quote?             @relation(fields: [linkedQuoteId], references: [id], onDelete: SetNull)
   expenses     Expense[]
+  tasks        CrmTask[]
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 
@@ -613,6 +642,44 @@ model SalesActivity {
   @@index([repId])
   @@index([activityAt])
   @@index([type])
+}
+
+// ─── CRM Task (follow-ups from sales activities) ─────────────────────────────
+
+model CrmTask {
+  id                 String          @id @default(uuid())
+  code               String          @unique
+  title              String
+  taskType           String
+  priority           CrmTaskPriority @default(MEDIUM)
+  status             CrmRecordStatus @default(OPEN)
+  dueAt              DateTime?
+  reminder           String?
+  notes              String?
+  relatedLabel       String?
+  attachmentUrl      String?
+  attachmentFileName String?
+  archivedAt         DateTime?
+  salesActivityId    String?
+  salesActivity      SalesActivity?  @relation(fields: [salesActivityId], references: [id], onDelete: SetNull)
+  customerId         String?
+  customer           Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  quoteId            String?
+  quote              Quote?          @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  assigneeId         String?
+  assignee           User?           @relation("CrmTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdById        String?
+  createdBy          User?           @relation("CrmTaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([salesActivityId])
+  @@index([customerId])
+  @@index([quoteId])
+  @@index([assigneeId])
+  @@index([dueAt])
+  @@index([status])
+  @@index([archivedAt])
 }
 
 // ─── Expense ─────────────────────────────────────────────────────────────────
@@ -815,6 +882,7 @@ model Quote {
 
   lineItems   QuoteLineItem[]
   activities  SalesActivity[]
+  tasks       CrmTask[]
   workOrders  WorkOrder[]
   attachments QuoteAttachment[]
   versions    QuoteVersion[]
@@ -908,9 +976,16 @@ model WorkOrder {
 // ─── CRM sync state ──────────────────────────────────────────────────────────
 
 model CrmSyncState {
-  id        String   @id @default("crm")
-  syncedAt  DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String   @id @default("crm")
+  syncedAt           DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  /// Weekly baseline targets (scaled by weekday range in dashboard).
+  targetActivities   Int      @default(10)
+  targetCalls        Int      @default(15)
+  targetVisits       Int      @default(8)
+  targetQuotes       Int      @default(6)
+  targetPipeline     Decimal  @default(150000) @db.Decimal(14, 2)
+  targetEodPct       Int      @default(100)
 }
 
 // ─── Documents (customer hub) ────────────────────────────────────────────────

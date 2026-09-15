@@ -682,6 +682,8 @@ export const crmApi = {
     api.get<ApiList<CrmSalesActivity>>(`/crm/sales-activities${q(params)}`),
   salesActivitiesKpi: () =>
     api.get<ApiData<Record<string, number>>>("/crm/sales-activities/kpi"),
+  salesActivitiesSummary: () =>
+    api.get<ApiData<CrmSalesActivitySummary>>("/crm/sales-activities/summary"),
   getSalesActivity: (id: string) =>
     api.get<ApiData<CrmSalesActivity>>(`/crm/sales-activities/${id}`),
   createSalesActivity: (body: Record<string, unknown>) =>
@@ -696,10 +698,25 @@ export const crmApi = {
       `/crm/sales-activities/${id}/follow-up`,
       body,
     ),
+  archiveSalesActivity: (id: string) =>
+    api.post<ApiData<CrmSalesActivity>>(`/crm/sales-activities/${id}/archive`),
   exportSalesActivities: (params?: CrmListParams) =>
     api.get<ApiData<{ csv?: string; pdf?: string; xlsx?: string; filename: string }>>(
       `/crm/sales-activities/export${q(params)}`,
     ),
+
+  // ── CRM tasks ────────────────────────────────────────────────────────────
+  listTasks: (params?: CrmListParams) =>
+    api.get<ApiList<CrmTask>>(`/crm/tasks${q(params)}`),
+  getTask: (id: string) => api.get<ApiData<CrmTask>>(`/crm/tasks/${id}`),
+  createTask: (body: Record<string, unknown>) =>
+    api.post<ApiData<CrmTask>>("/crm/tasks", body),
+  updateTask: (id: string, body: Record<string, unknown>) =>
+    api.patch<ApiData<CrmTask>>(`/crm/tasks/${id}`, body),
+  completeTask: (id: string) =>
+    api.post<ApiData<CrmTask>>(`/crm/tasks/${id}/complete`),
+  archiveTask: (id: string) =>
+    api.post<ApiData<CrmTask>>(`/crm/tasks/${id}/archive`),
 
   // ── Expenses ─────────────────────────────────────────────────────────────
   listExpenses: (params?: CrmListParams) =>
@@ -980,6 +997,53 @@ export const crmApi = {
         count: number;
       }>
     >("/crm/dashboard/notifications"),
+
+  // ── NetSuite customer mapping ────────────────────────────────────────────
+  netsuiteCustomerMappingKpi: () =>
+    api.get<
+      ApiData<{
+        mapped: number;
+        pending: number;
+        unmatched: number;
+        errors: number;
+        lastSyncAt?: string | null;
+      }>
+    >("/crm/netsuite-customer-mapping/kpi"),
+  listNetSuiteCustomerMappings: (params?: CrmListParams) =>
+    api.get<ApiList<CrmNetSuiteCustomerMapping>>(
+      `/crm/netsuite-customer-mapping${q(params)}`,
+    ),
+  syncNetSuiteCustomers: (ids?: string[]) =>
+    api.post<
+      ApiData<{
+        attempted: number;
+        synced: number;
+        failed: number;
+        lastSyncAt: string;
+      }>
+    >("/crm/netsuite-customer-mapping/sync", ids?.length ? { ids } : {}),
+  autoMatchNetSuiteCustomers: () =>
+    api.post<ApiData<{ matched: number; remaining: number }>>(
+      "/crm/netsuite-customer-mapping/auto-match",
+    ),
+  mapNetSuiteCustomer: (id: string, netsuiteId: string) =>
+    api.patch<ApiData<CrmNetSuiteCustomerMapping>>(
+      `/crm/netsuite-customer-mapping/${id}/map`,
+      { netsuiteId },
+    ),
+  createNetSuiteCustomer: (id: string) =>
+    api.post<ApiData<CrmNetSuiteCustomerMapping>>(
+      `/crm/netsuite-customer-mapping/${id}/create`,
+    ),
+  unmapNetSuiteCustomer: (id: string) =>
+    api.post<ApiData<CrmNetSuiteCustomerMapping>>(
+      `/crm/netsuite-customer-mapping/${id}/unmap`,
+    ),
+  setNetSuiteAutoExport: (id: string, autoExport: boolean) =>
+    api.patch<ApiData<CrmNetSuiteCustomerMapping>>(
+      `/crm/netsuite-customer-mapping/${id}/auto-export`,
+      { autoExport },
+    ),
 
   // ── Saved views ──────────────────────────────────────────────────────────
   listSavedViews: (scope: string) =>
@@ -1404,13 +1468,14 @@ export type CrmSalesActivity = {
   outcome?: string | null;
   duration?: string | null;
   notes?: string | null;
+  nextAction?: string | null;
   followUpAt?: string | null;
   createFollowUpTask?: boolean;
   logExpense?: boolean;
   attendees?: { id: string; label: string; kind?: string }[] | null;
   status: string;
   activityAt: string;
-  customer?: { id: string; name: string } | null;
+  customer?: { id: string; name: string; code?: string } | null;
   contact?: { id: string; fullName: string } | null;
   location?: {
     id: string;
@@ -1427,14 +1492,98 @@ export type CrmSalesActivity = {
     quoteNumber: string;
     amount?: number | string | null;
     status?: string | null;
+    revision?: number | null;
     notes?: string | null;
     terms?: string | null;
   } | null;
+  expenses?: {
+    id: string;
+    code: string;
+    merchant: string;
+    amount: number | string;
+    status: string;
+    expenseDate: string;
+    category?: string | null;
+  }[];
+  tasks?: CrmTask[];
   customerId?: string | null;
   contactId?: string | null;
   repId?: string | null;
   createdAt?: string;
   updatedAt?: string;
+};
+
+export type CrmTask = {
+  id: string;
+  code: string;
+  title: string;
+  taskType: string;
+  priority: string;
+  status: string;
+  displayStatus?: string;
+  dueAt?: string | null;
+  reminder?: string | null;
+  notes?: string | null;
+  relatedLabel?: string | null;
+  attachmentUrl?: string | null;
+  attachmentFileName?: string | null;
+  salesActivityId?: string | null;
+  customerId?: string | null;
+  quoteId?: string | null;
+  assigneeId?: string | null;
+  assignee?: CrmUserRef | null;
+  createdBy?: CrmUserRef | null;
+  customer?: { id: string; name: string; code?: string } | null;
+  quote?: {
+    id: string;
+    quoteNumber: string;
+    status?: string | null;
+    revision?: number | null;
+  } | null;
+  salesActivity?: {
+    id: string;
+    activityCode: string;
+    subject?: string | null;
+    type?: string;
+    activityAt?: string | null;
+  } | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CrmSalesActivitySummary = {
+  kpi: {
+    thisWeek: number;
+    calls: number;
+    visits: number;
+    meetings: number;
+    followUps: number;
+  };
+  byRep: {
+    repId: string | null;
+    repName: string;
+    calls: number;
+    visits: number;
+    emails: number;
+    meetings: number;
+    total: number;
+  }[];
+  outcomes: { label: string; count: number; percent: number }[];
+  followUpCompliance: {
+    onTrack: number;
+    total: number;
+    percent: number;
+    overdueCount: number;
+    overdueItems: {
+      id: string;
+      activityCode: string;
+      customerName: string;
+      subject: string;
+      daysOverdue: number;
+      followUpAt?: string | null;
+    }[];
+  };
+  tasks: CrmTask[];
 };
 
 export type CrmExpense = {
@@ -1698,6 +1847,20 @@ export type CrmQuoteAttachment = {
   createdAt?: string;
 };
 
+export type CrmNetSuiteCustomerMapping = {
+  id: string;
+  code: string;
+  name: string;
+  customerType: string;
+  netsuiteId?: string | null;
+  status: "MAPPED" | "PENDING" | "UNMATCHED" | "FAILED" | string;
+  lastSyncAt?: string | null;
+  lastResult?: string | null;
+  syncError?: string | null;
+  autoExport: boolean;
+  owner?: { id: string; name: string | null } | null;
+};
+
 export type CrmSavedView = {
   id: string;
   name: string;
@@ -1778,6 +1941,14 @@ export type CrmManagerSalesSummary = {
     pipeline: number;
     eodPct: number;
   };
+  targets: {
+    activities: number;
+    calls: number;
+    visits: number;
+    quotes: number;
+    pipeline: number;
+    eodPct: number;
+  };
   teamAvg: {
     activities: number;
     calls: number;
@@ -1795,6 +1966,14 @@ export type CrmManagerSalesSummary = {
     quotes: number;
     pipeline: number;
     eodPct: number;
+    targets: {
+      activities: number;
+      calls: number;
+      visits: number;
+      quotes: number;
+      pipeline: number;
+      eodPct: number;
+    };
   }[];
 };
 

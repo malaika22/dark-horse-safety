@@ -54,13 +54,13 @@ export function ExpenseFormPage({
   const methodOptions = lookupOptions(lookups, "expensePaymentMethods");
   const statusOptions = lookupOptions(lookups, "expenseStatuses");
 
-  const [expenseDate, setExpenseDate] = React.useState(todayIso());
+  const [expenseDate, setExpenseDate] = React.useState("");
   const [merchant, setMerchant] = React.useState("");
   const [category, setCategory] = React.useState("");
   const [locationId, setLocationId] = React.useState("");
   const [paymentMethod, setPaymentMethod] = React.useState("");
   const [amount, setAmount] = React.useState("");
-  const [status, setStatus] = React.useState("PENDING");
+  const [status, setStatus] = React.useState("");
   const [reimbursable, setReimbursable] = React.useState(false);
   const [notes, setNotes] = React.useState("");
   const [receiptUrl, setReceiptUrl] = React.useState("");
@@ -177,13 +177,13 @@ export function ExpenseFormPage({
         await crmApi.createExpense(body);
         toastSuccess("Expense added");
         if (andAnother) {
-          setExpenseDate(todayIso());
+          setExpenseDate("");
           setMerchant("");
           setCategory("");
           setLocationId("");
           setPaymentMethod("");
           setAmount("");
-          setStatus("PENDING");
+          setStatus("");
           setReimbursable(false);
           setNotes("");
           setReceiptUrl("");

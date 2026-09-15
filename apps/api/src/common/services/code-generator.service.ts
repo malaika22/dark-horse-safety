@@ -48,6 +48,8 @@ export class CodeGeneratorService {
         return this.prisma.quote.count();
       case 'workOrder':
         return this.prisma.workOrder.count();
+      case 'task':
+        return this.prisma.crmTask.count();
       default:
         return Promise.resolve(0);
     }

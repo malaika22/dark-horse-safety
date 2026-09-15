@@ -184,12 +184,16 @@ export type SalesActivityRow = {
   date: string;
   type: string;
   customer: string;
+  customerId: string | null;
   contact: string;
   rep: string;
   subject: string;
   outcome: StatusBadge;
   followUp: StatusBadge | null;
+  followUpAt: string | null;
   status: StatusBadge;
+  linkedQuoteId: string | null;
+  linkedQuoteNumber: string | null;
 };
 
 export type QuoteRow = {

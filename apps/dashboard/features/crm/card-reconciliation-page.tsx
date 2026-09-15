@@ -103,7 +103,7 @@ export function CardReconciliationPage({ customerId }: { customerId: string }) {
   const [chargeDate, setChargeDate] = React.useState(todayIso());
   const [chargeMerchant, setChargeMerchant] = React.useState("");
   const [chargeAmount, setChargeAmount] = React.useState("");
-  const [cardBrand, setCardBrand] = React.useState("AMEX");
+  const [cardBrand, setCardBrand] = React.useState("");
   const [cardLast4, setCardLast4] = React.useState("");
 
   const loadCards = React.useCallback(async () => {

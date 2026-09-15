@@ -30,13 +30,13 @@ export interface DashboardListFiltersState {
 export const DEFAULT_LIST_FILTERS: DashboardListFiltersState = {
   field: "",
   type: "",
-  status: "active",
-  msaStatus: "current",
+  status: "",
+  msaStatus: "",
   hasOpenJobs: false,
-  pricing: "yes",
-  reqForms: "yes",
-  routeRules: "yes",
-  assignedReps: "reps-created",
+  pricing: "any",
+  reqForms: "any",
+  routeRules: "any",
+  assignedReps: "",
 };
 
 export interface DashboardFiltersDrawerProps {
@@ -60,16 +60,19 @@ export function DashboardFiltersDrawer({
   onApply,
   onClearAll,
   statusOptions = [
+    { value: "", label: "Any" },
     { value: "active", label: "Active" },
     { value: "needs-review", label: "Needs review" },
     { value: "offline", label: "Offline" },
   ],
   msaOptions = [
+    { value: "", label: "Any" },
     { value: "current", label: "Current" },
     { value: "expiring", label: "Expiring" },
     { value: "expired", label: "Expired" },
   ],
   repOptions = [
+    { value: "", label: "Any" },
     { value: "reps-created", label: "Reps created" },
     { value: "all", label: "All reps" },
   ],
@@ -202,7 +205,7 @@ function FilterSelect({
         className={cn(filterControlClass, "max-w-none appearance-none pr-8")}
       >
         {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
+          <option key={opt.value || "__blank"} value={opt.value}>
             {opt.label}
           </option>
         ))}

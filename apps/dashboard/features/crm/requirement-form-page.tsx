@@ -85,32 +85,31 @@ export function RequirementFormPage({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [customerId, setCustomerId] = React.useState("");
-  const [requirementType, setRequirementType] = React.useState("Certification");
-  const [source, setSource] = React.useState("CUSTOMER_IMPOSED");
+  const [requirementType, setRequirementType] = React.useState("");
+  const [source, setSource] = React.useState("");
   const [issuingBody, setIssuingBody] = React.useState("");
   const [minimumGrade, setMinimumGrade] = React.useState("");
   const [catalogValue, setCatalogValue] = React.useState("");
   const [name, setName] = React.useState("");
-  const [appliesTo, setAppliesTo] = React.useState("SPECIFIC_ROLES");
+  const [appliesTo, setAppliesTo] = React.useState("");
   const [appliesToRoles, setAppliesToRoles] = React.useState<string[]>([]);
-  const [enforcementLevel, setEnforcementLevel] = React.useState("SOFT_GATE");
-  const [evidenceRequired, setEvidenceRequired] = React.useState(true);
-  const [evidenceType, setEvidenceType] = React.useState("CERTIFICATE_UPLOAD");
+  const [enforcementLevel, setEnforcementLevel] = React.useState("");
+  const [evidenceRequired, setEvidenceRequired] = React.useState(false);
+  const [evidenceType, setEvidenceType] = React.useState("");
   const [evidenceUrl, setEvidenceUrl] = React.useState<string | null>(null);
   const [evidenceFileName, setEvidenceFileName] = React.useState<string | null>(
     null,
   );
-  const [verificationMethod, setVerificationMethod] =
-    React.useState("SELF_CERTIFIED");
+  const [verificationMethod, setVerificationMethod] = React.useState("");
   const [overrideRoles, setOverrideRoles] = React.useState<string[]>([]);
 
   const [requireOverrideReason, setRequireOverrideReason] =
-    React.useState(true);
-  const [rolloutMode, setRolloutMode] = React.useState("NEW_ONLY");
+    React.useState(false);
+  const [rolloutMode, setRolloutMode] = React.useState("");
   const [effectiveFrom, setEffectiveFrom] = React.useState("");
-  const [renewalLeadDays, setRenewalLeadDays] = React.useState("30");
-  const [validityPeriod, setValidityPeriod] = React.useState("ANNUALLY");
-  const [autoCheckable, setAutoCheckable] = React.useState(true);
+  const [renewalLeadDays, setRenewalLeadDays] = React.useState("");
+  const [validityPeriod, setValidityPeriod] = React.useState("");
+  const [autoCheckable, setAutoCheckable] = React.useState(false);
   const [notes, setNotes] = React.useState("");
 
   const showCertFields =

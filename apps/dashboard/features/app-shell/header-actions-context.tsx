@@ -8,6 +8,8 @@ type HeaderActionsContextValue = {
   setActionsOverride: (node: React.ReactNode | null | undefined) => void;
   breadcrumbOverride: string | null;
   setBreadcrumbOverride: (value: string | null) => void;
+  pageTitleOverride: string | null;
+  setPageTitleOverride: (value: string | null) => void;
 };
 
 const HeaderActionsContext =
@@ -24,6 +26,9 @@ export function HeaderActionsProvider({
   const [breadcrumbOverride, setBreadcrumbOverride] = React.useState<
     string | null
   >(null);
+  const [pageTitleOverride, setPageTitleOverride] = React.useState<
+    string | null
+  >(null);
 
   const value = React.useMemo(
     () => ({
@@ -31,8 +36,10 @@ export function HeaderActionsProvider({
       setActionsOverride,
       breadcrumbOverride,
       setBreadcrumbOverride,
+      pageTitleOverride,
+      setPageTitleOverride,
     }),
-    [actionsOverride, breadcrumbOverride],
+    [actionsOverride, breadcrumbOverride, pageTitleOverride],
   );
 
   return (
@@ -70,4 +77,13 @@ export function useSetHeaderBreadcrumb(breadcrumb: string | null) {
     setBreadcrumbOverride(breadcrumb);
     return () => setBreadcrumbOverride(null);
   }, [breadcrumb, setBreadcrumbOverride]);
+}
+
+/** Override page title (e.g. drill-down views). Clears on unmount. */
+export function useSetHeaderPageTitle(pageTitle: string | null) {
+  const { setPageTitleOverride } = useHeaderActionsSlot();
+  React.useEffect(() => {
+    setPageTitleOverride(pageTitle);
+    return () => setPageTitleOverride(null);
+  }, [pageTitle, setPageTitleOverride]);
 }

@@ -38,6 +38,12 @@ export class SalesActivitiesController {
     return this.salesActivities.kpi();
   }
 
+  @Get('summary')
+  @ApiOperation({ summary: 'Sales activity summary analytics' })
+  summary() {
+    return this.salesActivities.summary();
+  }
+
   @Get('export')
   @ApiOperation({ summary: 'Export sales activities CSV' })
   export(@Query() query: ExportQueryDto & SalesActivityListQueryDto) {
@@ -66,5 +72,11 @@ export class SalesActivitiesController {
   @ApiOperation({ summary: 'Set follow-up on sales activity' })
   followUp(@Param('id') id: string, @Body() dto: FollowUpDto) {
     return this.salesActivities.followUp(id, dto);
+  }
+
+  @Post(':id/archive')
+  @ApiOperation({ summary: 'Archive (soft-delete) sales activity' })
+  archive(@Param('id') id: string) {
+    return this.salesActivities.archive(id);
   }
 }

@@ -3,9 +3,11 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { cn, useScrollLock } from "@dark-horse-safety/ui";
+import { crmApi } from "@/lib/crm-api";
+import { toastApiError } from "@/lib/toast";
 
 const fieldClass =
-  "h-10 w-full appearance-none rounded-lg border-0 bg-[#2A2A2A] px-3 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none";
+  "h-10 w-full appearance-none rounded-lg border-0 bg-[#2A2A2A] px-3 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none placeholder:text-[#5A5A5A]";
 
 function CloseX({ onClick }: { onClick: () => void }) {
   return (
@@ -62,6 +64,27 @@ function GhostBtn({
   );
 }
 
+function SecondaryPill({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="rounded-lg bg-[#2A2A2A] px-4 py-2.5 font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:bg-[#353535] disabled:opacity-50"
+    >
+      {children}
+    </button>
+  );
+}
+
 function PrimaryPill({
   children,
   onClick,
@@ -83,12 +106,61 @@ function PrimaryPill({
   );
 }
 
+function WarnTriangleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 3 2 20h20L12 3Z"
+        stroke="#E8C47C"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 10v4M12 17.5v.5"
+        stroke="#E8C47C"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ErrorXIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="9" stroke="#EF4444" strokeWidth="1.75" />
+      <path
+        d="M9 9l6 6M15 9l-6 6"
+        stroke="#EF4444"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export type NewActivityPrefill = {
   dayKey: string;
   hour: number;
   repId: string;
   repName: string;
   slotLabel: string;
+};
+
+export type NewActivityPayload = {
+  type: string;
+  customerId: string;
+  contactId?: string;
+  locationId?: string;
+  subject?: string;
+  repId: string;
+  date: string;
+  time: string;
+  duration: string;
+  recurring?: string;
+  notes: string;
+  file?: File | null;
+  force?: boolean;
 };
 
 export function NewActivityModal({
@@ -106,39 +178,93 @@ export function NewActivityModal({
   reps: { value: string; label: string }[];
   busy?: boolean;
   onClose: () => void;
-  onCreate: (payload: {
-    type: string;
-    customerId: string;
-    repId: string;
-    date: string;
-    time: string;
-    duration: string;
-    notes: string;
-    file?: File | null;
-  }) => void | Promise<void>;
+  onCreate: (payload: NewActivityPayload) => void | Promise<void>;
 }) {
   useModalLock(open, onClose);
-  const [type, setType] = React.useState("VISIT");
+  const [type, setType] = React.useState("");
   const [customerId, setCustomerId] = React.useState("");
+  const [contactId, setContactId] = React.useState("");
+  const [locationId, setLocationId] = React.useState("");
+  const [subject, setSubject] = React.useState("");
   const [repId, setRepId] = React.useState("");
   const [date, setDate] = React.useState("");
-  const [time, setTime] = React.useState("09:00");
-  const [duration, setDuration] = React.useState("1H");
+  const [time, setTime] = React.useState("");
+  const [duration, setDuration] = React.useState("");
+  const [recurring, setRecurring] = React.useState("DOES NOT REPEAT");
   const [notes, setNotes] = React.useState("");
   const [file, setFile] = React.useState<File | null>(null);
+  const [contactOptions, setContactOptions] = React.useState<
+    { value: string; label: string }[]
+  >([]);
+  const [locationOptions, setLocationOptions] = React.useState<
+    { value: string; label: string }[]
+  >([]);
+  const [lookupsLoading, setLookupsLoading] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     if (!open || !prefill) return;
-    setType("VISIT");
-    setCustomerId(customers[0]?.value ?? "");
-    setRepId(prefill.repId || reps[0]?.value || "");
+    setType("");
+    setCustomerId("");
+    setContactId("");
+    setLocationId("");
+    setSubject("");
+    setRepId(prefill.repId || "");
     setDate(prefill.dayKey);
-    setTime(`${String(prefill.hour).padStart(2, "0")}:00`);
-    setDuration("1H");
+    setTime(
+      prefill.hour != null
+        ? `${String(prefill.hour).padStart(2, "0")}:00`
+        : "",
+    );
+    setDuration("");
+    setRecurring("DOES NOT REPEAT");
     setNotes("");
     setFile(null);
-  }, [open, prefill, customers, reps]);
+    setContactOptions([]);
+    setLocationOptions([]);
+  }, [open, prefill]);
+
+  React.useEffect(() => {
+    if (!open || !customerId) {
+      setContactOptions([]);
+      setLocationOptions([]);
+      return;
+    }
+    let cancelled = false;
+    setLookupsLoading(true);
+    (async () => {
+      try {
+        const [customer, locs] = await Promise.all([
+          crmApi.getCustomer(customerId),
+          crmApi.lookupLocations(undefined, customerId),
+        ]);
+        if (cancelled) return;
+        setContactOptions(
+          (customer.data.contacts ?? []).map((c) => ({
+            value: c.id,
+            label: (c.fullName ?? "").toUpperCase(),
+          })),
+        );
+        setLocationOptions(
+          (locs.data ?? []).map((l) => ({
+            value: l.id,
+            label: (l.name ?? "").toUpperCase(),
+          })),
+        );
+      } catch (err) {
+        toastApiError(err);
+        if (!cancelled) {
+          setContactOptions([]);
+          setLocationOptions([]);
+        }
+      } finally {
+        if (!cancelled) setLookupsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, customerId]);
 
   if (!open || !prefill || typeof document === "undefined") return null;
 
@@ -178,6 +304,7 @@ export function NewActivityModal({
               value={type}
               onChange={(e) => setType(e.target.value)}
             >
+              <option value="">Select…</option>
               {["VISIT", "CALL", "MEETING", "EMAIL"].map((t) => (
                 <option key={t} value={t}>
                   {t}
@@ -192,7 +319,11 @@ export function NewActivityModal({
             <select
               className={fieldClass}
               value={customerId}
-              onChange={(e) => setCustomerId(e.target.value)}
+              onChange={(e) => {
+                setCustomerId(e.target.value);
+                setContactId("");
+                setLocationId("");
+              }}
             >
               <option value="">Select…</option>
               {customers.map((c) => (
@@ -202,6 +333,57 @@ export function NewActivityModal({
               ))}
             </select>
           </label>
+          <label className="space-y-1.5">
+            <span className="font-sans text-[11px] uppercase text-[#959597]">
+              Contact
+            </span>
+            <select
+              className={fieldClass}
+              value={contactId}
+              disabled={!customerId || lookupsLoading}
+              onChange={(e) => setContactId(e.target.value)}
+            >
+              <option value="">Select Contact</option>
+              {contactOptions.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="font-sans text-[11px] uppercase text-[#959597]">
+              Location
+            </span>
+            <select
+              className={fieldClass}
+              value={locationId}
+              disabled={!customerId || lookupsLoading}
+              onChange={(e) => setLocationId(e.target.value)}
+            >
+              <option value="">Select Location</option>
+              {locationOptions.map((l) => (
+                <option key={l.value} value={l.value}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <label className="mt-4 block space-y-1.5">
+          <span className="font-sans text-[11px] uppercase text-[#959597]">
+            Subject
+          </span>
+          <input
+            className={fieldClass}
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="Add a subject"
+          />
+        </label>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="space-y-1.5">
             <span className="font-sans text-[11px] uppercase text-[#959597]">
               Date
@@ -250,6 +432,7 @@ export function NewActivityModal({
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
             >
+              <option value="">Select…</option>
               {["15M", "30M", "1H", "2H"].map((d) => (
                 <option key={d} value={d}>
                   {d}
@@ -261,13 +444,35 @@ export function NewActivityModal({
 
         <label className="mt-4 block space-y-1.5">
           <span className="font-sans text-[11px] uppercase text-[#959597]">
+            Recurring
+          </span>
+          <select
+            className={fieldClass}
+            value={recurring}
+            onChange={(e) => setRecurring(e.target.value)}
+          >
+            {[
+              "DOES NOT REPEAT",
+              "DAILY",
+              "WEEKLY",
+              "MONTHLY",
+            ].map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="mt-4 block space-y-1.5">
+          <span className="font-sans text-[11px] uppercase text-[#959597]">
             Notes
           </span>
-          <input
-            className={fieldClass}
+          <textarea
+            className={cn(fieldClass, "h-20 resize-none py-2.5")}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Add notes…"
+            placeholder="Add notes..."
           />
         </label>
 
@@ -310,15 +515,19 @@ export function NewActivityModal({
             Cancel
           </GhostBtn>
           <PrimaryPill
-            disabled={busy || !customerId || !repId}
+            disabled={busy || !customerId || !repId || !type || !date || !time}
             onClick={() =>
               void onCreate({
                 type,
                 customerId,
+                contactId: contactId || undefined,
+                locationId: locationId || undefined,
+                subject: subject || undefined,
                 repId,
                 date,
                 time,
                 duration,
+                recurring,
                 notes,
                 file,
               })
@@ -343,6 +552,7 @@ export type EventPopoverData = {
   href: string;
   kindLabel: string;
   fromLabel: string;
+  openLabel?: string;
 };
 
 export function EventDetailPopover({
@@ -372,7 +582,7 @@ export function EventDetailPopover({
       <div
         role="dialog"
         aria-modal="true"
-        className="absolute left-1/2 top-1/2 w-[min(92vw,380px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[#2D2D30] bg-[#121212] p-5 shadow-2xl"
+        className="absolute left-1/2 top-1/2 w-[min(92vw,400px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[#2D2D30] bg-[#121212] p-5 shadow-2xl sm:p-6"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -407,7 +617,9 @@ export function EventDetailPopover({
 
         <div className="mt-6 flex items-center justify-end gap-2">
           <GhostBtn onClick={onReschedule}>Reschedule</GhostBtn>
-          <PrimaryPill onClick={onOpen}>Open Activity</PrimaryPill>
+          <PrimaryPill onClick={onOpen}>
+            {data.openLabel ?? "Open Activity"}
+          </PrimaryPill>
         </div>
       </div>
     </div>,
@@ -460,6 +672,129 @@ export function RescheduleConfirmModal({
           </GhostBtn>
           <PrimaryPill disabled={busy} onClick={() => void onConfirm()}>
             Confirm Reschedule
+          </PrimaryPill>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+export function SchedulingConflictModal({
+  open,
+  message,
+  busy,
+  primaryLabel = "Reschedule Anyway",
+  onClose,
+  onPickAnotherTime,
+  onForce,
+}: {
+  open: boolean;
+  message: string;
+  busy?: boolean;
+  primaryLabel?: string;
+  onClose: () => void;
+  onPickAnotherTime: () => void;
+  onForce: () => void | Promise<void>;
+}) {
+  useModalLock(open, onClose);
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[98]">
+      <button
+        type="button"
+        aria-label="Close backdrop"
+        className="absolute inset-0 bg-black/60"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Scheduling conflict"
+        className="absolute left-1/2 top-1/2 w-[min(92vw,520px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[#2D2D30] bg-[#121212] p-5 shadow-2xl sm:p-6"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="font-sans text-[15px] font-[590] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+            Scheduling Conflict
+          </h2>
+          <CloseX onClick={onClose} />
+        </div>
+        <div className="mt-4 flex items-start gap-3">
+          <span className="mt-0.5 shrink-0">
+            <WarnTriangleIcon />
+          </span>
+          <p className="font-sans text-[12px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+            {message}
+          </p>
+        </div>
+        <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+          <SecondaryPill onClick={onClose} disabled={busy}>
+            Cancel
+          </SecondaryPill>
+          <SecondaryPill onClick={onPickAnotherTime} disabled={busy}>
+            Pick Another Time
+          </SecondaryPill>
+          <PrimaryPill disabled={busy} onClick={() => void onForce()}>
+            {primaryLabel}
+          </PrimaryPill>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+export function RescheduleFailedModal({
+  open,
+  message,
+  busy,
+  onClose,
+  onRetry,
+}: {
+  open: boolean;
+  message: string;
+  busy?: boolean;
+  onClose: () => void;
+  onRetry: () => void | Promise<void>;
+}) {
+  useModalLock(open, onClose);
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[98]">
+      <button
+        type="button"
+        aria-label="Close backdrop"
+        className="absolute inset-0 bg-black/60"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Reschedule failed"
+        className="absolute left-1/2 top-1/2 w-[min(92vw,520px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[#2D2D30] bg-[#121212] p-5 shadow-2xl sm:p-6"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="font-sans text-[15px] font-[590] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+            Reschedule Failed
+          </h2>
+          <CloseX onClick={onClose} />
+        </div>
+        <div className="mt-4 flex items-start gap-3">
+          <span className="mt-0.5 shrink-0">
+            <ErrorXIcon />
+          </span>
+          <p className="font-sans text-[12px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+            {message}
+          </p>
+        </div>
+        <div className="mt-6 flex items-center justify-end gap-2">
+          <SecondaryPill onClick={onClose} disabled={busy}>
+            Cancel
+          </SecondaryPill>
+          <PrimaryPill disabled={busy} onClick={() => void onRetry()}>
+            Retry
           </PrimaryPill>
         </div>
       </div>

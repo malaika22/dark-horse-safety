@@ -477,10 +477,7 @@ export function ConvertQuoteToWorkOrderModal({
     if (!open) return;
     setJobType(defaultJobType);
     setSiteId(defaultSiteId);
-    setServiceDate(
-      defaultServiceDate ||
-        new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10),
-    );
+    setServiceDate(defaultServiceDate);
     setSubmitting(false);
   }, [open, defaultJobType, defaultSiteId, defaultServiceDate]);
 

@@ -66,38 +66,37 @@ export function RouteRuleFormPage({
 
   const [customerId, setCustomerId] = React.useState("");
   const [locationId, setLocationId] = React.useState("");
-  const [geofenceRadius, setGeofenceRadius] = React.useState("500 ft");
-  const [geofenceIsOverride, setGeofenceIsOverride] = React.useState(true);
-  const [gpsRequired, setGpsRequired] = React.useState(true);
-  const [clockInBeforeMin, setClockInBeforeMin] = React.useState("15");
-  const [clockInAfterMin, setClockInAfterMin] = React.useState("15");
-  const [originType, setOriginType] = React.useState("YARD");
+  const [geofenceRadius, setGeofenceRadius] = React.useState("");
+  const [geofenceIsOverride, setGeofenceIsOverride] = React.useState(false);
+  const [gpsRequired, setGpsRequired] = React.useState(false);
+  const [clockInBeforeMin, setClockInBeforeMin] = React.useState("");
+  const [clockInAfterMin, setClockInAfterMin] = React.useState("");
+  const [originType, setOriginType] = React.useState("");
   const [originLocationId, setOriginLocationId] = React.useState("");
   const [preferredRoute, setPreferredRoute] = React.useState("");
-  const [expectedTravelTime, setExpectedTravelTime] = React.useState("45");
-  const [travelTimeAuto, setTravelTimeAuto] = React.useState(true);
-  const [mileageRate, setMileageRate] = React.useState("$0.67/mi");
+  const [expectedTravelTime, setExpectedTravelTime] = React.useState("");
+  const [travelTimeAuto, setTravelTimeAuto] = React.useState(false);
+  const [mileageRate, setMileageRate] = React.useState("");
   const [mileageRateIsOverride, setMileageRateIsOverride] =
-    React.useState(true);
-  const [gpsAccuracy, setGpsAccuracy] = React.useState("15 m");
+    React.useState(false);
+  const [gpsAccuracy, setGpsAccuracy] = React.useState("");
   const [gpsAccuracyIsOverride, setGpsAccuracyIsOverride] =
-    React.useState(true);
+    React.useState(false);
   const [gpsUnavailableBehavior, setGpsUnavailableBehavior] =
-    React.useState("BLOCK_CLOCK_IN");
+    React.useState("");
   const [effectiveFrom, setEffectiveFrom] = React.useState("");
   const [effectiveTo, setEffectiveTo] = React.useState("");
 
-  const [inheritedRadius, setInheritedRadius] = React.useState("750 ft");
-  const [systemDefaultRadius, setSystemDefaultRadius] =
-    React.useState("1000 ft");
+  const [inheritedRadius, setInheritedRadius] = React.useState("");
+  const [systemDefaultRadius, setSystemDefaultRadius] = React.useState("");
   const [customerName, setCustomerName] = React.useState("");
   const [siteName, setSiteName] = React.useState("");
   const [originName, setOriginName] = React.useState("");
   const [autoTravelMinutes, setAutoTravelMinutes] = React.useState<
     number | null
-  >(45);
-  const [systemMileageRate, setSystemMileageRate] = React.useState("$0.67/mi");
-  const [systemGpsAccuracy, setSystemGpsAccuracy] = React.useState("15 m");
+  >(null);
+  const [systemMileageRate, setSystemMileageRate] = React.useState("");
+  const [systemGpsAccuracy, setSystemGpsAccuracy] = React.useState("");
 
   const [siteLat, setSiteLat] = React.useState<number | null>(null);
   const [siteLng, setSiteLng] = React.useState<number | null>(null);

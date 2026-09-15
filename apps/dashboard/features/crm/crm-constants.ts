@@ -161,8 +161,11 @@ export const EOD_SORT_OPTIONS: SortOption[] = [
 
 export const SALES_SORT_OPTIONS: SortOption[] = [
   { id: "activityAt", label: "Date" },
+  { id: "rep", label: "Rep" },
+  { id: "customer", label: "Customer" },
   { id: "type", label: "Type" },
-  { id: "status", label: "Status" },
+  { id: "outcome", label: "Outcome" },
+  { id: "followUpAt", label: "Follow Up Date" },
 ];
 
 export const QUOTES_SORT_OPTIONS: SortOption[] = [

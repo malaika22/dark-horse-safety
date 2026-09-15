@@ -17,11 +17,6 @@ export const EXPENSE_AUTO_APPROVAL_THRESHOLD = 50;
 
 type Attendee = { id: string; label: string; kind: "contact" | "user" };
 
-function todayIso() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 function parseAmount(raw: string) {
   const n = Number(String(raw).replace(/[^0-9.-]/g, ""));
   return Number.isFinite(n) ? n : NaN;
@@ -89,7 +84,7 @@ export function NewExpenseModal({
 
   const [merchant, setMerchant] = React.useState("");
   const [amount, setAmount] = React.useState("");
-  const [expenseDate, setExpenseDate] = React.useState(todayIso());
+  const [expenseDate, setExpenseDate] = React.useState("");
   const [category, setCategory] = React.useState("");
   const [paymentMethod, setPaymentMethod] = React.useState("");
   const [locationId, setLocationId] = React.useState("");
@@ -117,7 +112,7 @@ export function NewExpenseModal({
   const reset = React.useCallback(() => {
     const dateFromDefault = defaults?.expenseDate
       ? defaults.expenseDate.slice(0, 10)
-      : todayIso();
+      : "";
     setMerchant(defaults?.merchant ?? "");
     setAmount(
       defaults?.amount != null && defaults.amount !== ""

@@ -47,9 +47,6 @@ import type { CustomerRow } from "./crm-types";
 
 const CUSTOMERS_DEFAULT_FILTERS: DashboardListFiltersState = {
   ...DEFAULT_LIST_FILTERS,
-  status: "",
-  msaStatus: "",
-  assignedReps: "",
 };
 
 function chipsFromFilters(filters: DashboardListFiltersState) {
@@ -623,8 +620,8 @@ export function CustomersPage() {
                     const next = prev.filter((c) => c.id !== id);
                     if (next.length === 0) {
                       setFiltersApplied(false);
-                      setAppliedFilters(DEFAULT_LIST_FILTERS);
-                      setDraftFilters(DEFAULT_LIST_FILTERS);
+                      setAppliedFilters(CUSTOMERS_DEFAULT_FILTERS);
+                      setDraftFilters(CUSTOMERS_DEFAULT_FILTERS);
                     }
                     return next;
                   });

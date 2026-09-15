@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { createPortal } from "react-dom";
 import {
   DashboardBadge,
   DashboardField,
@@ -12,15 +11,21 @@ import {
   DashboardTextField,
   DashboardToggle,
   DashboardToolbarButton,
-  useScrollLock,
 } from "@dark-horse-safety/ui";
-import { crmApi, type CrmSalesActivity } from "@/lib/crm-api";
+import { crmApi, type CrmSalesActivity, type CrmTask } from "@/lib/crm-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { CrmDetailStateGate } from "@/features/crm/crm-states";
 import {
   useSetHeaderActions,
   useSetHeaderBreadcrumb,
 } from "@/features/app-shell/header-actions-context";
+import { NewExpenseModal } from "@/features/crm/new-expense-modal";
+import {
+  CreateTaskModal,
+  TaskCreatedSuccessModal,
+  type CreateTaskFormPayload,
+} from "@/features/crm/create-task-modals";
+import { TaskDetailsDrawer } from "@/features/crm/task-details-drawer";
 
 function shortName(full?: string | null) {
   if (!full?.trim()) return "—";
@@ -43,7 +48,7 @@ function userShort(
   return (last || first || user.email || "—").toUpperCase();
 }
 
-function formatActivityWhen(iso: string) {
+function formatActivityWhen(iso: string, sep: "," | "·" = ",") {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   const date = d
@@ -54,7 +59,7 @@ function formatActivityWhen(iso: string) {
   const am = h < 12;
   const h12 = h % 12 || 12;
   const mm = m === 0 ? "" : `:${String(m).padStart(2, "0")}`;
-  return `${date} · ${h12}${mm}${am ? "A" : "P"}`;
+  return `${date}${sep === "·" ? " · " : ", "}${h12}${mm}${am ? "A" : "P"}`;
 }
 
 function formatShortDate(iso?: string | null) {
@@ -64,6 +69,25 @@ function formatShortDate(iso?: string | null) {
   return d
     .toLocaleDateString("en-US", { month: "short", day: "numeric" })
     .toUpperCase();
+}
+
+function formatTaskDue(iso?: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const date = d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  let h = d.getHours();
+  const m = d.getMinutes();
+  const am = h < 12;
+  const h12 = h % 12 || 12;
+  const mm = m === 0 ? "" : `:${String(m).padStart(2, "0")}`;
+  const hasTime = !(h === 0 && m === 0);
+  return hasTime
+    ? `Due ${date}, ${h12}${mm}${am ? "a" : "p"}`
+    : `Due ${date}`;
 }
 
 function money(n: number) {
@@ -85,9 +109,11 @@ function outcomeVariant(outcome?: string | null) {
 
 function statusVariant(status?: string | null) {
   const u = (status ?? "").toUpperCase();
+  if (u.includes("OVERDUE")) return "error" as const;
   if (u.includes("OPEN") || u.includes("COMPLETE") || u.includes("ACTIVE"))
     return "success" as const;
-  if (u.includes("PENDING") || u.includes("DRAFT")) return "gold" as const;
+  if (u.includes("PENDING") || u.includes("DRAFT") || u.includes("SENT"))
+    return "gold" as const;
   return "neutral" as const;
 }
 
@@ -154,12 +180,6 @@ function TaskIcon() {
   );
 }
 
-function defaultFollowUpDate() {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
-}
-
 export type FollowUpPayload = {
   followUpDate: string;
   notes: string;
@@ -179,16 +199,16 @@ export function LogFollowUpModal({
   clientName?: string;
   activityLabel?: string;
 }) {
-  const [followUpDate, setFollowUpDate] = React.useState(defaultFollowUpDate);
+  const [followUpDate, setFollowUpDate] = React.useState("");
   const [notes, setNotes] = React.useState("");
-  const [createFollowUp, setCreateFollowUp] = React.useState(true);
+  const [createFollowUp, setCreateFollowUp] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
-    setFollowUpDate(defaultFollowUpDate());
+    setFollowUpDate("");
     setNotes("");
-    setCreateFollowUp(true);
+    setCreateFollowUp(false);
     setSubmitting(false);
   }, [open]);
 
@@ -199,17 +219,11 @@ export function LogFollowUpModal({
       title="Log Follow-up"
       widthClassName="max-w-xl"
       footer={
-        <div className="flex w-full items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#959597] hover:text-[#FDFDFF]"
-          >
-            Cancel
-          </button>
+        <>
+          <DashboardToolbarButton onClick={onClose}>Cancel</DashboardToolbarButton>
           <DashboardToolbarButton
             variant="primary"
-            disabled={submitting || !createFollowUp}
+            disabled={submitting || !followUpDate}
             onClick={() => {
               void (async () => {
                 setSubmitting(true);
@@ -220,30 +234,28 @@ export function LogFollowUpModal({
                     createFollowUp,
                   });
                   onClose();
+                } catch {
+                  /* toast handled by caller */
                 } finally {
                   setSubmitting(false);
                 }
               })();
             }}
           >
-            Log Follow-up
+            Save Follow-up
           </DashboardToolbarButton>
-        </div>
+        </>
       }
     >
+      {(clientName || activityLabel) && (
+        <p className="mb-4 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+          {clientName || "—"}
+          {activityLabel ? ` · ${activityLabel}` : ""}
+        </p>
+      )}
       <div className="space-y-4">
-        <DashboardTextField
-          label="Client's Name"
-          value={clientName ?? ""}
-          onChange={() => {}}
-        />
-        <DashboardTextField
-          label="Activity"
-          value={activityLabel ?? ""}
-          onChange={() => {}}
-        />
         <DashboardToggle
-          label="Requires Follow-up / Expenditure"
+          label="Create Follow-up Task"
           checked={createFollowUp}
           onCheckedChange={setCreateFollowUp}
         />
@@ -265,280 +277,27 @@ export function LogFollowUpModal({
   );
 }
 
-const fieldClass =
-  "h-10 w-full appearance-none rounded-lg border-0 bg-[#2A2A2A] px-3 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none";
-
-function CreateTaskModal({
-  open,
-  onClose,
-  busy,
-  defaults,
-  reps,
-  onCreate,
-}: {
-  open: boolean;
-  onClose: () => void;
-  busy?: boolean;
-  defaults: {
-    relatedTo: string;
-    assignedTo: string;
-    notes: string;
-  };
-  reps: { value: string; label: string }[];
-  onCreate: (payload: {
-    taskType: string;
-    relatedTo: string;
-    dueDate: string;
-    dueTime: string;
-    assignedTo: string;
-    priority: string;
-    notes: string;
-    reminder: string;
-    file?: File | null;
-  }) => void | Promise<void>;
-}) {
-  const [taskType, setTaskType] = React.useState("FOLLOW-UP CALL");
-  const [relatedTo, setRelatedTo] = React.useState("");
-  const [dueDate, setDueDate] = React.useState("");
-  const [dueTime, setDueTime] = React.useState("10:00");
-  const [assignedTo, setAssignedTo] = React.useState("");
-  const [priority, setPriority] = React.useState("HIGH");
-  const [notes, setNotes] = React.useState("");
-  const [reminder, setReminder] = React.useState("1 DAY BEFORE");
-  const [file, setFile] = React.useState<File | null>(null);
-  const fileRef = React.useRef<HTMLInputElement>(null);
-  useScrollLock(open);
-
-  React.useEffect(() => {
-    if (!open) return;
-    setTaskType("FOLLOW-UP CALL");
-    setRelatedTo(defaults.relatedTo);
-    setDueDate(defaultFollowUpDate());
-    setDueTime("10:00");
-    setAssignedTo(defaults.assignedTo || reps[0]?.value || "");
-    setPriority("HIGH");
-    setNotes(defaults.notes);
-    setReminder("1 DAY BEFORE");
-    setFile(null);
-  }, [open, defaults, reps]);
-
-  if (!open || typeof document === "undefined") return null;
-
-  return createPortal(
-    <div className="fixed inset-0 z-[96] overflow-hidden">
-      <button
-        type="button"
-        aria-label="Close backdrop"
-        className="absolute inset-0 bg-black/60"
-        onClick={onClose}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Create task"
-        className="absolute left-1/2 top-1/2 max-h-[92vh] w-[min(92vw,560px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto overscroll-contain rounded-2xl border border-[#2D2D30] bg-[#121212] p-5 shadow-2xl scrollbar-hidden sm:p-6"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-sans text-[16px] font-[590] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-              Create Task
-            </h2>
-            <p className="mt-1.5 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
-              Create a follow-up task to do in the future
-            </p>
-          </div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="space-y-1.5">
-            <span className="font-sans text-[11px] uppercase text-[#959597]">
-              Task Type
-            </span>
-            <input
-              className={fieldClass}
-              value={taskType}
-              onChange={(e) => setTaskType(e.target.value)}
-            />
-          </label>
-          <label className="space-y-1.5">
-            <span className="font-sans text-[11px] uppercase text-[#959597]">
-              Related To
-            </span>
-            <input
-              className={fieldClass}
-              value={relatedTo}
-              onChange={(e) => setRelatedTo(e.target.value)}
-            />
-          </label>
-          <label className="space-y-1.5">
-            <span className="font-sans text-[11px] uppercase text-[#959597]">
-              Due Date
-            </span>
-            <input
-              type="date"
-              className={fieldClass}
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
-          </label>
-          <label className="space-y-1.5">
-            <span className="font-sans text-[11px] uppercase text-[#959597]">
-              Due Time
-            </span>
-            <input
-              type="time"
-              className={fieldClass}
-              value={dueTime}
-              onChange={(e) => setDueTime(e.target.value)}
-            />
-          </label>
-          <label className="space-y-1.5">
-            <span className="font-sans text-[11px] uppercase text-[#959597]">
-              Assigned To
-            </span>
-            <select
-              className={fieldClass}
-              value={assignedTo}
-              onChange={(e) => setAssignedTo(e.target.value)}
-            >
-              <option value="">Select…</option>
-              {reps.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1.5">
-            <span className="font-sans text-[11px] uppercase text-[#959597]">
-              Priority
-            </span>
-            <select
-              className={fieldClass}
-              value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-            >
-              {["HIGH", "MEDIUM", "LOW"].map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <label className="mt-4 block space-y-1.5">
-          <span className="font-sans text-[11px] uppercase text-[#959597]">
-            Notes
-          </span>
-          <input
-            className={fieldClass}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-        </label>
-
-        <label className="mt-4 block space-y-1.5">
-          <span className="font-sans text-[11px] uppercase text-[#959597]">
-            Reminder
-          </span>
-          <select
-            className={fieldClass}
-            value={reminder}
-            onChange={(e) => setReminder(e.target.value)}
-          >
-            {["1 DAY BEFORE", "2 HOURS BEFORE", "1 HOUR BEFORE", "NONE"].map(
-              (r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ),
-            )}
-          </select>
-        </label>
-
-        <div className="mt-4 space-y-1.5">
-          <span className="font-sans text-[11px] uppercase text-[#959597]">
-            Upload Image or File
-          </span>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".png,.jpg,.jpeg,.pdf"
-            className="hidden"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#3E3E3E] bg-[#1A1A1A] px-4 py-8 text-center hover:border-[#5A5A5A]"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path
-                d="M12 16V5M8 9l4-4 4 4M5 19h14"
-                stroke="#FDFDFF"
-                strokeWidth="1.75"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="font-sans text-[12px] font-[510] uppercase text-[#FDFDFF]">
-              {file ? file.name : "Drop a file or click to upload"}
-            </span>
-            <span className="font-sans text-[10px] uppercase text-[#959597]">
-              Png · Jpg · Pdf · Max 10mb
-            </span>
-          </button>
-        </div>
-
-        <div className="mt-6 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onClose}
-            className="px-2 py-2 font-sans text-[12px] font-[510] uppercase text-[#959597] hover:text-[#FDFDFF] disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() =>
-              void onCreate({
-                taskType,
-                relatedTo,
-                dueDate,
-                dueTime,
-                assignedTo,
-                priority,
-                notes,
-                reminder,
-                file,
-              })
-            }
-            className="rounded-lg bg-[#FDFDFF] px-4 py-2.5 font-sans text-[12px] font-[590] uppercase tracking-[-0.02em] text-[#0D0D0D] hover:opacity-90 disabled:opacity-50"
-          >
-            Create Task
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Read failed"));
+    reader.readAsDataURL(file);
+  });
 }
 
 export function SalesActivityDetailPage({ activityId }: { activityId: string }) {
   const [followUpOpen, setFollowUpOpen] = React.useState(false);
   const [taskOpen, setTaskOpen] = React.useState(false);
   const [taskBusy, setTaskBusy] = React.useState(false);
+  const [createdTask, setCreatedTask] = React.useState<CrmTask | null>(null);
+  const [successOpen, setSuccessOpen] = React.useState(false);
+  const [expenseOpen, setExpenseOpen] = React.useState(false);
+  const [taskDrawerId, setTaskDrawerId] = React.useState<string | null>(null);
   const [detail, setDetail] = React.useState<CrmSalesActivity | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -569,14 +328,19 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
         setReps(
           repsRes.data.map((r) => ({
             value: r.id,
-            label: [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email || r.id,
+            label:
+              [r.firstName, r.lastName].filter(Boolean).join(" ") ||
+              r.email ||
+              r.id,
           })),
         );
       } catch (err) {
         toastApiError(err);
         if (!cancelled) {
           setDetail(null);
-          setLoadError(err instanceof Error ? err.message : "Couldn't load activity");
+          setLoadError(
+            err instanceof Error ? err.message : "Couldn't load activity",
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -588,7 +352,6 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
   }, [activityId, reloadKey]);
 
   async function handleFollowUpConfirm(payload: FollowUpPayload) {
-    if (!payload.createFollowUp) return;
     const followUpAt = payload.followUpDate
       ? new Date(`${payload.followUpDate}T12:00:00`).toISOString()
       : new Date().toISOString();
@@ -597,6 +360,26 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
         followUpAt,
         notes: payload.notes.trim() || undefined,
       });
+      if (payload.createFollowUp && detail) {
+        const related = [
+          detail.customer?.name,
+          detail.activityCode,
+          detail.linkedQuote?.quoteNumber,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        await crmApi.createTask({
+          taskType: "FOLLOW-UP",
+          title: payload.notes.trim() || detail.subject || "Follow-up",
+          dueAt: followUpAt,
+          notes: payload.notes.trim() || undefined,
+          relatedLabel: related,
+          salesActivityId: activityId,
+          customerId: detail.customer?.id ?? detail.customerId,
+          quoteId: detail.linkedQuote?.id ?? detail.linkedQuoteId,
+          assigneeId: detail.rep?.id ?? detail.repId,
+        });
+      }
       toastSuccess("Follow-up logged");
       await reload();
     } catch (err) {
@@ -610,9 +393,10 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
     setSavingNote(true);
     try {
       const stamp = formatShortDate(new Date().toISOString());
+      const author = userShort(detail.rep);
       const merged = detail.notes?.trim()
-        ? `${detail.notes.trim()}\n\n[${stamp}] ${newNote.trim()}`
-        : `[${stamp}] ${newNote.trim()}`;
+        ? `${detail.notes.trim()}\n\n[${stamp} · ${author}] ${newNote.trim()}`
+        : `[${stamp} · ${author}] ${newNote.trim()}`;
       await crmApi.updateSalesActivity(activityId, { notes: merged });
       toastSuccess("Note added");
       setNewNote("");
@@ -624,41 +408,48 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
     }
   }
 
-  async function handleCreateTask(payload: {
-    taskType: string;
-    relatedTo: string;
-    dueDate: string;
-    dueTime: string;
-    assignedTo: string;
-    priority: string;
-    notes: string;
-    reminder: string;
-    file?: File | null;
-  }) {
+  async function handleCreateTask(payload: CreateTaskFormPayload) {
     setTaskBusy(true);
     try {
-      const followUpAt = new Date(
+      let attachmentUrl: string | undefined;
+      let attachmentFileName: string | undefined;
+      if (payload.file) {
+        if (payload.file.size > 10 * 1024 * 1024) {
+          toastApiError("File must be 10MB or smaller");
+          return;
+        }
+        const contentBase64 = await fileToBase64(payload.file);
+        const uploaded = await crmApi.uploadFile({
+          folder: "tasks",
+          fileName: payload.file.name,
+          mimeType: payload.file.type || undefined,
+          contentBase64,
+        });
+        attachmentUrl = uploaded.data.url;
+        attachmentFileName = uploaded.data.fileName;
+      }
+      const dueAt = new Date(
         `${payload.dueDate}T${payload.dueTime || "10:00"}:00`,
       ).toISOString();
-      await crmApi.createSalesActivity({
-        type: "OTHER",
-        subject: `${payload.taskType} · ${payload.priority}`,
-        customerId: detail?.customer?.id,
-        repId: payload.assignedTo || detail?.rep?.id,
-        followUpAt,
-        notes: [
-          payload.notes,
-          `Related to: ${payload.relatedTo}`,
-          `Reminder: ${payload.reminder}`,
-          payload.file ? `Attachment: ${payload.file.name}` : null,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        activityAt: new Date().toISOString(),
-        status: "PENDING",
+      const created = await crmApi.createTask({
+        taskType: payload.taskType,
+        title: payload.notes.trim() || payload.taskType,
+        priority: payload.priority,
+        dueAt,
+        reminder: payload.reminder,
+        notes: payload.notes,
+        relatedLabel: payload.relatedTo,
+        attachmentUrl,
+        attachmentFileName,
+        salesActivityId: activityId,
+        customerId: detail?.customer?.id ?? detail?.customerId,
+        quoteId: detail?.linkedQuote?.id ?? detail?.linkedQuoteId,
+        assigneeId: payload.assignedTo || detail?.rep?.id,
       });
-      toastSuccess("Task created");
+      setCreatedTask(created.data);
       setTaskOpen(false);
+      setSuccessOpen(true);
+      await reload();
     } catch (err) {
       toastApiError(err);
     } finally {
@@ -668,31 +459,11 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
 
   useSetHeaderBreadcrumb(
     detail?.activityCode
-      ? `CRM / Sales / ${detail.activityCode}`
-      : "CRM / Sales / Activity",
+      ? `CRM / Sales / Sales Activity / ${detail.activityCode}`
+      : "CRM / Sales / Sales Activity",
   );
 
-  useSetHeaderActions(
-    detail ? (
-      <>
-        <Link href={`/crm/sales/${activityId}/edit`}>
-          <DashboardToolbarButton>Edit</DashboardToolbarButton>
-        </Link>
-        <DashboardToolbarButton onClick={() => setFollowUpOpen(true)}>
-          Log Follow Up
-        </DashboardToolbarButton>
-        <DashboardToolbarButton
-          variant="primary"
-          leftIcon={<TaskIcon />}
-          showChevron
-          onClick={() => setTaskOpen(true)}
-        >
-          Create Task
-        </DashboardToolbarButton>
-      </>
-    ) : null,
-    [detail, activityId],
-  );
+  useSetHeaderActions(null, [activityId]);
 
   if (loading || !detail || loadError) {
     return (
@@ -709,29 +480,73 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
     );
   }
 
-  const whenLabel = formatActivityWhen(detail.activityAt);
-  const meta = `${detail.activityCode} · ${detail.type} · ${whenLabel}`;
+  const whenLabel = formatActivityWhen(detail.activityAt, ",");
+  const dateFieldLabel = formatActivityWhen(detail.activityAt, "·");
+  const statusLabel =
+    detail.status === "COMPLETE" || detail.status === "OPEN"
+      ? "OPEN"
+      : detail.status.replace(/_/g, " ");
   const nextAction =
-    detail.subject?.toUpperCase().includes("QUOTE")
+    detail.nextAction?.trim() ||
+    (detail.subject?.toUpperCase().includes("QUOTE")
       ? "Send revised quote"
       : detail.followUpAt
         ? "Complete follow-up"
-        : "—";
+        : "—");
   const quote = detail.linkedQuote;
-  const opportunity = quote?.amount != null ? money(Number(quote.amount)) : "—";
+  const tasks = detail.tasks ?? [];
+  const expenses = detail.expenses ?? [];
+  const relatedLabel = [
+    detail.customer?.name,
+    detail.activityCode,
+    quote?.quoteNumber,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const customerId = detail.customer?.id || detail.customerId;
+  const quoteBlurb =
+    quote?.notes?.trim() ||
+    quote?.terms?.trim() ||
+    (quote ? "Linked quote" : "");
 
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <DashboardBadge variant={statusVariant(detail.status)} pill>
-          {detail.status === "COMPLETE" ? "OPEN" : detail.status}
-        </DashboardBadge>
-        <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
-          {meta}
-        </span>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-2.5">
+          <h1 className="font-sans text-[18px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[22px]">
+            Sales Activity · {detail.activityCode}
+          </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <DashboardBadge
+              variant={
+                statusLabel === "OPEN"
+                  ? "success"
+                  : statusVariant(detail.status)
+              }
+              pill
+            >
+              {statusLabel}
+            </DashboardBadge>
+            <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
+              {detail.activityCode} · {detail.type} · {whenLabel}
+            </span>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={`/crm/sales/${activityId}/edit`}>
+            <DashboardToolbarButton>Edit</DashboardToolbarButton>
+          </Link>
+          <DashboardToolbarButton
+            variant="primary"
+            leftIcon={<TaskIcon />}
+            onClick={() => setTaskOpen(true)}
+          >
+            Create Task
+          </DashboardToolbarButton>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(260px,1fr)]">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.75fr)_minmax(280px,1fr)]">
         <div className="space-y-4">
           <DashboardPanel className="overflow-hidden">
             <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3 sm:px-5">
@@ -753,7 +568,7 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
                   {(detail.customer?.name ?? "?").charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate font-sans text-[13px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                  <p className="truncate font-sans text-[13px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] md:text-[14px]">
                     {detail.customer?.name ?? "—"}
                   </p>
                   <p className="mt-1 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
@@ -761,20 +576,20 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-3">
                 <DetailPair
                   label="Contact"
                   value={shortName(detail.contact?.fullName)}
                 />
                 <DetailPair label="Rep" value={userShort(detail.rep)} />
-                <DetailPair label="Date" value={whenLabel} />
+                <DetailPair label="Date" value={dateFieldLabel} />
                 <DetailPair
                   label="Duration"
-                  value={detail.duration ?? "—"}
+                  value={(detail.duration ?? "—").toUpperCase()}
                 />
                 <DetailPair
                   label="Subject"
-                  value={detail.subject ?? "—"}
+                  value={(detail.subject ?? "—").toUpperCase()}
                 />
               </div>
             </div>
@@ -813,44 +628,84 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
 
           <DashboardPanel className="overflow-hidden">
             <div className="px-4 pt-4 pb-3 sm:px-5">
-              <DashboardPanelTitle icon="lightning" title="Notes" />
+              <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
+                Tasks From This Activity · {tasks.length}
+              </p>
+            </div>
+            <div className="divider-line-full w-full" aria-hidden />
+            <div className="divide-y divide-divider">
+              {tasks.length === 0 ? (
+                <p className="px-4 py-4 font-sans text-[12px] uppercase text-[#959597] sm:px-5">
+                  No tasks yet
+                </p>
+              ) : (
+                tasks.map((t) => {
+                  const st = (t.displayStatus ?? t.status).toUpperCase();
+                  const due = formatTaskDue(t.dueAt);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setTaskDrawerId(t.id)}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition-opacity hover:opacity-80 sm:px-5"
+                    >
+                      <p className="min-w-0 truncate font-sans text-[12px] tracking-[-0.02em] text-[#7EB6FF] underline underline-offset-2">
+                        <span className="uppercase">{t.code}</span>
+                        {" · "}
+                        {t.title}
+                        {due ? ` · ${due}` : ""}
+                      </p>
+                      <DashboardBadge
+                        variant={st === "OVERDUE" ? "error" : statusVariant(st)}
+                        pill
+                      >
+                        {st}
+                      </DashboardBadge>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </DashboardPanel>
+
+          <DashboardPanel className="overflow-hidden">
+            <div className="px-4 pt-4 pb-3 sm:px-5">
+              <DashboardPanelTitle icon="lightning" title="Customer Notes" />
             </div>
             <div className="divider-line-full w-full" aria-hidden />
             <div className="space-y-5 p-4 sm:p-5">
               <div>
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                   <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
                     Previous Note
                   </p>
-                  <p className="font-sans text-[11px] uppercase tabular-nums text-[#959597]">
-                    {formatShortDate(detail.activityAt)}
-                  </p>
+                  <div className="flex items-center gap-4">
+                    <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+                      {userShort(detail.rep)}
+                    </p>
+                    <p className="font-sans text-[11px] uppercase tabular-nums tracking-[-0.02em] text-[#959597]">
+                      {formatShortDate(detail.activityAt)}
+                    </p>
+                  </div>
                 </div>
-                <p className="mt-2 font-sans text-[12px] uppercase leading-relaxed tracking-[-0.02em] text-[#FDFDFF]">
-                  {detail.notes?.trim() || "No notes yet"}
+                <p className="mt-2.5 whitespace-pre-wrap font-sans text-[12px] uppercase leading-relaxed tracking-[-0.02em] text-[#FDFDFF] md:text-[13px]">
+                  {detail.notes?.trim() || "No notes yet."}
                 </p>
               </div>
               <div>
                 <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
                   Add Note
                 </p>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                  <input
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    placeholder="Add a new note"
-                    className="h-10 min-w-0 flex-1 rounded-lg border-0 bg-[#2A2A2A] px-3 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none placeholder:text-[#959597]"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void handleAddNote();
-                    }}
-                  />
-                  <DashboardToolbarButton
-                    disabled={savingNote || !newNote.trim()}
-                    onClick={() => void handleAddNote()}
-                  >
-                    Save
-                  </DashboardToolbarButton>
-                </div>
+                <input
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  placeholder="Add a new note"
+                  disabled={savingNote}
+                  className="mt-2 h-10 w-full rounded-lg border-0 bg-[#2A2A2A] px-3 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none placeholder:text-[#959597] disabled:opacity-60"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleAddNote();
+                  }}
+                />
               </div>
             </div>
           </DashboardPanel>
@@ -872,14 +727,11 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
                     <p className="font-sans text-[13px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
                       {quote.quoteNumber}
                     </p>
-                    <p className="mt-1 truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
-                      {quote.notes || quote.terms || "Linked quote"}
+                    <p className="mt-1.5 truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+                      {quoteBlurb}
                     </p>
                   </div>
-                  <DashboardBadge
-                    variant={statusVariant(quote.status)}
-                    pill
-                  >
+                  <DashboardBadge variant={statusVariant(quote.status)} pill>
                     {quote.status ?? "Pending"}
                   </DashboardBadge>
                 </Link>
@@ -903,18 +755,48 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
               </p>
             </div>
             <div className="divider-line-full w-full" aria-hidden />
-            <div className="px-4 sm:px-5">
-              <RowKV label="Opportunity" value={opportunity} />
-              <RowKV
-                label="Stage"
-                value={
-                  quote
-                    ? quote.status === "SENT" || quote.status === "OPEN"
-                      ? "Proposal"
-                      : quote.status ?? "—"
-                    : "—"
-                }
-              />
+            <div className="p-4 sm:p-5">
+              <p className="font-sans text-[11px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+                No separate opportunity object in this CRM — the linked quote
+                above is the deal record. Its stage is the quote&apos;s status.
+              </p>
+            </div>
+          </DashboardPanel>
+
+          <DashboardPanel className="overflow-hidden">
+            <div className="px-4 pt-4 pb-3 sm:px-5">
+              <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597] md:text-[12px]">
+                Expense
+              </p>
+            </div>
+            <div className="divider-line-full w-full" aria-hidden />
+            <div className="space-y-3 p-4 sm:p-5">
+              {expenses.length === 0 ? (
+                <p className="font-sans text-[12px] uppercase text-[#959597]">
+                  No expense logged for this activity.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {expenses.map((e) => (
+                    <li
+                      key={e.id}
+                      className="flex items-center justify-between gap-3 font-sans text-[12px] uppercase text-[#FDFDFF]"
+                    >
+                      <span className="truncate">
+                        {e.code} · {e.merchant}
+                      </span>
+                      <span className="text-[#959597]">
+                        {money(Number(e.amount))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {customerId ? (
+                <DashboardToolbarButton onClick={() => setExpenseOpen(true)}>
+                  Log Expense
+                </DashboardToolbarButton>
+              ) : null}
             </div>
           </DashboardPanel>
         </div>
@@ -933,15 +815,43 @@ export function SalesActivityDetailPage({ activityId }: { activityId: string }) 
         onClose={() => setTaskOpen(false)}
         busy={taskBusy}
         defaults={{
-          relatedTo: detail.customer?.name ?? "",
+          relatedTo: relatedLabel,
           assignedTo: detail.rep?.id ?? "",
-          notes: detail.subject
-            ? `Follow up on ${detail.subject}`
-            : "Confirm next steps and send update.",
+          notes: "",
         }}
         reps={reps}
         onCreate={handleCreateTask}
       />
+
+      <TaskCreatedSuccessModal
+        open={successOpen}
+        onClose={() => setSuccessOpen(false)}
+        task={createdTask}
+        onCreateAnother={() => {
+          setSuccessOpen(false);
+          setTaskOpen(true);
+        }}
+      />
+
+      <TaskDetailsDrawer
+        open={Boolean(taskDrawerId)}
+        taskId={taskDrawerId}
+        onClose={() => setTaskDrawerId(null)}
+        onCompleted={() => setReloadKey((k) => k + 1)}
+      />
+
+      {customerId ? (
+        <NewExpenseModal
+          open={expenseOpen}
+          onClose={() => setExpenseOpen(false)}
+          customerId={customerId}
+          salesActivityId={activityId}
+          onCreated={() => {
+            setExpenseOpen(false);
+            void reload();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

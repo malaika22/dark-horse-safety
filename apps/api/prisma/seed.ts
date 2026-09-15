@@ -1,7 +1,9 @@
 import {
   AccountStatus,
   CrmRecordStatus,
+  CrmTaskPriority,
   EnforcementLevel,
+  ExpenseStatus,
   PrismaClient,
   SalesActivityType,
   UserRole,
@@ -125,6 +127,11 @@ async function main() {
       openJobs: 3,
       msaOnFile: true,
       msaExpiry: new Date('2027-03-15'),
+      netsuiteId: 'NS-0004471',
+      netsuiteLastSyncAt: new Date(Date.now() - 2 * 60 * 1000),
+      netsuiteLastResult: 'SUCCESS',
+      netsuiteSyncError: null as string | null,
+      netsuiteAutoExport: true,
     },
     {
       code: 'CUST-000002',
@@ -141,6 +148,11 @@ async function main() {
       openJobs: 1,
       msaOnFile: true,
       msaExpiry: new Date('2026-11-01'),
+      netsuiteId: 'NS-0004472',
+      netsuiteLastSyncAt: new Date(Date.now() - 60 * 60 * 1000),
+      netsuiteLastResult: 'SUCCESS',
+      netsuiteSyncError: null as string | null,
+      netsuiteAutoExport: false,
     },
     {
       code: 'CUST-000003',
@@ -155,6 +167,11 @@ async function main() {
       assignedRepId: admin.id,
       openJobs: 0,
       msaOnFile: false,
+      netsuiteId: 'NS-0004473',
+      netsuiteLastSyncAt: null as Date | null,
+      netsuiteLastResult: null as string | null,
+      netsuiteSyncError: null as string | null,
+      netsuiteAutoExport: true,
     },
     {
       code: 'CUST-000004',
@@ -170,6 +187,11 @@ async function main() {
       openJobs: 2,
       msaOnFile: true,
       msaExpiry: new Date('2026-10-20'),
+      netsuiteId: 'NS-0004474',
+      netsuiteLastSyncAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
+      netsuiteLastResult: 'FAILED',
+      netsuiteSyncError: 'ST-00004 - Export rejected by NetSuite',
+      netsuiteAutoExport: true,
     },
     {
       code: 'CUST-000005',
@@ -186,6 +208,11 @@ async function main() {
       openJobs: 5,
       msaOnFile: true,
       msaExpiry: new Date('2027-01-10'),
+      netsuiteId: null as string | null,
+      netsuiteLastSyncAt: null as Date | null,
+      netsuiteLastResult: null as string | null,
+      netsuiteSyncError: null as string | null,
+      netsuiteAutoExport: true,
     },
     {
       code: 'CUST-000006',
@@ -201,6 +228,11 @@ async function main() {
       openJobs: 0,
       msaOnFile: true,
       msaExpiry: new Date('2025-12-01'),
+      netsuiteId: null as string | null,
+      netsuiteLastSyncAt: null as Date | null,
+      netsuiteLastResult: null as string | null,
+      netsuiteSyncError: null as string | null,
+      netsuiteAutoExport: true,
     },
     {
       code: 'CUST-000007',
@@ -216,6 +248,11 @@ async function main() {
       openJobs: 4,
       msaOnFile: true,
       msaExpiry: new Date('2026-12-15'),
+      netsuiteId: null as string | null,
+      netsuiteLastSyncAt: null as Date | null,
+      netsuiteLastResult: null as string | null,
+      netsuiteSyncError: null as string | null,
+      netsuiteAutoExport: false,
     },
     {
       code: 'CUST-000008',
@@ -230,6 +267,11 @@ async function main() {
       assignedRepId: torres.id,
       openJobs: 1,
       msaOnFile: false,
+      netsuiteId: null as string | null,
+      netsuiteLastSyncAt: null as Date | null,
+      netsuiteLastResult: null as string | null,
+      netsuiteSyncError: null as string | null,
+      netsuiteAutoExport: true,
     },
   ] as const;
 
@@ -245,12 +287,74 @@ async function main() {
         paymentTerms: data.paymentTerms,
         pricingTier: data.pricingTier,
         openJobs: data.openJobs,
+        netsuiteId: data.netsuiteId,
+        netsuiteLastSyncAt: data.netsuiteLastSyncAt,
+        netsuiteLastResult: data.netsuiteLastResult,
+        netsuiteSyncError: data.netsuiteSyncError,
+        netsuiteAutoExport: data.netsuiteAutoExport,
       },
       create: { ...data },
     });
     customers.push(row);
   }
   const [c1, c2, c3, c4, c5, c6, c7, c8] = customers;
+
+  // ─── NetSuite customer directory (for auto-match by name) ────────────────
+  const nsDirectory = [
+    {
+      netsuiteId: 'NS-0004471',
+      name: 'Permian Basin Energy',
+      legalName: 'Permian Basin Energy Holdings LLC',
+    },
+    {
+      netsuiteId: 'NS-0004472',
+      name: 'Lonestar Oilfield',
+      legalName: 'Lonestar Oilfield Services Inc',
+    },
+    {
+      netsuiteId: 'NS-0004473',
+      name: 'Cactus Well Services',
+      legalName: 'Cactus Well Services LLC',
+    },
+    {
+      netsuiteId: 'NS-0004474',
+      name: 'Rio Grande Resources',
+      legalName: 'Rio Grande Resources LP',
+    },
+    {
+      netsuiteId: 'NS-0004475',
+      name: 'Delaware Basin Co.',
+      legalName: 'Delaware Basin Company LLC',
+    },
+    {
+      netsuiteId: 'NS-0004476',
+      name: 'Frontier Energy LLC',
+      legalName: 'Frontier Energy Limited Liability Co',
+    },
+    {
+      netsuiteId: 'NS-0004480',
+      name: 'Eagle Ford Partners',
+      legalName: 'Eagle Ford Partners LP',
+    },
+    {
+      netsuiteId: 'NS-0004481',
+      name: 'Midland Frac Services',
+      legalName: 'Midland Frac Services Inc',
+    },
+  ] as const;
+
+  for (const entry of nsDirectory) {
+    const id = `nsdir_${entry.netsuiteId.toLowerCase()}`;
+    await prisma.$executeRaw`
+      INSERT INTO "NetSuiteCustomerDirectory" ("id", "netsuiteId", "name", "legalName", "customerType", "createdAt", "updatedAt")
+      VALUES (${id}, ${entry.netsuiteId}, ${entry.name}, ${entry.legalName}, ${'CUSTOMER'}, NOW(), NOW())
+      ON CONFLICT ("netsuiteId") DO UPDATE SET
+        "name" = EXCLUDED."name",
+        "legalName" = EXCLUDED."legalName",
+        "customerType" = EXCLUDED."customerType",
+        "updatedAt" = NOW()
+    `;
+  }
 
   // ─── Contacts ─────────────────────────────────────────────────────────────
   const contactDefs = [
@@ -598,6 +702,7 @@ async function main() {
       rateType: 'Per Job',
       rate: 1250,
       unit: 'Job',
+      netsuiteItem: 'NS-ITEM-5010',
       status: CrmRecordStatus.ACTIVE,
       ownerId: admin.id,
       effectiveFrom: new Date('2026-09-01'),
@@ -610,6 +715,7 @@ async function main() {
       rateType: 'Per HR',
       rate: 185,
       unit: 'Hour',
+      netsuiteItem: 'NS-ITEM-4821',
       status: CrmRecordStatus.ACTIVE,
       ownerId: admin.id,
       effectiveFrom: new Date('2026-08-01'),
@@ -645,6 +751,7 @@ async function main() {
       rateType: 'Per Job',
       rate: 1400,
       unit: 'Job',
+      netsuiteItem: 'NS-ITEM-5010',
       status: CrmRecordStatus.ACTIVE,
       ownerId: nguyen.id,
       effectiveFrom: new Date('2026-07-01'),
@@ -696,6 +803,9 @@ async function main() {
         rate: data.rate,
         status: data.status,
         customerId: data.customerId,
+        ...(data.netsuiteItem
+          ? { netsuiteItem: data.netsuiteItem }
+          : {}),
       },
       create: data,
     });
@@ -1780,6 +1890,148 @@ async function main() {
     });
   }
 
+  // ─── Payment cards / expenses / CRM tasks / sync targets ───────────────────
+  const companyCard = await prisma.paymentCard.upsert({
+    where: { id: 'seed-company-card-001' },
+    update: {
+      brand: 'VISA',
+      last4: '4242',
+      label: 'Company Visa · 4242',
+      isCompanyCard: true,
+      active: true,
+      ownerId: admin.id,
+      archivedAt: null,
+    },
+    create: {
+      id: 'seed-company-card-001',
+      brand: 'VISA',
+      last4: '4242',
+      label: 'Company Visa · 4242',
+      isCompanyCard: true,
+      active: true,
+      ownerId: admin.id,
+    },
+  });
+
+  const expenseDefs = [
+    {
+      code: 'EXP-000001',
+      expenseDate: new Date('2026-09-10'),
+      merchant: 'Midland Fuel Depot',
+      category: 'Fuel',
+      paymentMethod: companyCard.label,
+      amount: 128.45,
+      status: ExpenseStatus.APPROVED,
+      customerId: c1.id,
+      locationId: loc1.id,
+      repId: admin.id,
+    },
+    {
+      code: 'EXP-000002',
+      expenseDate: new Date('2026-09-12'),
+      merchant: 'Odessa Office Supply',
+      category: 'Office',
+      paymentMethod: companyCard.label,
+      amount: 64.2,
+      status: ExpenseStatus.PENDING,
+      customerId: c2.id,
+      locationId: loc2.id,
+      repId: torres.id,
+    },
+    {
+      code: 'EXP-000003',
+      expenseDate: new Date('2026-09-14'),
+      merchant: 'Permian Lodging',
+      category: 'Travel',
+      paymentMethod: companyCard.label,
+      amount: 189.0,
+      status: ExpenseStatus.UNMATCHED,
+      customerId: c5.id,
+      locationId: loc5.id,
+      repId: nguyen.id,
+    },
+  ] as const;
+
+  for (const data of expenseDefs) {
+    await prisma.expense.upsert({
+      where: { code: data.code },
+      update: {
+        expenseDate: data.expenseDate,
+        merchant: data.merchant,
+        category: data.category,
+        paymentMethod: data.paymentMethod,
+        amount: data.amount,
+        status: data.status,
+        customerId: data.customerId,
+        locationId: data.locationId,
+        repId: data.repId,
+      },
+      create: { ...data },
+    });
+  }
+
+  const taskDefs = [
+    {
+      code: 'TASK-000001',
+      title: 'Follow up Permian Basin quote',
+      taskType: 'FOLLOW_UP',
+      priority: CrmTaskPriority.HIGH,
+      status: CrmRecordStatus.OPEN,
+      dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      customerId: c1.id,
+      assigneeId: admin.id,
+      createdById: admin.id,
+    },
+    {
+      code: 'TASK-000002',
+      title: 'Schedule Lonestar site visit',
+      taskType: 'VISIT',
+      priority: CrmTaskPriority.MEDIUM,
+      status: CrmRecordStatus.OPEN,
+      dueAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      customerId: c2.id,
+      assigneeId: torres.id,
+      createdById: admin.id,
+    },
+  ] as const;
+
+  for (const data of taskDefs) {
+    await prisma.crmTask.upsert({
+      where: { code: data.code },
+      update: {
+        title: data.title,
+        taskType: data.taskType,
+        priority: data.priority,
+        status: data.status,
+        dueAt: data.dueAt,
+        customerId: data.customerId,
+        assigneeId: data.assigneeId,
+      },
+      create: { ...data },
+    });
+  }
+
+  await prisma.$executeRaw`
+    INSERT INTO "CrmSyncState" (
+      "id", "syncedAt", "updatedAt",
+      "targetActivities", "targetCalls", "targetVisits",
+      "targetQuotes", "targetPipeline", "targetEodPct"
+    )
+    VALUES (
+      'crm', NOW(), NOW(),
+      10, 15, 8,
+      6, 150000, 100
+    )
+    ON CONFLICT ("id") DO UPDATE SET
+      "targetActivities" = EXCLUDED."targetActivities",
+      "targetCalls" = EXCLUDED."targetCalls",
+      "targetVisits" = EXCLUDED."targetVisits",
+      "targetQuotes" = EXCLUDED."targetQuotes",
+      "targetPipeline" = EXCLUDED."targetPipeline",
+      "targetEodPct" = EXCLUDED."targetEodPct",
+      "updatedAt" = NOW()
+  `;
+
   console.log(
     `CRM seed: ${customers.length} customers, ${contacts.length} contacts, ${locations.length} locations`,
   );
@@ -1788,6 +2040,9 @@ async function main() {
   );
   console.log(
     `Quotes ${quoteDefs.length}, sales ${activityDefs.length}, EOD ${eodDefs.length}, docs ${docDefs.length}, workOrders ${workOrderDefs.length}`,
+  );
+  console.log(
+    `Expenses ${expenseDefs.length}, tasks ${taskDefs.length}, card ${companyCard.label}`,
   );
 }
 

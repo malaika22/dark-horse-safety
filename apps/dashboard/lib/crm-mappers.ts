@@ -24,6 +24,7 @@ import type {
   RouteLocationCard,
   RouteRuleRow,
   SalesActivityRow,
+  StatusBadge,
 } from "@/features/crm/crm-types";
 
 function titleCaseStatus(status: string) {
@@ -525,6 +526,7 @@ export function mapEodReportRow(r: CrmEodReport): EodReportRow {
 
 export function mapSalesActivityRow(a: CrmSalesActivity): SalesActivityRow {
   const at = new Date(a.activityAt);
+  const followUpStatus = salesFollowUpStatus(a.followUpAt, a.status);
   return {
     id: a.id,
     activityId: a.activityCode,
@@ -534,16 +536,52 @@ export function mapSalesActivityRow(a: CrmSalesActivity): SalesActivityRow {
     date: fmtDate(a.activityAt),
     type: a.type,
     customer: a.customer?.name ?? "—",
+    customerId: a.customerId ?? a.customer?.id ?? null,
     contact: a.contact?.fullName ?? "—",
     rep: userName(a.rep),
     subject: a.subject ?? "—",
     outcome: a.outcome
       ? statusBadge(a.outcome.replace(/\s+/g, "_").toUpperCase())
       : { label: "—", variant: "neutral" },
-    followUp: a.followUpAt
-      ? { label: fmtDate(a.followUpAt), variant: "success" }
-      : null,
-    status: statusBadge(a.status),
+    followUp: followUpStatus,
+    followUpAt: a.followUpAt ?? null,
+    status: followUpStatus,
+    linkedQuoteId: a.linkedQuoteId ?? a.linkedQuote?.id ?? null,
+    linkedQuoteNumber: a.linkedQuote?.quoteNumber ?? null,
+  };
+}
+
+function salesFollowUpStatus(
+  followUpAt?: string | null,
+  status?: string | null,
+): StatusBadge {
+  if (!followUpAt) {
+    return { label: "No Follow-up", variant: "neutral" };
+  }
+  const due = new Date(followUpAt);
+  const dateLabel = Number.isNaN(due.getTime())
+    ? ""
+    : due
+        .toLocaleDateString("en-US", { month: "short", day: "numeric" })
+        .toUpperCase();
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const complete = (status ?? "").toUpperCase() === "COMPLETE";
+  if (complete) {
+    return {
+      label: dateLabel ? `${dateLabel} - Done` : "Done",
+      variant: "success",
+    };
+  }
+  if (!Number.isNaN(due.getTime()) && due.getTime() < startOfToday.getTime()) {
+    return {
+      label: dateLabel ? `${dateLabel} - Overdue` : "Overdue",
+      variant: "error",
+    };
+  }
+  return {
+    label: dateLabel ? `${dateLabel} - Open` : "Open",
+    variant: "neutral",
   };
 }
 

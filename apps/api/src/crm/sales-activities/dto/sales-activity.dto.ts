@@ -1,10 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -12,6 +13,14 @@ import {
 } from 'class-validator';
 import { SalesActivityType } from '@prisma/client';
 import { ListQueryDto } from '../../../common/dto/list-query.dto';
+
+function toOptionalBool(value: unknown): boolean | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'boolean') return value;
+  if (value === 'true' || value === '1') return true;
+  if (value === 'false' || value === '0') return false;
+  return undefined;
+}
 
 export class SalesActivityListQueryDto extends ListQueryDto {
   @ApiPropertyOptional()
@@ -27,6 +36,11 @@ export class SalesActivityListQueryDto extends ListQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
+  locationId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
   repId?: string;
 
   @ApiPropertyOptional({ enum: SalesActivityType })
@@ -38,6 +52,32 @@ export class SalesActivityListQueryDto extends ListQueryDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  outcome?: string;
+
+  @ApiPropertyOptional({
+    description: 'NONE | OPEN | OVERDUE | DONE',
+    enum: ['NONE', 'OPEN', 'OVERDUE', 'DONE'],
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(['NONE', 'OPEN', 'OVERDUE', 'DONE'])
+  followUpStatus?: 'NONE' | 'OPEN' | 'OVERDUE' | 'DONE';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(({ value }) => toOptionalBool(value))
+  @IsBoolean()
+  hasLinkedQuote?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(({ value }) => toOptionalBool(value))
+  @IsBoolean()
+  hasExpenseLogged?: boolean;
 
   @ApiPropertyOptional({ description: 'ISO date YYYY-MM-DD' })
   @IsOptional()
@@ -90,6 +130,11 @@ export class CreateSalesActivityDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  nextAction?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

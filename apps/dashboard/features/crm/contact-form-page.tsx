@@ -174,7 +174,7 @@ export function ContactFormPage({
   const [officePhone, setOfficePhone] = React.useState("");
   const [preferredMethod, setPreferredMethod] = React.useState("");
   const [timeZone, setTimeZone] = React.useState("");
-  const [lastContacted, setLastContacted] = React.useState("—");
+  const [lastContacted, setLastContacted] = React.useState("");
   const [doNotContact, setDoNotContact] = React.useState(false);
   const [notes, setNotes] = React.useState("");
   const [howWeMet, setHowWeMet] = React.useState("");

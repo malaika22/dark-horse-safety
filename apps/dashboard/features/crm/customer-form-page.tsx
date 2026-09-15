@@ -226,7 +226,7 @@ export function CustomerFormPage({
   const [customerCode, setCustomerCode] = React.useState("");
   const [name, setName] = React.useState("");
   const [legalEntityName, setLegalEntityName] = React.useState("");
-  const [status, setStatus] = React.useState(isEdit ? "" : "ACTIVE");
+  const [status, setStatus] = React.useState("");
   const [assignedRep, setAssignedRep] = React.useState("");
   const [industry, setIndustry] = React.useState("");
   const [website, setWebsite] = React.useState("");
@@ -248,7 +248,7 @@ export function CustomerFormPage({
   const [creditLimit, setCreditLimit] = React.useState("");
   const [taxExempt, setTaxExempt] = React.useState(false);
   const [taxId, setTaxId] = React.useState("");
-  const [pricingTier, setPricingTier] = React.useState("Standard");
+  const [pricingTier, setPricingTier] = React.useState("");
   const [netsuiteId, setNetsuiteId] = React.useState("");
   const [isnId, setIsnId] = React.useState("");
   const [veriforceId, setVeriforceId] = React.useState("");
@@ -256,7 +256,7 @@ export function CustomerFormPage({
   const [msaExpiry, setMsaExpiry] = React.useState("");
   const [coiExpiry, setCoiExpiry] = React.useState("");
   const [w9OnFile, setW9OnFile] = React.useState(false);
-  const [clockInRadius, setClockInRadius] = React.useState("1000 FT");
+  const [clockInRadius, setClockInRadius] = React.useState("");
   const [radiusOverride, setRadiusOverride] = React.useState(false);
   const [requiresPo, setRequiresPo] = React.useState(false);
   const [requiredForms, setRequiredForms] = React.useState<string[]>([]);
@@ -1537,44 +1537,31 @@ export function CustomerFormPage({
                 </div>
                 {addingForm ? (
                   <div className="flex flex-wrap gap-2 rounded-lg border border-[#2D2D30] bg-[#1A1A1A] p-2">
-                    {(formChipOptions.length
-                      ? formChipOptions
-                      : [
-                          { id: "JSA", label: "JSA" },
-                          { id: "PERMIT TO WORK", label: "Permit to Work" },
-                          {
-                            id: "EQUIPMENT INSPECTION",
-                            label: "Equipment Inspection",
-                          },
-                          { id: "JHA", label: "JHA" },
-                          { id: "HOT WORK", label: "Hot Work" },
-                        ]
-                    )
-                      .filter((o) => !requiredForms.includes(o.id))
-                      .map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => {
-                            setRequiredForms((prev) => [...prev, opt.id]);
-                            setAddingForm(false);
-                          }}
-                          className="rounded-md border border-[#3E3E3E] bg-[#2A2A2A] px-2.5 py-1.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] hover:bg-[#353535]"
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    {(formChipOptions.length
-                      ? formChipOptions
-                      : [
-                          { id: "JSA", label: "JSA" },
-                          { id: "PERMIT TO WORK", label: "Permit to Work" },
-                          {
-                            id: "EQUIPMENT INSPECTION",
-                            label: "Equipment Inspection",
-                          },
-                        ]
-                    ).every((o) => requiredForms.includes(o.id)) ? (
+                    {formChipOptions.length === 0 ? (
+                      <span className="px-1 font-sans text-[10px] uppercase text-[#6F6F72]">
+                        No form templates available
+                      </span>
+                    ) : (
+                      formChipOptions
+                        .filter((o) => !requiredForms.includes(o.id))
+                        .map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setRequiredForms((prev) => [...prev, opt.id]);
+                              setAddingForm(false);
+                            }}
+                            className="rounded-md border border-[#3E3E3E] bg-[#2A2A2A] px-2.5 py-1.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] hover:bg-[#353535]"
+                          >
+                            {opt.label}
+                          </button>
+                        ))
+                    )}
+                    {formChipOptions.length > 0 &&
+                    formChipOptions.every((o) =>
+                      requiredForms.includes(o.id),
+                    ) ? (
                       <span className="px-1 font-sans text-[10px] uppercase text-[#6F6F72]">
                         All forms added
                       </span>

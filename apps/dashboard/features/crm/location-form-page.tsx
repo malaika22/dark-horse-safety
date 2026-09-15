@@ -31,7 +31,7 @@ type SitePhoto = {
   uploading?: boolean;
 };
 
-const SUGGESTED_LABELS = ["Main Gate", "Access Road", "Tank Battery", "Landmark"];
+const SUGGESTED_LABELS: string[] = [];
 
 function haversineMiles(
   a: { lat: number; lng: number },
@@ -119,12 +119,8 @@ function parseSitePhotos(raw: unknown): SitePhoto[] {
     .filter((p) => p.url || p.preview);
 }
 
-function nextSuggestedLabel(existing: SitePhoto[]) {
-  const used = new Set(existing.map((p) => p.label.toLowerCase()));
-  return (
-    SUGGESTED_LABELS.find((l) => !used.has(l.toLowerCase())) ??
-    `Landmark ${existing.length + 1}`
-  );
+function nextSuggestedLabel(_existing: SitePhoto[]) {
+  return "";
 }
 
 /**
@@ -161,12 +157,12 @@ export function LocationFormPage({
   const [latitude, setLatitude] = React.useState<number | null>(null);
   const [longitude, setLongitude] = React.useState<number | null>(null);
   const [siteType, setSiteType] = React.useState("");
-  const [status, setStatus] = React.useState("ACTIVE");
+  const [status, setStatus] = React.useState("");
   const [accessNotes, setAccessNotes] = React.useState("");
   const [siteContact, setSiteContact] = React.useState("");
   const [geofenceRadius, setGeofenceRadius] = React.useState("");
   const [geofenceOverride, setGeofenceOverride] = React.useState(false);
-  const [mapRadius, setMapRadius] = React.useState("5 MI");
+  const [mapRadius, setMapRadius] = React.useState("");
   const [gpsRequired, setGpsRequired] = React.useState(false);
   const [nearestHospital, setNearestHospital] = React.useState("");
   const [hospitalPhone, setHospitalPhone] = React.useState("");

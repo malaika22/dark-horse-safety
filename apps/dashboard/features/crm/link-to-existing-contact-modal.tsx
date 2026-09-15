@@ -38,10 +38,10 @@ export function LinkToExistingContactModal({
   onConfirm?: (contactId: string) => void;
   contacts?: LinkableContact[];
 }) {
-  const [selectedId, setSelectedId] = React.useState(contacts[0]?.id ?? "");
+  const [selectedId, setSelectedId] = React.useState("");
 
   React.useEffect(() => {
-    if (open) setSelectedId(contacts[0]?.id ?? "");
+    if (open) setSelectedId("");
   }, [open, contacts]);
 
   const list = contacts;

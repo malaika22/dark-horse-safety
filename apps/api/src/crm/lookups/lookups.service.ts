@@ -147,11 +147,7 @@ export class LookupsService {
           labelOpt('Unit'),
           labelOpt('Run'),
         ],
-        netsuiteItems: [
-          opt('NS-ITEM-4821', 'NS-ITEM-4821 · H2S Monitoring (Standard)'),
-          opt('NS-ITEM-4902', 'NS-ITEM-4902 · Site Safety Tech'),
-          opt('NS-ITEM-5010', 'NS-ITEM-5010 · Wireline Logging'),
-        ],
+        netsuiteItems: [] as { value: string; label: string }[],
         pricingAppliesTo: [
           opt('ALL_SITES', 'All Sites'),
           opt('SPECIFIC_WELLS', 'Specific Wells'),
@@ -370,6 +366,12 @@ export class LookupsService {
           labelOpt('Follow-up Set'),
           labelOpt('No Answer'),
         ],
+        followUpStatuses: [
+          opt('NONE', 'None'),
+          opt('OPEN', 'Open'),
+          opt('OVERDUE', 'Overdue'),
+          opt('DONE', 'Done'),
+        ],
         activityDurations: [
           labelOpt('15 min'),
           labelOpt('30 min'),
@@ -464,6 +466,9 @@ export class LookupsService {
       netsuiteDb,
       industriesDb,
       contactRolesDb,
+      formTemplatesDb,
+      jobTypesDb,
+      requiredFormsDb,
       payCycles,
       paymentCardsDb,
       expenseMethodsDb,
@@ -516,6 +521,26 @@ export class LookupsService {
         distinct: ['roleTitle'],
         take: 100,
       }),
+      this.prisma.formRule.findMany({
+        where: { archivedAt: null },
+        select: { formTemplate: true },
+        distinct: ['formTemplate'],
+        take: 200,
+      }),
+      this.prisma.formRule.findMany({
+        where: { archivedAt: null, jobType: { not: null } },
+        select: { jobType: true },
+        distinct: ['jobType'],
+        take: 100,
+      }),
+      this.prisma.customer.findMany({
+        where: {
+          archivedAt: null,
+          NOT: { defaultRequiredForms: null },
+        },
+        select: { defaultRequiredForms: true },
+        take: 200,
+      }),
       this.loadPayCycles(),
       this.prisma.paymentCard.findMany({
         where: { archivedAt: null, active: true },
@@ -545,6 +570,13 @@ export class LookupsService {
       return [...map.values()];
     };
 
+    const requiredFormExtras = requiredFormsDb.flatMap((r) =>
+      String(r.defaultRequiredForms ?? '')
+        .split(/[,|;]/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+
     return {
       data: {
         ...base,
@@ -570,7 +602,7 @@ export class LookupsService {
           unitsDb.map((r) => r.unit),
         ),
         netsuiteItems: merge(
-          base.netsuiteItems,
+          [],
           netsuiteDb.map((r) => r.netsuiteItem),
         ),
         industries: merge(
@@ -581,6 +613,15 @@ export class LookupsService {
           base.contactRoles,
           contactRolesDb.map((r) => r.roleTitle),
         ),
+        formTemplates: merge(
+          base.formTemplates,
+          formTemplatesDb.map((r) => r.formTemplate),
+        ),
+        jobTypes: merge(
+          base.jobTypes,
+          jobTypesDb.map((r) => r.jobType),
+        ),
+        requiredForms: merge(base.requiredForms, requiredFormExtras),
         expensePaymentMethods: merge(
           base.expensePaymentMethods,
           [

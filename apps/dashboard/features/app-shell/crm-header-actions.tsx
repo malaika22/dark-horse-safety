@@ -379,6 +379,7 @@ export const CRM_LIST_HEADER_ACTIONS: Record<string, () => ReactElement> = {
   "/crm/form-rules": AddFormRuleHeaderButton,
   "/crm/route-rules": AddRouteRuleHeaderButton,
   "/crm/eod-reports": CreateWorkOrderHeaderButton,
+  "/crm/sales-calendar": CreateWorkOrderHeaderButton,
   "/crm/quotes": CreateQuoteHeaderButton,
   "/crm/sales": LogActivityHeaderButton,
 };

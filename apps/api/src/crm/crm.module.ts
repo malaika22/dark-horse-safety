@@ -11,12 +11,14 @@ import { PaymentCardsModule } from './payment-cards/payment-cards.module';
 import { FormRulesModule } from './form-rules/form-rules.module';
 import { LocationsModule } from './locations/locations.module';
 import { LookupsModule } from './lookups/lookups.module';
+import { NetSuiteCustomerMappingModule } from './netsuite-customer-mapping/netsuite-customer-mapping.module';
 import { PricingRulesModule } from './pricing-rules/pricing-rules.module';
 import { QuotesModule } from './quotes/quotes.module';
 import { RequirementsModule } from './requirements/requirements.module';
 import { RouteRulesModule } from './route-rules/route-rules.module';
 import { SalesActivitiesModule } from './sales-activities/sales-activities.module';
 import { SavedViewsModule } from './saved-views/saved-views.module';
+import { TasksModule } from './tasks/tasks.module';
 import { WorkOrdersModule } from './work-orders/work-orders.module';
 
 @Module({
@@ -36,10 +38,12 @@ import { WorkOrdersModule } from './work-orders/work-orders.module';
     PaymentCardsModule,
     CardReconciliationsModule,
     SalesActivitiesModule,
+    TasksModule,
     QuotesModule,
     WorkOrdersModule,
     SavedViewsModule,
     LookupsModule,
+    NetSuiteCustomerMappingModule,
   ],
 })
 export class CrmModule {}

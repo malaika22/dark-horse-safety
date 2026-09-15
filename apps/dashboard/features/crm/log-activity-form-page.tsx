@@ -97,16 +97,16 @@ export function LogActivityFormPage({
   const [addingAttendee, setAddingAttendee] = React.useState(false);
   const [sitesLoading, setSitesLoading] = React.useState(false);
 
-  const [type, setType] = React.useState("CALL");
-  const [activityAt, setActivityAt] = React.useState(nowDateTimeLocal);
-  const [duration, setDuration] = React.useState("15 min");
+  const [type, setType] = React.useState("");
+  const [activityAt, setActivityAt] = React.useState("");
+  const [duration, setDuration] = React.useState("");
   const [customerId, setCustomerId] = React.useState(
     searchParams.get("customerId") ?? "",
   );
   const [contactId, setContactId] = React.useState("");
   const [locationId, setLocationId] = React.useState("");
   const [attendees, setAttendees] = React.useState<Attendee[]>([]);
-  const [outcome, setOutcome] = React.useState("Positive");
+  const [outcome, setOutcome] = React.useState("");
   const [notes, setNotes] = React.useState("");
   const [linkedQuoteId, setLinkedQuoteId] = React.useState("");
   const [createFollowUpTask, setCreateFollowUpTask] = React.useState(false);
@@ -140,14 +140,14 @@ export function LogActivityFormPage({
         if (cancelled) return;
         const a = res.data;
         skipContactClearRef.current = true;
-        setType(a.type || "CALL");
+        setType(a.type || "");
         setActivityAt(toLocalFromIso(a.activityAt));
-        setDuration(a.duration || "15 min");
+        setDuration(a.duration || "");
         setCustomerId(a.customer?.id ?? "");
         setContactId(a.contact?.id ?? "");
         setLocationId(a.locationId ?? a.location?.id ?? "");
         setAttendees(parseAttendees(a.attendees));
-        setOutcome(a.outcome || "Positive");
+        setOutcome(a.outcome || "");
         setNotes(a.notes ?? "");
         setLinkedQuoteId(a.linkedQuoteId ?? a.linkedQuote?.id ?? "");
         setCreateFollowUpTask(Boolean(a.createFollowUpTask || a.followUpAt));
@@ -282,13 +282,13 @@ export function LogActivityFormPage({
         const created = await crmApi.createSalesActivity(body);
         toastSuccess("Activity logged");
         if (addAnother) {
-          setType("CALL");
-          setActivityAt(nowDateTimeLocal());
-          setDuration("15 min");
+          setType("");
+          setActivityAt("");
+          setDuration("");
           setContactId("");
           setLocationId("");
           setAttendees([]);
-          setOutcome("Positive");
+          setOutcome("");
           setNotes("");
           setLinkedQuoteId("");
           setCreateFollowUpTask(false);

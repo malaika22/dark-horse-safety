@@ -18,4 +18,5 @@ export const CRM_CODE_PREFIX = {
   paymentCard: 'CARD',
   quote: 'Q',
   workOrder: 'WO',
+  task: 'TASK',
 } as const;

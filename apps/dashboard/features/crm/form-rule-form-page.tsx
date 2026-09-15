@@ -104,23 +104,23 @@ export function FormRuleFormPage({
   const [customerId, setCustomerId] = React.useState("");
   const [jobType, setJobType] = React.useState("");
   const [formTemplate, setFormTemplate] = React.useState("");
-  const [versionMode, setVersionMode] = React.useState<"ALWAYS_LATEST" | "PINNED">(
-    "ALWAYS_LATEST",
+  const [versionMode, setVersionMode] = React.useState<"ALWAYS_LATEST" | "PINNED" | "">(
+    "",
   );
   const [version, setVersion] = React.useState("");
-  const [required, setRequired] = React.useState(true);
-  const [hardGate, setHardGate] = React.useState(true);
+  const [required, setRequired] = React.useState(false);
+  const [hardGate, setHardGate] = React.useState(false);
   const [blocksPayroll, setBlocksPayroll] = React.useState(false);
   const [overrideRoles, setOverrideRoles] = React.useState<string[]>([]);
   const [requireOverrideReason, setRequireOverrideReason] =
-    React.useState(true);
+    React.useState(false);
   const [trigger, setTrigger] = React.useState("");
   const [scope, setScope] = React.useState("");
   const [due, setDue] = React.useState("");
   const [appliesFrom, setAppliesFrom] = React.useState("");
   const [appliesToEnd, setAppliesToEnd] = React.useState("");
-  const [rolloutMode, setRolloutMode] = React.useState<"ALL" | "NEW_ONLY">(
-    "ALL",
+  const [rolloutMode, setRolloutMode] = React.useState<"ALL" | "NEW_ONLY" | "">(
+    "",
   );
 
   const showImpactBanner =
@@ -129,9 +129,7 @@ export function FormRuleFormPage({
 
   const pinLabel = version
     ? `Pin to ${version}`
-    : versionOptions[0]
-      ? `Pin to ${versionOptions[0].label}`
-      : "Pin to a version";
+    : "Pin to a version";
 
   React.useEffect(() => {
     if (!isEdit || !ruleId) return;
@@ -233,6 +231,14 @@ export function FormRuleFormPage({
   async function handleSave(addAnother = false) {
     if (!customerId || !formTemplate.trim()) {
       toastValidationError("Customer and form template are required");
+      return;
+    }
+    if (!versionMode) {
+      toastValidationError("Select a version mode");
+      return;
+    }
+    if (!rolloutMode) {
+      toastValidationError("Select a rollout mode");
       return;
     }
     if (versionMode === "PINNED" && !version.trim()) {

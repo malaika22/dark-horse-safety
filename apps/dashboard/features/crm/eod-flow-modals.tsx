@@ -222,19 +222,8 @@ export type RequestDetailPayload = {
   viaEmail: boolean;
 };
 
-const MISSING_OPTIONS_FALLBACK = [
-  { id: "ACTIVITY_OUTCOMES", label: "Activity Outcomes" },
-  { id: "NEXT_STEPS", label: "Next Steps" },
-  { id: "PIPELINE_FIGURES", label: "Pipeline Figures" },
-  { id: "OTHER", label: "Other → Free Text" },
-];
-
-const DUE_OPTIONS_FALLBACK = [
-  { value: "tomorrow-9", label: "Tomorrow · 9:00 AM" },
-  { value: "tomorrow-17", label: "Tomorrow · 5:00 PM" },
-  { value: "in-2-days", label: "In 2 Days · 9:00 AM" },
-  { value: "end-of-week", label: "End Of Week · 5:00 PM" },
-];
+const MISSING_OPTIONS_FALLBACK: { id: string; label: string }[] = [];
+const DUE_OPTIONS_FALLBACK: { value: string; label: string }[] = [];
 
 function dueIso(key: string) {
   const d = new Date();
@@ -281,27 +270,22 @@ export function EodRequestDetailModal({
       ? lookupOptions(lookups, "eodDuePresets")
       : DUE_OPTIONS_FALLBACK;
 
-  const defaultMissingId = missingOptions[0]?.id ?? "ACTIVITY_OUTCOMES";
-  const defaultDueKey = dueOptions[0]?.value ?? "tomorrow-9";
-
-  const [missing, setMissing] = React.useState<Record<string, boolean>>({
-    [defaultMissingId]: true,
-  });
+  const [missing, setMissing] = React.useState<Record<string, boolean>>({});
   const [note, setNote] = React.useState("");
-  const [dueKey, setDueKey] = React.useState<string>(defaultDueKey);
-  const [viaPush, setViaPush] = React.useState(true);
-  const [viaEmail, setViaEmail] = React.useState(true);
+  const [dueKey, setDueKey] = React.useState<string>("");
+  const [viaPush, setViaPush] = React.useState(false);
+  const [viaEmail, setViaEmail] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
-    setMissing({ [defaultMissingId]: true });
+    setMissing({});
     setNote("");
-    setDueKey(defaultDueKey);
-    setViaPush(true);
-    setViaEmail(true);
+    setDueKey("");
+    setViaPush(false);
+    setViaEmail(false);
     setBusy(false);
-  }, [open, reportCode, defaultMissingId, defaultDueKey]);
+  }, [open, reportCode]);
 
   const selectedMissing = missingOptions.filter((o) => missing[o.id]).map(
     (o) => o.id,

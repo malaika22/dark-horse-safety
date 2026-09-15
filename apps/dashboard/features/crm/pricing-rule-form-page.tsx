@@ -128,7 +128,7 @@ export function PricingRuleFormPage({
   const [effectiveToCycle, setEffectiveToCycle] = React.useState("");
   const [notes, setNotes] = React.useState("");
   const [netsuiteItem, setNetsuiteItem] = React.useState("");
-  const [appliesTo, setAppliesTo] = React.useState("ALL_SITES");
+  const [appliesTo, setAppliesTo] = React.useState("");
   const [wells, setWells] = React.useState<string[]>([]);
   const [wellOptions, setWellOptions] = React.useState<DashboardSelectOption[]>(
     [],
@@ -159,7 +159,7 @@ export function PricingRuleFormPage({
   const [impactCycleLabel, setImpactCycleLabel] = React.useState<string | null>(
     null,
   );
-  const [approvalStatus, setApprovalStatus] = React.useState("APPROVED");
+  const [approvalStatus, setApprovalStatus] = React.useState("");
   const [approvedBy, setApprovedBy] = React.useState("");
   const [approvedAt, setApprovedAt] = React.useState<string | null>(null);
 
@@ -229,13 +229,6 @@ export function PricingRuleFormPage({
             label: o.label,
           }));
           setCycleOptions(cycles);
-          if (!isEdit) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const next =
-              cycles.find((c) => new Date(c.value) >= today) ?? cycles[0];
-            setEffectiveFromCycle((prev) => prev || next?.value || "");
-          }
         }
         if (d.netsuiteItems?.length) {
           setNetsuiteOptions(
@@ -524,15 +517,10 @@ export function PricingRuleFormPage({
           setMinimumQuantity("");
           setNotes("");
           setNetsuiteItem("");
-          setAppliesTo("ALL_SITES");
+          setAppliesTo("");
           setWells([]);
           setAddingWell(false);
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const next =
-            cycleOptions.find((c) => new Date(c.value) >= today) ??
-            cycleOptions[0];
-          setEffectiveFromCycle(next?.value ?? "");
+          setEffectiveFromCycle("");
           setEffectiveToCycle("");
           setConflict(null);
           setConflictAck(false);

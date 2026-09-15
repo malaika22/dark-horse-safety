@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { openWorkOrderWhere } from '../common/open-jobs.util';
+import { NetSuiteCustomerMappingService } from '../netsuite-customer-mapping/netsuite-customer-mapping.service';
 
 function startOfDay(d: Date) {
   const x = new Date(d);
@@ -50,7 +51,47 @@ function countWeekdays(from: Date, to: Date) {
 
 @Injectable()
 export class DashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly netsuiteMapping: NetSuiteCustomerMappingService,
+  ) {}
+
+  private async loadSalesTargets(weeks: number) {
+    type TargetRow = {
+      targetActivities: number;
+      targetCalls: number;
+      targetVisits: number;
+      targetQuotes: number;
+      targetPipeline: unknown;
+      targetEodPct: number;
+    };
+    const rows = await this.prisma.$queryRaw<TargetRow[]>`
+      SELECT
+        "targetActivities",
+        "targetCalls",
+        "targetVisits",
+        "targetQuotes",
+        "targetPipeline",
+        "targetEodPct"
+      FROM "CrmSyncState"
+      WHERE "id" = 'crm'
+      LIMIT 1
+    `;
+    const row = rows[0];
+    const scale = Math.max(weeks, 0.2);
+    const pipelineBase = Number(row?.targetPipeline ?? 150_000);
+    return {
+      activities: Math.max(
+        1,
+        Math.round((row?.targetActivities ?? 10) * scale),
+      ),
+      calls: Math.max(1, Math.round((row?.targetCalls ?? 15) * scale)),
+      visits: Math.max(1, Math.round((row?.targetVisits ?? 8) * scale)),
+      quotes: Math.max(1, Math.round((row?.targetQuotes ?? 6) * scale)),
+      pipeline: Math.max(1, Math.round(pipelineBase * scale)),
+      eodPct: row?.targetEodPct ?? 100,
+    };
+  }
 
   async overview() {
     const startOfToday = new Date();
@@ -477,6 +518,15 @@ export class DashboardService {
     const teamEodAvg =
       repCount === 0 ? 0 : Math.round(totals.eodPctSum / repCount);
 
+    // Weekly targets from CrmSyncState (seeded / settings), scaled to range.
+    const weeks = Math.max(weekdayCount, 1) / 5;
+    const targets = await this.loadSalesTargets(weeks);
+
+    const repsWithTargets = repRows.map((row) => ({
+      ...row,
+      targets: { ...targets },
+    }));
+
     return {
       data: {
         from: from.toISOString().slice(0, 10),
@@ -490,6 +540,7 @@ export class DashboardService {
           pipeline: totals.pipeline,
           eodPct: teamEodAvg,
         },
+        targets,
         teamAvg: {
           activities: repCount ? totals.activities / repCount : 0,
           calls: repCount ? totals.calls / repCount : 0,
@@ -498,7 +549,7 @@ export class DashboardService {
           pipeline: repCount ? totals.pipeline / repCount : 0,
           eodPct: teamEodAvg,
         },
-        reps: repRows,
+        reps: repsWithTargets,
       },
     };
   }
@@ -713,10 +764,11 @@ export class DashboardService {
           : Math.round((quotesWon / quotesTotal) * 100)
         : Math.round((quotesWon / quotesClosed) * 100);
 
+    const teamTargets = await this.loadSalesTargets(1);
     const pipelineTarget =
       pipeline <= 0
-        ? 100_000
-        : Math.max(pipeline, 100_000);
+        ? teamTargets.pipeline
+        : Math.max(pipeline, teamTargets.pipeline);
     const pipelinePct =
       pipelineTarget <= 0
         ? 0
@@ -808,6 +860,7 @@ export class DashboardService {
 
   async sync() {
     const now = new Date();
+    const nsSync = await this.netsuiteMapping.syncNow();
     await this.prisma.crmSyncState.upsert({
       where: { id: 'crm' },
       create: { id: 'crm', syncedAt: now },
@@ -818,6 +871,7 @@ export class DashboardService {
       data: {
         ...overview.data,
         ok: true,
+        netsuite: nsSync.data,
       },
     };
   }

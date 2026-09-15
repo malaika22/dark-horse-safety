@@ -1220,8 +1220,8 @@ export function QuotesPage() {
         jobTypeOptions={convertOptions.jobTypes}
         siteOptions={convertOptions.sites}
         sitesLoading={sitesLoading}
-        defaultJobType={convertOptions.jobTypes[0]?.value ?? ""}
-        defaultSiteId={convertOptions.sites[0]?.value ?? ""}
+        defaultJobType=""
+        defaultSiteId=""
         defaultServiceDate={convertOptions.defaultServiceDate}
       />
       <CannotConvertQuoteModal

@@ -73,6 +73,21 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
     pageTitle: "Route / GPS Rules",
   },
   {
+    path: "/crm/netsuite-customer-mapping",
+    breadcrumb: "CRM / Customer / NetSuite Customer Mapping",
+    pageTitle: "NetSuite Customer Mapping",
+  },
+  {
+    path: "/crm/netsuite-item-mapping",
+    breadcrumb: "Configuration / NetSuite Item Mapping",
+    pageTitle: "NetSuite Item Mapping",
+  },
+  {
+    path: "/crm/item-rate-mapping",
+    breadcrumb: "Configuration / Item Rate Mapping",
+    pageTitle: "Item Rate Mapping",
+  },
+  {
     path: "/crm/locations",
     breadcrumb: "Accounts / Locations / Wells",
     pageTitle: "Customer Sites",
@@ -97,8 +112,8 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
   },
   {
     path: "/crm/sales-summary",
-    breadcrumb: "Sales / Sales Summary",
-    pageTitle: null,
+    breadcrumb: "Sales / Manager Sales Summary",
+    pageTitle: "Manager Sales Summary",
   },
   { path: "/crm", breadcrumb: "CRM / Customer / Dashboard", pageTitle: null },
   {
@@ -361,7 +376,8 @@ function staticHeaderActions(pathname: string) {
 function AppShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { loading, user } = useSession();
-  const { actionsOverride, breadcrumbOverride } = useHeaderActionsSlot();
+  const { actionsOverride, breadcrumbOverride, pageTitleOverride } =
+    useHeaderActionsSlot();
   const [mobileMenuPath, setMobileMenuPath] = React.useState<string | null>(null);
   const mobileOpen = mobileMenuPath === pathname;
 
@@ -382,11 +398,12 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
   const meta = headerMetaForPath(pathname);
   const breadcrumb = breadcrumbOverride ?? meta.breadcrumb;
+  const pageTitle = pageTitleOverride ?? meta.pageTitle;
   const actions =
     actionsOverride !== undefined
       ? actionsOverride
       : staticHeaderActions(pathname);
-  const hasPageToolbar = Boolean(meta.pageTitle) || Boolean(actions);
+  const hasPageToolbar = Boolean(pageTitle) || Boolean(actions);
 
   if (loading) {
     return (
@@ -426,7 +443,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             hasPageToolbar && "[&>*:last-child]:!pt-0",
           )}
         >
-          <AppPageToolbar pageTitle={meta.pageTitle} actions={actions} />
+          <AppPageToolbar pageTitle={pageTitle} actions={actions} />
           {children}
         </main>
       </div>
