@@ -21,6 +21,13 @@ type MappingStatus = 'MAPPED' | 'PENDING' | 'UNMATCHED' | 'FAILED';
 
 const NS_ID_RE = /^NS-\d{7}$/i;
 
+/** Prisma `NOT: { field: 'FAILED' }` excludes NULL in SQL — keep null/other non-failed. */
+function notFailedResult(): Prisma.CustomerWhereInput {
+  return {
+    OR: [{ netsuiteLastResult: null }, { netsuiteLastResult: { not: 'FAILED' } }],
+  };
+}
+
 const SORT_MAP: Record<string, string> = {
   name: 'name',
   code: 'code',
@@ -118,23 +125,21 @@ export class NetSuiteCustomerMappingService {
       and.push({
         OR: [{ netsuiteId: null }, { netsuiteId: '' }],
       });
-      and.push({
-        NOT: { netsuiteLastResult: 'FAILED' },
-      });
+      and.push(notFailedResult());
     } else if (status === 'FAILED') {
       and.push({ netsuiteLastResult: 'FAILED' });
     } else if (status === 'PENDING') {
       and.push({
         netsuiteId: { not: null },
         netsuiteLastSyncAt: null,
-        NOT: { netsuiteLastResult: 'FAILED' },
       });
+      and.push(notFailedResult());
     } else if (status === 'MAPPED') {
       and.push({
         netsuiteId: { not: null },
         netsuiteLastSyncAt: { not: null },
-        NOT: { netsuiteLastResult: 'FAILED' },
       });
+      and.push(notFailedResult());
     }
 
     return { AND: and };
@@ -241,25 +246,31 @@ export class NetSuiteCustomerMappingService {
       await this.prisma.$transaction([
         this.prisma.customer.count({
           where: {
-            ...base,
-            netsuiteId: { not: null },
-            netsuiteLastSyncAt: { not: null },
-            NOT: { netsuiteLastResult: 'FAILED' },
+            AND: [
+              base,
+              { netsuiteId: { not: null } },
+              { netsuiteLastSyncAt: { not: null } },
+              notFailedResult(),
+            ],
           },
         }),
         this.prisma.customer.count({
           where: {
-            ...base,
-            netsuiteId: { not: null },
-            netsuiteLastSyncAt: null,
-            NOT: { netsuiteLastResult: 'FAILED' },
+            AND: [
+              base,
+              { netsuiteId: { not: null } },
+              { netsuiteLastSyncAt: null },
+              notFailedResult(),
+            ],
           },
         }),
         this.prisma.customer.count({
           where: {
-            ...base,
-            OR: [{ netsuiteId: null }, { netsuiteId: '' }],
-            NOT: { netsuiteLastResult: 'FAILED' },
+            AND: [
+              base,
+              { OR: [{ netsuiteId: null }, { netsuiteId: '' }] },
+              notFailedResult(),
+            ],
           },
         }),
         this.prisma.customer.count({
