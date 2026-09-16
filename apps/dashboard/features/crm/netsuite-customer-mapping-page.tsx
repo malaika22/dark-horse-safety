@@ -330,8 +330,9 @@ export function NetSuiteCustomerMappingPage() {
     [busy],
   );
 
-  const columns: DashboardDataTableColumn<CrmNetSuiteCustomerMapping>[] =
-    React.useMemo(
+  const columns = React.useMemo<
+    DashboardDataTableColumn<CrmNetSuiteCustomerMapping>[]
+  >(
       () => [
         {
           id: "customer",
@@ -724,7 +725,7 @@ export function NetSuiteCustomerMappingPage() {
           <DashboardDataTable
             columns={columns}
             rows={rows}
-            rowKey={(r) => r.id}
+            getRowId={(r) => r.id}
             emptyMessage="No customer mappings found"
           />
           <DashboardPagination

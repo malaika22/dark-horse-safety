@@ -66,9 +66,9 @@ function newLine(partial?: Partial<LineItem>): LineItem {
     kind: partial?.kind ?? "standard",
     catalogRate:
       partial?.catalogRate !== undefined
-        ? partial.catalogRate
+        ? (partial.catalogRate ?? null)
         : partial?.rate != null && partial.rate !== ""
-          ? parseMoney(String(partial.rate))
+          ? (parseMoney(String(partial.rate)) ?? null)
           : null,
   };
 }

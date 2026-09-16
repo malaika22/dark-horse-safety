@@ -322,7 +322,7 @@ function ExportMenu({
   variant = "primary",
 }: {
   onExport: () => void;
-  variant?: "primary" | "default";
+  variant?: "primary" | "glass" | "muted";
 }) {
   const [open, setOpen] = React.useState(false);
   const anchorRef = React.useRef<HTMLButtonElement>(null);
@@ -932,7 +932,7 @@ export function ManagerSalesSummaryPage() {
                 }))}
               />
             </div>
-            <ExportMenu onExport={handleExportCsv} variant="default" />
+            <ExportMenu onExport={handleExportCsv} variant="glass" />
           </>
         )}
         {drill ? (
