@@ -380,6 +380,9 @@ export const CRM_LIST_HEADER_ACTIONS: Record<string, () => ReactElement> = {
   "/crm/route-rules": AddRouteRuleHeaderButton,
   "/crm/eod-reports": CreateWorkOrderHeaderButton,
   "/crm/sales-calendar": CreateWorkOrderHeaderButton,
+  "/crm/netsuite-item-mapping": CreateWorkOrderHeaderButton,
+  "/crm/netsuite-customer-mapping": CreateWorkOrderHeaderButton,
+  "/crm/item-rate-mapping": CreateWorkOrderHeaderButton,
   "/crm/quotes": CreateQuoteHeaderButton,
   "/crm/sales": LogActivityHeaderButton,
 };

@@ -65,44 +65,8 @@ export type JobPackageOption = {
   items: string[];
 };
 
-/** Figma job / package templates for Pick Job Template. */
-export const QUOTE_JOB_PACKAGES: JobPackageOption[] = [
-  {
-    id: "h2s-standby",
-    label: "H2S Standby Package",
-    hint: "Site Safety Technician (8hr) · H2S Monitoring · Gas Monitor Rental",
-    items: [
-      "Site Safety Technician (Per Hour)",
-      "H2S Monitoring Package",
-      "Equipment - Gas Monitor MX6",
-    ],
-  },
-  {
-    id: "confined-space",
-    label: "Confined Space Entry Package",
-    hint: "Confined Space Attendant · Rescue Standby · Gas Detection",
-    items: [
-      "Confined Space Attendant",
-      "Rescue Standby",
-      "Gas Detection",
-    ],
-  },
-  {
-    id: "fire-watch",
-    label: "Fire Watch Package",
-    hint: "Fire Watch Technician (Per Shift) · Extinguisher Inspection",
-    items: [
-      "Fire Watch Technician (Per Shift)",
-      "Extinguisher Inspection",
-    ],
-  },
-  {
-    id: "mobilization",
-    label: "Mobilization Only",
-    hint: "Mileage · Equipment Transport — No Labor Line Items",
-    items: ["Mileage - Round Trip", "Equipment Transport"],
-  },
-];
+/** Live job packages are passed from Create Quote (customer pricing rules). */
+export const QUOTE_JOB_PACKAGES: JobPackageOption[] = [];
 
 export function JobTemplatePickerModal({
   open,
@@ -116,7 +80,7 @@ export function JobTemplatePickerModal({
   onSelect: (pkg: JobPackageOption) => void;
 }) {
   useModalLock(open, onClose);
-  const list = packages?.length ? packages : QUOTE_JOB_PACKAGES;
+  const list = packages ?? [];
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
@@ -145,24 +109,30 @@ export function JobTemplatePickerModal({
           <CloseX onClick={onClose} />
         </div>
         <div className="max-h-[70vh] space-y-1 overflow-y-auto p-2">
-          {list.map((pkg) => (
-            <button
-              key={pkg.id}
-              type="button"
-              onClick={() => {
-                onSelect(pkg);
-                onClose();
-              }}
-              className="w-full rounded-xl px-4 py-3.5 text-left transition-colors hover:bg-white/[0.04]"
-            >
-              <p className="font-sans text-[12px] font-[590] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                {pkg.label}
-              </p>
-              <p className="mt-1 font-sans text-[10px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
-                {pkg.hint}
-              </p>
-            </button>
-          ))}
+          {list.length === 0 ? (
+            <p className="px-4 py-6 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+              Select a customer with active pricing rules to load live packages.
+            </p>
+          ) : (
+            list.map((pkg) => (
+              <button
+                key={pkg.id}
+                type="button"
+                onClick={() => {
+                  onSelect(pkg);
+                  onClose();
+                }}
+                className="w-full rounded-xl px-4 py-3.5 text-left transition-colors hover:bg-white/[0.04]"
+              >
+                <p className="font-sans text-[12px] font-[590] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                  {pkg.label}
+                </p>
+                <p className="mt-1 font-sans text-[10px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+                  {pkg.hint}
+                </p>
+              </button>
+            ))
+          )}
         </div>
       </div>
     </div>,

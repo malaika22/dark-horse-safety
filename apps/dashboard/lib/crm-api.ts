@@ -1045,6 +1045,112 @@ export const crmApi = {
       { autoExport },
     ),
 
+  // ── NetSuite item mapping ────────────────────────────────────────────────
+  netsuiteItemMappingKpi: () =>
+    api.get<
+      ApiData<{
+        mapped: number;
+        pending: number;
+        unmatched: number;
+        errors: number;
+        lastSyncAt?: string | null;
+      }>
+    >("/crm/netsuite-item-mapping/kpi"),
+  listNetSuiteItemMappings: (params?: CrmListParams) =>
+    api.get<ApiList<CrmNetSuiteItemMapping>>(
+      `/crm/netsuite-item-mapping${q(params)}`,
+    ),
+  syncNetSuiteItems: (ids?: string[]) =>
+    api.post<
+      ApiData<{
+        attempted: number;
+        synced: number;
+        failed: number;
+        lastSyncAt: string;
+      }>
+    >("/crm/netsuite-item-mapping/sync", ids?.length ? { ids } : {}),
+  autoMatchNetSuiteItems: () =>
+    api.post<ApiData<{ matched: number; remaining: number }>>(
+      "/crm/netsuite-item-mapping/auto-match",
+    ),
+  mapNetSuiteItem: (id: string, netsuiteItemId: string) =>
+    api.patch<ApiData<CrmNetSuiteItemMapping>>(
+      `/crm/netsuite-item-mapping/${id}/map`,
+      { netsuiteItemId },
+    ),
+  createNetSuiteItem: (id: string) =>
+    api.post<ApiData<CrmNetSuiteItemMapping>>(
+      `/crm/netsuite-item-mapping/${id}/create`,
+    ),
+  unmapNetSuiteItem: (id: string) =>
+    api.post<ApiData<CrmNetSuiteItemMapping>>(
+      `/crm/netsuite-item-mapping/${id}/unmap`,
+    ),
+  setNetSuiteItemAutoSync: (id: string, autoSync: boolean) =>
+    api.patch<ApiData<CrmNetSuiteItemMapping>>(
+      `/crm/netsuite-item-mapping/${id}/auto-sync`,
+      { autoSync },
+    ),
+
+  // ── Item rate mapping ────────────────────────────────────────────────────
+  itemRateMappingKpi: () =>
+    api.get<
+      ApiData<{
+        mapped: number;
+        review: number;
+        unmapped: number;
+        variance: number;
+        items: number;
+      }>
+    >("/crm/item-rate-mapping/kpi"),
+  listItemRateMappings: (params?: CrmListParams) =>
+    api.get<ApiList<CrmItemRateMapping>>(
+      `/crm/item-rate-mapping${q(params)}`,
+    ),
+  syncItemRates: (ids?: string[]) =>
+    api.post<
+      ApiData<{
+        attempted: number;
+        synced: number;
+        failed: number;
+        syncedAt: string;
+      }>
+    >("/crm/item-rate-mapping/sync", ids?.length ? { ids } : {}),
+  autoMatchItemRates: () =>
+    api.post<ApiData<{ matched: number; remaining: number }>>(
+      "/crm/item-rate-mapping/auto-match",
+    ),
+  mapItemRate: (id: string, netsuiteItemId: string, netsuiteRate?: number) =>
+    api.patch<ApiData<CrmItemRateMapping>>(
+      `/crm/item-rate-mapping/${id}/map`,
+      {
+        netsuiteItemId,
+        ...(netsuiteRate != null ? { netsuiteRate } : {}),
+      },
+    ),
+  unmapItemRate: (id: string) =>
+    api.post<ApiData<CrmItemRateMapping>>(
+      `/crm/item-rate-mapping/${id}/unmap`,
+    ),
+  setItemRateAutoSync: (id: string, autoSync: boolean) =>
+    api.patch<ApiData<CrmItemRateMapping>>(
+      `/crm/item-rate-mapping/${id}/auto-sync`,
+      { autoSync },
+    ),
+  setItemRateDhs: (id: string, dhsRate: number) =>
+    api.patch<ApiData<CrmItemRateMapping>>(
+      `/crm/item-rate-mapping/${id}/dhs-rate`,
+      { dhsRate },
+    ),
+  acceptItemRateNs: (id: string) =>
+    api.post<ApiData<CrmItemRateMapping>>(
+      `/crm/item-rate-mapping/${id}/accept-ns-rate`,
+    ),
+  pushItemRateDhs: (id: string) =>
+    api.post<ApiData<CrmItemRateMapping>>(
+      `/crm/item-rate-mapping/${id}/push-dhs-rate`,
+    ),
+
   // ── Saved views ──────────────────────────────────────────────────────────
   listSavedViews: (scope: string) =>
     api.get<ApiData<CrmSavedView[]>>(
@@ -1858,6 +1964,41 @@ export type CrmNetSuiteCustomerMapping = {
   lastResult?: string | null;
   syncError?: string | null;
   autoExport: boolean;
+  owner?: { id: string; name: string | null } | null;
+};
+
+export type CrmNetSuiteItemMapping = {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  netsuiteItemId?: string | null;
+  match: "MATCHED" | "PENDING" | "UNMATCHED" | "FAILED" | string;
+  direction: string;
+  directionDetail?: string | null;
+  health?: string | null;
+  autoSync: boolean;
+  status: "SYNCED" | "PENDING" | "UNMATCHED" | "FAILED" | string;
+  lastSyncAt?: string | null;
+  lastResult?: string | null;
+  syncError?: string | null;
+  owner?: { id: string; name: string | null } | null;
+};
+
+export type CrmItemRateMapping = {
+  id: string;
+  code: string;
+  name: string;
+  dhsRate: number;
+  netsuiteItemId?: string | null;
+  netsuiteRate?: number | null;
+  unit?: string | null;
+  duration?: string | null;
+  effectiveFrom?: string | null;
+  effectiveDetail?: string | null;
+  autoSync: boolean;
+  variance?: number | null;
+  status: "MAPPED" | "REVIEW" | "UNMAPPED" | string;
   owner?: { id: string; name: string | null } | null;
 };
 

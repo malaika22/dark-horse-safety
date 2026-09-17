@@ -1,54 +1,174 @@
+"use client";
+
+import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
-  DashboardChartLegend,
   DashboardCycleKpiCard,
   DashboardCycleKpiStrip,
   DashboardExceptionRow,
   DashboardHorizontalBarChart,
   DashboardMutedLink,
-  DashboardUnbilledHoursChart,
-  DashboardWorkloadBar,
+  type DashboardCycleKpiItem,
+  type DashboardHorizontalBarItem,
 } from "@dark-horse-safety/ui";
+import { crmApi, type CrmDashboardOverview } from "@/lib/crm-api";
+import { toastApiError } from "@/lib/toast";
+import { BrandLoader } from "@/features/loading/brand-loader";
 import {
-  DashboardCrewAvatars,
-  DashboardCrewLegend,
-  DashboardFleetStatList,
-  DashboardFleetVehicleRow,
-  DashboardMobileSyncList,
-  DashboardMobileSyncStatus,
-  DashboardReportDueRow,
-  DashboardSafetyRecordList,
   DashboardSectionLabel,
   DashboardWidgetSection,
 } from "./dashboard-widgets";
-import {
-  EXCEPTIONS,
-  FLEET_STATS,
-  FLEET_VEHICLES,
-  JOB_FLOW,
-  LIVE_CREW,
-  LIVE_CREW_MORE,
-  MOBILE_SYNC_ROWS,
-  MOBILE_SYNC_SUMMARY,
-  PAYROLL,
-  QUOTE_PIPELINE,
-  REPORTS_DUE,
-  SAFETY_RECORD,
-  THIS_CYCLE,
-  UNBILLED_LEGEND,
-} from "./data/overview.mock";
 
-const LIVE_CREW_VISIBLE = LIVE_CREW.slice(0, 8);
+function money(n: number) {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
+  return `$${Math.round(n).toLocaleString()}`;
+}
+
+function buildCycle(data: CrmDashboardOverview): DashboardCycleKpiItem[] {
+  return [
+    {
+      title: "Open Pipeline",
+      value: money(data.quotes.openPipeline),
+      icon: "pipeline",
+      meta: `${data.quotes.draft + data.quotes.sent + data.quotes.approved} open quotes`,
+    },
+    {
+      title: "Sales This Week",
+      value: String(data.sales.thisWeek),
+      icon: "approved",
+      meta: `${data.sales.calls} calls · ${data.sales.visits} visits`,
+    },
+    {
+      title: "EOD Today",
+      value: String(data.eod.today),
+      icon: "payroll",
+      meta: `${data.eod.submitted} submitted · ${data.eod.pending} pending`,
+    },
+    {
+      title: "Customers",
+      value: String(data.customers.active),
+      icon: "unbilled",
+      meta: `${data.customers.openJobs} open jobs · ${data.customers.needsReview} review`,
+    },
+  ];
+}
+
+function buildQuotePipeline(
+  data: CrmDashboardOverview,
+): DashboardHorizontalBarItem[] {
+  return [
+    { label: "Draft", value: data.quotes.draft, icon: "document" },
+    { label: "Sent", value: data.quotes.sent, icon: "send" },
+    { label: "Approved", value: data.quotes.approved, icon: "check" },
+    { label: "Won", value: data.quotes.converted, icon: "won" },
+    {
+      label: "Expired",
+      value: data.quotes.expired,
+      tone: data.quotes.expired > 0 ? "critical" : "default",
+      icon: "expired",
+    },
+  ];
+}
+
+function buildJobFlow(data: CrmDashboardOverview): DashboardHorizontalBarItem[] {
+  return [
+    { label: "Calls", value: data.sales.calls, icon: "posted" },
+    { label: "Visits", value: data.sales.visits, icon: "truck" },
+    { label: "Meetings", value: data.sales.meetings, icon: "eye" },
+    {
+      label: "Follow-ups",
+      value: data.sales.followUps,
+      tone: data.sales.followUps > 0 ? "critical" : "default",
+      icon: "clock",
+    },
+  ];
+}
 
 export function DashboardOverview() {
+  const router = useRouter();
+  const [data, setData] = React.useState<CrmDashboardOverview | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await crmApi.dashboardOverview();
+        if (!cancelled) setData(res.data);
+      } catch (err) {
+        if (!cancelled) {
+          toastApiError(err);
+          setData(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading && !data) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center bg-shell p-5">
+        <BrandLoader label="Loading dashboard" />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="bg-shell p-5">
+        <p className="font-sans text-[12px] uppercase text-[#959597]">
+          Unable to load live dashboard data.
+        </p>
+      </div>
+    );
+  }
+
+  const cycle = buildCycle(data);
+  const quotePipeline = buildQuotePipeline(data);
+  const jobFlow = buildJobFlow(data);
+  const exceptions = [
+    ...data.msaRenewals.slice(0, 4).map((m) => ({
+      title: `MSA renewal · ${m.customer} · ${m.code}`,
+      tag: "MSA",
+      tagVariant: "warning" as const,
+    })),
+    ...(data.customers.needsReview > 0
+      ? [
+          {
+            title: `${data.customers.needsReview} customers need review`,
+            tag: "Accounts",
+            tagVariant: "error" as const,
+          },
+        ]
+      : []),
+    ...(data.eod.pending > 0
+      ? [
+          {
+            title: `${data.eod.pending} EOD reports pending`,
+            tag: "EOD",
+            tagVariant: "warning" as const,
+          },
+        ]
+      : []),
+  ];
+
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
       <div className="space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <DashboardSectionLabel>This cycle</DashboardSectionLabel>
-          <DashboardMutedLink>View full financials</DashboardMutedLink>
+          <DashboardMutedLink onClick={() => router.push("/crm/sales-summary")}>
+            View sales summary
+          </DashboardMutedLink>
         </div>
         <DashboardCycleKpiStrip>
-          {THIS_CYCLE.map((cell) => (
+          {cycle.map((cell) => (
             <DashboardCycleKpiCard key={cell.title} {...cell} />
           ))}
         </DashboardCycleKpiStrip>
@@ -56,89 +176,126 @@ export function DashboardOverview() {
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(240px,1fr)] lg:gap-5">
         <div className="flex min-w-0 flex-col gap-4 sm:gap-5">
-          <DashboardWidgetSection title="Payroll" actionLabel="Manage payroll">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
-              <div className="min-w-0">
-                <p className="font-sans text-[12px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[13px]">
-                  {PAYROLL.lockPrefix}
-                </p>
-                <p className="mt-1.5 font-sans text-[22px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[28px]">
-                  {PAYROLL.lockValuePrimary}{" "}
-                  <span className="text-[#959597]">{PAYROLL.lockValueSecondary}</span>
-                </p>
-              </div>
-              <p className="shrink-0 font-sans text-[10px] font-normal uppercase leading-none tracking-[-0.02em] text-[#959597] md:text-[11px]">
-                Day 13/14
+          <DashboardWidgetSection
+            title="Exception queue"
+            actionLabel="View all"
+            onAction={() => router.push("/crm/accounts")}
+          >
+            {exceptions.length === 0 ? (
+              <p className="px-1 py-2 font-sans text-[11px] uppercase text-[#959597]">
+                No exceptions
               </p>
-            </div>
-            <div className="mt-4">
-              <DashboardWorkloadBar
-                segments={PAYROLL.segments}
-                total={PAYROLL.total}
-              />
-            </div>
-          </DashboardWidgetSection>
-
-          <DashboardWidgetSection title="Unbilled hours" actionLabel="View billing">
-            <DashboardUnbilledHoursChart />
-            <DashboardChartLegend
-              items={UNBILLED_LEGEND}
-              className="mt-2.5 justify-start"
-            />
-          </DashboardWidgetSection>
-
-          <DashboardWidgetSection title="Exception queue" actionLabel="View all">
-            <ul className="list-none space-y-0">
-              {EXCEPTIONS.map((row) => (
-                <DashboardExceptionRow
-                  key={row.title}
-                  tag={row.tag}
-                  tagVariant={row.tagVariant}
-                  title={row.title}
-                  tagPosition="end"
-                />
-              ))}
-            </ul>
+            ) : (
+              <ul className="list-none space-y-0">
+                {exceptions.map((row) => (
+                  <DashboardExceptionRow
+                    key={row.title}
+                    tag={row.tag}
+                    tagVariant={row.tagVariant}
+                    title={row.title}
+                    tagPosition="end"
+                  />
+                ))}
+              </ul>
+            )}
           </DashboardWidgetSection>
 
           <DashboardWidgetSection
-            title="Live crew"
-            actionLabel={`View +${LIVE_CREW_MORE} more`}
+            title="Recent sales activity"
+            actionLabel="View all"
+            onAction={() => router.push("/crm/sales")}
           >
-            <DashboardCrewAvatars crew={LIVE_CREW_VISIBLE} />
-            <DashboardCrewLegend />
+            {data.recentSales.length === 0 ? (
+              <p className="px-1 py-2 font-sans text-[11px] uppercase text-[#959597]">
+                No recent activity
+              </p>
+            ) : (
+              <ul className="list-none divide-y divide-[#2D2D30]">
+                {data.recentSales.slice(0, 6).map((row) => (
+                  <li key={row.id} className="py-2.5">
+                    <p className="font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                      {row.subject || row.type} · {row.customer || "—"}
+                    </p>
+                    <p className="mt-0.5 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597]">
+                      {row.rep || "—"} · {row.code} · {row.outcome || row.status}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
           </DashboardWidgetSection>
 
-          <DashboardWidgetSection title="Reports due" actionLabel="View reports">
-            <ul className="list-none space-y-0">
-              {REPORTS_DUE.map((row) => (
-                <DashboardReportDueRow key={row.title} {...row} />
-              ))}
-            </ul>
+          <DashboardWidgetSection
+            title="Rep performance"
+            actionLabel="View all"
+            onAction={() => router.push("/crm/sales-summary")}
+          >
+            {data.repPerformance.length === 0 ? (
+              <p className="px-1 py-2 font-sans text-[11px] uppercase text-[#959597]">
+                No rep activity this week
+              </p>
+            ) : (
+              <ul className="list-none divide-y divide-[#2D2D30]">
+                {data.repPerformance.slice(0, 6).map((rep) => (
+                  <li
+                    key={rep.id}
+                    className="flex items-center justify-between gap-3 py-2.5"
+                  >
+                    <span className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+                      {rep.name}
+                    </span>
+                    <span className="font-sans text-[10px] uppercase tabular-nums text-[#959597]">
+                      {rep.activities} act · {rep.calls} calls · {rep.visits}{" "}
+                      visits
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </DashboardWidgetSection>
         </div>
 
         <div className="flex min-w-0 flex-col gap-4 sm:gap-5">
-          <DashboardWidgetSection title="Safety record" actionLabel="View safety">
-            <DashboardSafetyRecordList items={SAFETY_RECORD} />
+          <DashboardWidgetSection
+            title="Sales activity"
+            actionLabel="View sales"
+            onAction={() => router.push("/crm/sales")}
+          >
+            <DashboardHorizontalBarChart items={jobFlow} />
           </DashboardWidgetSection>
 
-          <DashboardWidgetSection title="Fleet" actionLabel="View fleet dash">
-            <DashboardFleetVehicleRow vehicles={FLEET_VEHICLES} />
-            <DashboardFleetStatList items={FLEET_STATS} />
+          <DashboardWidgetSection
+            title="Quote pipeline"
+            actionLabel="View crm"
+            onAction={() => router.push("/crm/quotes")}
+          >
+            <DashboardHorizontalBarChart items={quotePipeline} />
           </DashboardWidgetSection>
 
-          <DashboardWidgetSection title="Mobile sync" actionLabel="Sync details">
-            <DashboardMobileSyncStatus items={MOBILE_SYNC_SUMMARY} />
-            <DashboardMobileSyncList rows={MOBILE_SYNC_ROWS} />
-          </DashboardWidgetSection>
-
-          <DashboardWidgetSection title="Job flow" actionLabel="View operations">
-            <DashboardHorizontalBarChart items={JOB_FLOW} />
-          </DashboardWidgetSection>
-
-          <DashboardWidgetSection title="Quote pipeline" actionLabel="View crm">
-            <DashboardHorizontalBarChart items={QUOTE_PIPELINE} />
+          <DashboardWidgetSection
+            title="MSA renewals"
+            actionLabel="View accounts"
+            onAction={() => router.push("/crm/accounts")}
+          >
+            {data.msaRenewals.length === 0 ? (
+              <p className="px-1 py-2 font-sans text-[11px] uppercase text-[#959597]">
+                No upcoming MSA renewals
+              </p>
+            ) : (
+              <ul className="list-none divide-y divide-[#2D2D30]">
+                {data.msaRenewals.slice(0, 5).map((m) => (
+                  <li key={m.id} className="py-2.5">
+                    <p className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+                      {m.customer}
+                    </p>
+                    <p className="mt-0.5 font-sans text-[10px] uppercase text-[#959597]">
+                      {m.code} · {m.detail || m.status} ·{" "}
+                      {m.expiresAt.slice(0, 10)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
           </DashboardWidgetSection>
         </div>
       </div>

@@ -464,6 +464,9 @@ export class LookupsService {
       rateTypesDb,
       unitsDb,
       netsuiteDb,
+      netsuiteDirDb,
+      netsuiteItemMapDb,
+      itemRateMapDb,
       industriesDb,
       contactRolesDb,
       formTemplatesDb,
@@ -509,6 +512,25 @@ export class LookupsService {
         distinct: ['netsuiteItem'],
         take: 100,
       }),
+      this.prisma.$queryRaw<{ netsuiteItemId: string }[]>`
+        SELECT "netsuiteItemId" FROM "NetSuiteItemDirectory"
+        ORDER BY "netsuiteItemId" ASC
+        LIMIT 200
+      `.catch(() => [] as { netsuiteItemId: string }[]),
+      this.prisma.netSuiteItemMapping
+        .findMany({
+          where: { archivedAt: null, netsuiteItemId: { not: null } },
+          select: { netsuiteItemId: true, name: true },
+          take: 200,
+        })
+        .catch(() => [] as { netsuiteItemId: string | null; name: string }[]),
+      this.prisma.itemRateMapping
+        .findMany({
+          where: { archivedAt: null },
+          select: { netsuiteItemId: true, name: true },
+          take: 200,
+        })
+        .catch(() => [] as { netsuiteItemId: string | null; name: string }[]),
       this.prisma.customer.findMany({
         where: { archivedAt: null, industry: { not: null } },
         select: { industry: true },
@@ -591,7 +613,11 @@ export class LookupsService {
         ),
         serviceItems: merge(
           base.serviceItems,
-          serviceItemsDb.map((r) => r.serviceItem),
+          [
+            ...serviceItemsDb.map((r) => r.serviceItem),
+            ...netsuiteItemMapDb.map((r) => r.name),
+            ...itemRateMapDb.map((r) => r.name),
+          ],
         ),
         rateTypes: merge(
           base.rateTypes,
@@ -603,7 +629,12 @@ export class LookupsService {
         ),
         netsuiteItems: merge(
           [],
-          netsuiteDb.map((r) => r.netsuiteItem),
+          [
+            ...netsuiteDb.map((r) => r.netsuiteItem),
+            ...netsuiteDirDb.map((r) => r.netsuiteItemId),
+            ...netsuiteItemMapDb.map((r) => r.netsuiteItemId),
+            ...itemRateMapDb.map((r) => r.netsuiteItemId),
+          ],
         ),
         industries: merge(
           base.industries,

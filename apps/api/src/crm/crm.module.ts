@@ -12,6 +12,8 @@ import { FormRulesModule } from './form-rules/form-rules.module';
 import { LocationsModule } from './locations/locations.module';
 import { LookupsModule } from './lookups/lookups.module';
 import { NetSuiteCustomerMappingModule } from './netsuite-customer-mapping/netsuite-customer-mapping.module';
+import { NetSuiteItemMappingModule } from './netsuite-item-mapping/netsuite-item-mapping.module';
+import { ItemRateMappingModule } from './item-rate-mapping/item-rate-mapping.module';
 import { PricingRulesModule } from './pricing-rules/pricing-rules.module';
 import { QuotesModule } from './quotes/quotes.module';
 import { RequirementsModule } from './requirements/requirements.module';
@@ -44,6 +46,8 @@ import { WorkOrdersModule } from './work-orders/work-orders.module';
     SavedViewsModule,
     LookupsModule,
     NetSuiteCustomerMappingModule,
+    NetSuiteItemMappingModule,
+    ItemRateMappingModule,
   ],
 })
 export class CrmModule {}

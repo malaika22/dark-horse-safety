@@ -24,7 +24,6 @@ import { CrmPickModal } from "./crm-action-modals";
 import {
   AddCustomItemModal,
   JobTemplatePickerModal,
-  QUOTE_JOB_PACKAGES,
   type JobPackageOption,
 } from "./create-quote-overlays";
 import { SendQuoteModal, type SendQuotePayload } from "./send-quote-modal";
@@ -484,6 +483,29 @@ export function CreateQuotePage({
     setLines(next.length ? next : [newLine()]);
     toastSuccess(`Applied ${pkg.label}`);
   }
+
+  const livePackages = React.useMemo((): JobPackageOption[] => {
+    if (pricingRules.length === 0) return [];
+    const allItems = pricingRules.map((r) => r.label);
+    const packages: JobPackageOption[] = [
+      {
+        id: "customer-active-rates",
+        label: "Customer Active Rates",
+        hint: allItems.join(" · "),
+        items: allItems,
+      },
+    ];
+    // One package per pricing rule for selective apply
+    for (const rule of pricingRules) {
+      packages.push({
+        id: `rule-${rule.id}`,
+        label: rule.label,
+        hint: `$${rule.rate.toFixed(2)} · from customer pricing`,
+        items: [rule.label],
+      });
+    }
+    return packages;
+  }, [pricingRules]);
 
   function addPricingRuleLine(ruleId: string) {
     const rule = pricingRules.find((r) => r.id === ruleId);
@@ -1428,7 +1450,7 @@ export function CreateQuotePage({
 
       <JobTemplatePickerModal
         open={templateOpen}
-        packages={QUOTE_JOB_PACKAGES}
+        packages={livePackages}
         onClose={() => setTemplateOpen(false)}
         onSelect={applyPackage}
       />

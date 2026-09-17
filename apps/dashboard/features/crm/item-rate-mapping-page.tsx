@@ -1,9 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import {
-  DashboardBadge,
   DashboardDataTable,
   DashboardMenuPopover,
   DashboardPagination,
@@ -17,7 +15,7 @@ import {
 import {
   crmApi,
   downloadCsv,
-  type CrmNetSuiteCustomerMapping,
+  type CrmItemRateMapping,
 } from "@/lib/crm-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { BrandLoader } from "@/features/loading/brand-loader";
@@ -25,21 +23,29 @@ import { useSetHeaderActions } from "@/features/app-shell/header-actions-context
 import { CreateWorkOrderHeaderButton } from "@/features/app-shell/crm-header-actions";
 import { useCrmDialogs } from "./use-crm-dialogs";
 
-type SortKey = "lastSync" | "name" | "status" | "code";
-type StatusFilter = "" | "MAPPED" | "PENDING" | "UNMATCHED" | "FAILED";
+type SortKey = "effectiveFrom" | "name" | "code" | "dhsRate";
+type StatusFilter = "" | "MAPPED" | "REVIEW" | "UNMAPPED" | "VARIANCE";
+type WindowChip = "ACTIVE" | "CURRENT" | "FUTURE";
 
-function formatRelative(iso?: string | null) {
+const DEFAULT_WINDOWS: WindowChip[] = ["ACTIVE", "CURRENT", "FUTURE"];
+
+function formatMoney(value?: number | null) {
+  if (value == null || Number.isNaN(value)) return "—";
+  return `$${value.toFixed(2)}`;
+}
+
+function formatVariance(value?: number | null) {
+  if (value == null) return "—";
+  if (Math.abs(value) < 0.005) return "$0";
+  const sign = value > 0 ? "+" : "-";
+  return `${sign}$${Math.abs(value).toFixed(0)}`;
+}
+
+function formatDate(iso?: string | null) {
   if (!iso) return "—";
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "—";
-  const diff = Math.max(0, Date.now() - t);
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toISOString().slice(0, 10);
 }
 
 function SearchIcon() {
@@ -121,43 +127,41 @@ function KebabIcon() {
   );
 }
 
-function statusBadgeVariant(
-  status: string,
-): "success" | "warning" | "error" | "neutral" {
+function statusTone(status: string) {
   const s = status.toUpperCase();
-  if (s === "MAPPED") return "success";
-  if (s === "PENDING") return "warning";
-  if (s === "FAILED") return "error";
-  return "neutral";
-}
-
-function resultTone(result?: string | null) {
-  const r = (result ?? "").toUpperCase();
-  if (r === "SUCCESS") return "bg-[#1F3A2E] text-[#6EE7B7]";
-  if (r === "PARTIAL") return "bg-[#3A2E1A] text-[#E8C47C]";
-  if (r === "FAILED") return "bg-[#3A1515] text-[#FF6B6B]";
+  if (s === "MAPPED") return "bg-[#2A2240] text-[#C4B5FD]";
+  if (s === "REVIEW") return "bg-[#1F3A2E] text-[#6EE7B7]";
+  if (s === "UNMAPPED") return "bg-[#2A2240] text-[#A78BFA]";
   return "bg-[#2A2A2A] text-[#959597]";
 }
 
-export function NetSuiteCustomerMappingPage() {
+function varianceTone(value?: number | null) {
+  if (value == null) return "text-[#959597]";
+  if (Math.abs(value) < 0.005) return "text-[#FDFDFF]";
+  if (value < 0) return "text-[#6EE7B7]";
+  return "text-[#FF6B6B]";
+}
+
+export function ItemRateMappingPage() {
   const { askConfirm, askPrompt, dialogs } = useCrmDialogs();
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
-  const [rows, setRows] = React.useState<CrmNetSuiteCustomerMapping[]>([]);
+  const [rows, setRows] = React.useState<CrmItemRateMapping[]>([]);
   const [total, setTotal] = React.useState(0);
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
   const [search, setSearch] = React.useState("");
   const [debouncedQ, setDebouncedQ] = React.useState("");
   const [status, setStatus] = React.useState<StatusFilter>("");
-  const [sortKey, setSortKey] = React.useState<SortKey>("lastSync");
+  const [windows, setWindows] = React.useState<WindowChip[]>(DEFAULT_WINDOWS);
+  const [sortKey, setSortKey] = React.useState<SortKey>("effectiveFrom");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
   const [kpi, setKpi] = React.useState({
     mapped: 0,
-    pending: 0,
-    unmatched: 0,
-    errors: 0,
-    lastSyncAt: null as string | null,
+    review: 0,
+    unmapped: 0,
+    variance: 0,
+    items: 0,
   });
   const [filterOpen, setFilterOpen] = React.useState(false);
   const [sortOpen, setSortOpen] = React.useState(false);
@@ -178,37 +182,36 @@ export function NetSuiteCustomerMappingPage() {
 
   React.useEffect(() => {
     setPage(1);
-  }, [debouncedQ, status, sortKey, sortDir]);
+  }, [debouncedQ, status, sortKey, sortDir, windows]);
+
+  const windowParam =
+    windows.length > 0 && windows.length < DEFAULT_WINDOWS.length
+      ? windows.join(",")
+      : undefined;
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
       const [listRes, kpiRes] = await Promise.all([
-        crmApi.listNetSuiteCustomerMappings({
+        crmApi.listItemRateMappings({
           q: debouncedQ || undefined,
           status: status || undefined,
+          window: windowParam,
           page,
           pageSize,
-          sort: sortKey === "status" ? "name" : sortKey,
+          sort: sortKey,
           direction: sortDir,
         }),
-        crmApi.netsuiteCustomerMappingKpi(),
+        crmApi.itemRateMappingKpi(),
       ]);
-      let items = listRes.data.items ?? [];
-      if (sortKey === "status") {
-        items = [...items].sort((a, b) => {
-          const cmp = a.status.localeCompare(b.status);
-          return sortDir === "asc" ? cmp : -cmp;
-        });
-      }
-      setRows(items);
+      setRows(listRes.data.items ?? []);
       setTotal(listRes.data.total ?? 0);
       setKpi({
         mapped: kpiRes.data.mapped ?? 0,
-        pending: kpiRes.data.pending ?? 0,
-        unmatched: kpiRes.data.unmatched ?? 0,
-        errors: kpiRes.data.errors ?? 0,
-        lastSyncAt: kpiRes.data.lastSyncAt ?? null,
+        review: kpiRes.data.review ?? 0,
+        unmapped: kpiRes.data.unmapped ?? 0,
+        variance: kpiRes.data.variance ?? 0,
+        items: kpiRes.data.items ?? 0,
       });
     } catch (err) {
       toastApiError(err);
@@ -217,7 +220,16 @@ export function NetSuiteCustomerMappingPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQ, status, page, pageSize, sortKey, sortDir, reloadKey]);
+  }, [
+    debouncedQ,
+    status,
+    windowParam,
+    page,
+    pageSize,
+    sortKey,
+    sortDir,
+    reloadKey,
+  ]);
 
   React.useEffect(() => {
     void load();
@@ -226,10 +238,8 @@ export function NetSuiteCustomerMappingPage() {
   async function handleSyncNow() {
     setBusy(true);
     try {
-      const res = await crmApi.syncNetSuiteCustomers();
-      toastSuccess(
-        `Synced ${res.data.synced} · ${res.data.failed} failed`,
-      );
+      const res = await crmApi.syncItemRates();
+      toastSuccess(`Synced ${res.data.synced} · ${res.data.failed} failed`);
       setReloadKey((k) => k + 1);
     } catch (err) {
       toastApiError(err);
@@ -241,8 +251,8 @@ export function NetSuiteCustomerMappingPage() {
   async function handleAutoMatch() {
     setBusy(true);
     try {
-      const res = await crmApi.autoMatchNetSuiteCustomers();
-      toastSuccess(`Auto-matched ${res.data.matched} customers`);
+      const res = await crmApi.autoMatchItemRates();
+      toastSuccess(`Auto-matched ${res.data.matched} items`);
       setReloadKey((k) => k + 1);
     } catch (err) {
       toastApiError(err);
@@ -251,69 +261,79 @@ export function NetSuiteCustomerMappingPage() {
     }
   }
 
-  async function toggleAutoExport(row: CrmNetSuiteCustomerMapping) {
+  async function toggleAutoSync(row: CrmItemRateMapping) {
     try {
-      await crmApi.setNetSuiteAutoExport(row.id, !row.autoExport);
-      toastSuccess(`Auto-export ${!row.autoExport ? "on" : "off"}`);
+      await crmApi.setItemRateAutoSync(row.id, !row.autoSync);
+      toastSuccess(`Auto-sync ${!row.autoSync ? "on" : "off"}`);
       setReloadKey((k) => k + 1);
     } catch (err) {
       toastApiError(err);
     }
   }
 
-  async function openMap(row: CrmNetSuiteCustomerMapping) {
+  async function openMap(row: CrmItemRateMapping) {
     const value = await askPrompt({
-      title: `Map NetSuite ID · ${row.name}`,
-      label: "NetSuite ID",
-      placeholder: "NS-0004471",
+      title: `Map NetSuite Item · ${row.name}`,
+      label: "NetSuite Item ID",
+      placeholder: "NS-ITM-01",
       confirmLabel: "Map",
-      defaultValue: row.netsuiteId ?? "",
+      defaultValue: row.netsuiteItemId ?? "",
     });
     if (value == null) return;
-    const netsuiteId = value.trim().toUpperCase();
-    if (!/^NS-\d{7}$/i.test(netsuiteId)) {
-      toastApiError(new Error("NetSuite ID must match NS-#######"));
+    const netsuiteItemId = value.trim().toUpperCase();
+    if (!/^NS-ITM-[A-Z0-9-]+$/i.test(netsuiteItemId)) {
+      toastApiError(new Error("NetSuite Item ID must match NS-ITM-##"));
       return;
     }
     try {
-      await crmApi.mapNetSuiteCustomer(row.id, netsuiteId);
-      toastSuccess("Customer mapped");
+      await crmApi.mapItemRate(row.id, netsuiteItemId);
+      toastSuccess("Item mapped");
       setReloadKey((k) => k + 1);
     } catch (err) {
       toastApiError(err);
     }
+  }
+
+  function removeWindow(chip: WindowChip) {
+    setWindows((prev) => prev.filter((w) => w !== chip));
   }
 
   function handleExport() {
     const header = [
-      "Customer",
+      "Item",
       "Code",
-      "NetSuite ID",
-      "Status",
-      "Customer Type",
-      "Last Sync",
+      "DHS Rate",
+      "NetSuite Item",
+      "NetSuite Rate",
+      "Unit",
+      "Duration",
+      "Effective",
       "Owner",
-      "Last Result",
-      "Auto Export",
+      "Variance",
+      "Auto Sync",
+      "Status",
     ];
     const lines = rows.map((r) =>
       [
         r.name,
         r.code,
-        r.netsuiteId ?? "",
-        r.status,
-        r.customerType,
-        r.lastSyncAt ?? "",
+        r.dhsRate,
+        r.netsuiteItemId ?? "",
+        r.netsuiteRate ?? "",
+        r.unit ?? "",
+        r.duration ?? "",
+        r.effectiveFrom ?? "",
         r.owner?.name ?? "",
-        r.lastResult ?? "",
-        r.autoExport ? "ON" : "OFF",
+        r.variance ?? "",
+        r.autoSync ? "ON" : "OFF",
+        r.status,
       ]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(","),
     );
     downloadCsv(
       [header.join(","), ...lines].join("\n"),
-      "netsuite-customer-mapping.csv",
+      "item-rate-mapping.csv",
     );
     toastSuccess("Export downloaded");
   }
@@ -321,163 +341,175 @@ export function NetSuiteCustomerMappingPage() {
   useSetHeaderActions(<CreateWorkOrderHeaderButton />, []);
 
   const columns = React.useMemo<
-    DashboardDataTableColumn<CrmNetSuiteCustomerMapping>[]
+    DashboardDataTableColumn<CrmItemRateMapping>[]
   >(
-      () => [
-        {
-          id: "customer",
-          header: "Customer",
-          className: "min-w-[160px]",
-          cell: (row) => (
-            <div className="min-w-0">
-              <p className="truncate font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                {row.name}
-              </p>
-              <Link
-                href={`/crm/accounts/${row.id}`}
-                className="mt-0.5 inline-block font-sans text-[11px] uppercase tracking-[-0.02em] text-[#60A5FA] underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {row.code}
-              </Link>
-            </div>
-          ),
-        },
-        {
-          id: "netsuiteId",
-          header: "NetSuite ID",
-          className: "min-w-[110px]",
-          cell: (row) =>
-            row.netsuiteId ? (
-              <span className="font-sans text-[12px] uppercase tabular-nums text-[#FDFDFF]">
-                {row.netsuiteId}
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#60A5FA] hover:underline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void openMap(row);
-                }}
-              >
-                + Map
-              </button>
-            ),
-        },
-        {
-          id: "status",
-          header: "Status",
-          className: "min-w-[100px]",
-          cell: (row) => (
-            <DashboardBadge variant={statusBadgeVariant(row.status)} pill>
-              {row.status}
-            </DashboardBadge>
-          ),
-        },
-        {
-          id: "customerType",
-          header: "Customer Type",
-          className: "min-w-[110px]",
-          cell: (row) => (
-            <span className="font-sans text-[12px] uppercase text-[#FDFDFF]">
-              {row.customerType}
+    () => [
+      {
+        id: "item",
+        header: "Item",
+        className: "min-w-[150px]",
+        cell: (row) => (
+          <div className="min-w-0">
+            <p className="truncate font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+              {row.name}
+            </p>
+            <span className="mt-0.5 inline-block font-sans text-[11px] uppercase tracking-[-0.02em] text-[#60A5FA] underline">
+              {row.code}
             </span>
-          ),
-        },
-        {
-          id: "lastSync",
-          header: "Last Sync",
-          className: "min-w-[90px]",
-          cell: (row) => (
+          </div>
+        ),
+      },
+      {
+        id: "dhsRate",
+        header: "DHS Rate",
+        className: "min-w-[90px]",
+        cell: (row) => (
+          <span className="font-sans text-[12px] uppercase tabular-nums text-[#FDFDFF]">
+            {formatMoney(row.dhsRate)}
+          </span>
+        ),
+      },
+      {
+        id: "netsuiteItem",
+        header: "NetSuite Item",
+        className: "min-w-[110px]",
+        cell: (row) =>
+          row.netsuiteItemId ? (
             <span className="font-sans text-[12px] uppercase tabular-nums text-[#FDFDFF]">
-              {formatRelative(row.lastSyncAt)}
+              {row.netsuiteItemId}
             </span>
-          ),
-        },
-        {
-          id: "owner",
-          header: "Account Owner",
-          className: "min-w-[120px]",
-          cell: (row) =>
-            row.owner?.name ? (
-              <span className="font-sans text-[12px] uppercase text-[#60A5FA] underline">
-                {row.owner.name}
-              </span>
-            ) : (
-              <span className="text-[#959597]">—</span>
-            ),
-        },
-        {
-          id: "lastResult",
-          header: "Last Result",
-          className: "min-w-[140px]",
-          cell: (row) => (
-            <div className="min-w-0">
-              {row.lastResult ? (
-                <span
-                  className={cn(
-                    "inline-flex rounded-full px-2.5 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em]",
-                    resultTone(row.lastResult),
-                  )}
-                >
-                  {row.lastResult}
-                </span>
-              ) : (
-                <span className="text-[#959597]">—</span>
-              )}
-              {row.syncError ? (
-                <p className="mt-1 truncate font-sans text-[10px] uppercase tracking-[-0.02em] text-[#FF6B6B]">
-                  {row.syncError.replace(/\s*-\s*Export.*/i, "")} · View Error
-                </p>
-              ) : null}
-            </div>
-          ),
-        },
-        {
-          id: "autoExport",
-          header: "Auto-Export",
-          className: "min-w-[100px]",
-          cell: (row) => (
+          ) : (
             <button
               type="button"
+              className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#60A5FA] hover:underline"
               onClick={(e) => {
                 e.stopPropagation();
-                void toggleAutoExport(row);
-              }}
-              className={cn(
-                "inline-flex rounded-full px-3 py-1 font-sans text-[10px] font-[590] uppercase tracking-[-0.02em]",
-                row.autoExport
-                  ? "bg-[#1F3A2E] text-[#6EE7B7]"
-                  : "bg-[#2A2A2A] text-[#959597]",
-              )}
-            >
-              {row.autoExport ? "On" : "Off"}
-            </button>
-          ),
-        },
-        {
-          id: "actions",
-          header: "",
-          className: "w-12",
-          cell: (row) => (
-            <button
-              type="button"
-              aria-label="Row actions"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]"
-              onClick={(e) => {
-                e.stopPropagation();
-                rowMenuRef.current = e.currentTarget;
-                setRowMenuId((id) => (id === row.id ? null : row.id));
+                void openMap(row);
               }}
             >
-              <KebabIcon />
+              + Map
             </button>
           ),
-        },
-      ],
-      [],
-    );
+      },
+      {
+        id: "netsuiteRate",
+        header: "NetSuite Rate",
+        className: "min-w-[110px]",
+        cell: (row) => (
+          <span className="font-sans text-[12px] uppercase tabular-nums text-[#FDFDFF]">
+            {formatMoney(row.netsuiteRate)}
+          </span>
+        ),
+      },
+      {
+        id: "unit",
+        header: "Unit",
+        className: "min-w-[120px]",
+        cell: (row) => (
+          <span className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+            {[row.unit, row.duration].filter(Boolean).join(" / ") || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "effective",
+        header: "Effective",
+        className: "min-w-[140px]",
+        cell: (row) => (
+          <span className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+            {[formatDate(row.effectiveFrom), row.effectiveDetail]
+              .filter((v) => v && v !== "—")
+              .join(" / ") || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "owner",
+        header: "Owner",
+        className: "min-w-[90px]",
+        cell: (row) =>
+          row.owner?.name ? (
+            <span className="inline-flex rounded-md bg-[#3A1515] px-2 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#FF6B6B] underline">
+              {row.owner.name}
+            </span>
+          ) : (
+            <span className="text-[#959597]">—</span>
+          ),
+      },
+      {
+        id: "variance",
+        header: "Variance",
+        className: "min-w-[90px]",
+        cell: (row) => (
+          <span
+            className={cn(
+              "font-sans text-[12px] uppercase tabular-nums",
+              varianceTone(row.variance),
+            )}
+          >
+            {formatVariance(row.variance)}
+          </span>
+        ),
+      },
+      {
+        id: "auto",
+        header: "Auto",
+        className: "min-w-[80px]",
+        cell: (row) => (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void toggleAutoSync(row);
+            }}
+            className={cn(
+              "inline-flex rounded-full px-3 py-1 font-sans text-[10px] font-[590] uppercase tracking-[-0.02em]",
+              row.autoSync
+                ? "bg-[#1F3A2E] text-[#6EE7B7]"
+                : "bg-[#3A1515] text-[#FF6B6B]",
+            )}
+          >
+            {row.autoSync ? "On" : "Off"}
+          </button>
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        className: "min-w-[100px]",
+        cell: (row) => (
+          <span
+            className={cn(
+              "inline-flex rounded-full px-2.5 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em]",
+              statusTone(row.status),
+            )}
+          >
+            {row.status}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        className: "w-12",
+        cell: (row) => (
+          <button
+            type="button"
+            aria-label="Row actions"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]"
+            onClick={(e) => {
+              e.stopPropagation();
+              rowMenuRef.current = e.currentTarget;
+              setRowMenuId((id) => (id === row.id ? null : row.id));
+            }}
+          >
+            <KebabIcon />
+          </button>
+        ),
+      },
+    ],
+    [],
+  );
 
   const rowMenu = rows.find((r) => r.id === rowMenuId) ?? null;
 
@@ -488,46 +520,35 @@ export function NetSuiteCustomerMappingPage() {
           <DashboardStatCell
             title="Mapped"
             value={String(kpi.mapped)}
-            meta="Mapped"
+            meta="1:1 Rate"
             icon="lightning"
           />
           <DashboardStatCell
-            title="Pending"
-            value={String(kpi.pending)}
-            meta="Awaiting"
+            title="Review"
+            value={String(kpi.review)}
+            meta="Rate differs"
             icon="document"
           />
           <DashboardStatCell
-            title="Unmatched"
-            value={String(kpi.unmatched)}
-            meta="Need mapping"
+            title="Unmapped"
+            value={String(kpi.unmapped)}
+            meta="No NS item"
             icon="customers"
           />
           <DashboardStatCell
-            title="Errors"
-            value={String(kpi.errors)}
-            meta="Review"
+            title="Variance"
+            value={String(kpi.variance)}
+            meta="Flagged"
             icon="document"
           />
           <DashboardStatCell
-            title="Last Sync"
-            value={formatRelative(kpi.lastSyncAt).replace(" ago", "")}
-            meta="Auto · 15m"
+            title="Items"
+            value={String(kpi.items)}
+            meta="Total"
             icon="folder"
           />
         </DashboardStatRow>
       </DashboardStatGrid>
-
-      <div className="rounded-xl border border-divider bg-panel px-4 py-3 sm:px-5">
-        <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-          → Customer records are exported to NetSuite. Changes made in NetSuite
-          are not imported.
-        </p>
-      </div>
-      <p className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597]">
-        Auto-export: pushes changes to NetSuite automatically as they happen.
-        Off = export only when you click Sync Now.
-      </p>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[200px] flex-1 sm:max-w-[280px]">
@@ -537,7 +558,7 @@ export function NetSuiteCustomerMappingPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search customer or NetSuite…"
+            placeholder="Search item or NetSuite…"
             className="h-9 w-full rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] pr-3 pl-9 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none placeholder:text-[#5A5A5A]"
           />
         </div>
@@ -563,19 +584,19 @@ export function NetSuiteCustomerMappingPage() {
                 onSelect: () => setStatus("MAPPED"),
               },
               {
-                id: "pending",
-                label: "Pending",
-                onSelect: () => setStatus("PENDING"),
+                id: "review",
+                label: "Review",
+                onSelect: () => setStatus("REVIEW"),
               },
               {
-                id: "unmatched",
-                label: "Unmatched",
-                onSelect: () => setStatus("UNMATCHED"),
+                id: "unmapped",
+                label: "Unmapped",
+                onSelect: () => setStatus("UNMAPPED"),
               },
               {
-                id: "failed",
-                label: "Failed",
-                onSelect: () => setStatus("FAILED"),
+                id: "variance",
+                label: "Variance flagged",
+                onSelect: () => setStatus("VARIANCE"),
               },
             ]}
           />
@@ -589,13 +610,13 @@ export function NetSuiteCustomerMappingPage() {
               onClick={() => setSortOpen((o) => !o)}
             >
               Sort:{" "}
-              {sortKey === "lastSync"
+              {sortKey === "effectiveFrom"
                 ? "Effective (Nearest)"
                 : sortKey === "name"
-                  ? "Customer"
+                  ? "Item"
                   : sortKey === "code"
                     ? "Code"
-                    : "Status"}
+                    : "DHS Rate"}
             </DashboardToolbarButton>
             <DashboardMenuPopover
               open={sortOpen}
@@ -605,35 +626,35 @@ export function NetSuiteCustomerMappingPage() {
               className="min-w-[220px]"
               items={[
                 {
-                  id: "sync-asc",
+                  id: "eff-asc",
                   label: "Effective (Nearest)",
                   onSelect: () => {
-                    setSortKey("lastSync");
+                    setSortKey("effectiveFrom");
                     setSortDir("asc");
                   },
                 },
                 {
-                  id: "sync-desc",
+                  id: "eff-desc",
                   label: "Effective (Newest)",
                   onSelect: () => {
-                    setSortKey("lastSync");
+                    setSortKey("effectiveFrom");
                     setSortDir("desc");
                   },
                 },
                 {
                   id: "name",
-                  label: "Customer A–Z",
+                  label: "Item A–Z",
                   onSelect: () => {
                     setSortKey("name");
                     setSortDir("asc");
                   },
                 },
                 {
-                  id: "status",
-                  label: "Status",
+                  id: "rate",
+                  label: "DHS Rate",
                   onSelect: () => {
-                    setSortKey("status");
-                    setSortDir("asc");
+                    setSortKey("dhsRate");
+                    setSortDir("desc");
                   },
                 },
               ]}
@@ -666,19 +687,19 @@ export function NetSuiteCustomerMappingPage() {
                   onSelect: () => void handleAutoMatch(),
                 },
                 {
-                  id: "failed",
-                  label: "Failed exports",
-                  onSelect: () => setStatus("FAILED"),
+                  id: "review",
+                  label: "Rate differs",
+                  onSelect: () => setStatus("REVIEW"),
                 },
                 {
-                  id: "unmatched",
-                  label: "Unmatched customers",
-                  onSelect: () => setStatus("UNMATCHED"),
+                  id: "unmapped",
+                  label: "Unmapped items",
+                  onSelect: () => setStatus("UNMAPPED"),
                 },
                 {
-                  id: "pending",
-                  label: "Pending sync",
-                  onSelect: () => setStatus("PENDING"),
+                  id: "variance",
+                  label: "Variance flagged",
+                  onSelect: () => setStatus("VARIANCE"),
                 },
               ]}
             />
@@ -710,9 +731,47 @@ export function NetSuiteCustomerMappingPage() {
         </div>
       </div>
 
+      {windows.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {windows.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              onClick={() => removeWindow(chip)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#3E3E3E] bg-[#2A2A2A] px-3 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] hover:border-[#5A5A5A]"
+            >
+              {chip}
+              <span aria-hidden className="text-[#959597]">
+                ×
+              </span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setWindows([])}
+            className="font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#959597] hover:text-[#FDFDFF]"
+          >
+            Clear all
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          {DEFAULT_WINDOWS.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              onClick={() => setWindows([chip])}
+              className="inline-flex items-center rounded-full border border-dashed border-[#3E3E3E] px-3 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#959597] hover:border-[#5A5A5A] hover:text-[#FDFDFF]"
+            >
+              + {chip}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading && rows.length === 0 ? (
         <div className="flex min-h-[30vh] items-center justify-center">
-          <BrandLoader label="Loading mappings" />
+          <BrandLoader label="Loading rate mappings" />
         </div>
       ) : (
         <>
@@ -720,7 +779,7 @@ export function NetSuiteCustomerMappingPage() {
             columns={columns}
             rows={rows}
             getRowId={(r) => r.id}
-            emptyMessage="No customer mappings found"
+            emptyMessage="No item rate mappings found"
           />
           <DashboardPagination
             page={page}
@@ -740,30 +799,38 @@ export function NetSuiteCustomerMappingPage() {
         onClose={() => setRowMenuId(null)}
         anchorRef={rowMenuRef}
         align="right"
-        className="min-w-[220px]"
+        className="min-w-[240px]"
         items={
           rowMenu
             ? [
                 {
-                  id: "open",
-                  label: "Open Customer",
-                  onSelect: () => {
-                    window.location.href = `/crm/accounts/${rowMenu.id}`;
-                  },
-                },
-                {
                   id: "map",
-                  label: "Map to a NetSuite Record",
+                  label: "Map to a NetSuite Item",
                   onSelect: () => void openMap(rowMenu),
                 },
                 {
-                  id: "create",
-                  label: "Create in NetSuite",
+                  id: "accept",
+                  label: "Accept NetSuite Rate",
                   onSelect: () => {
                     void (async () => {
                       try {
-                        await crmApi.createNetSuiteCustomer(rowMenu.id);
-                        toastSuccess("Created in NetSuite");
+                        await crmApi.acceptItemRateNs(rowMenu.id);
+                        toastSuccess("DHS rate updated from NetSuite");
+                        setReloadKey((k) => k + 1);
+                      } catch (err) {
+                        toastApiError(err);
+                      }
+                    })();
+                  },
+                },
+                {
+                  id: "push",
+                  label: "Push DHS Rate to NetSuite",
+                  onSelect: () => {
+                    void (async () => {
+                      try {
+                        await crmApi.pushItemRateDhs(rowMenu.id);
+                        toastSuccess("DHS rate pushed to NetSuite");
                         setReloadKey((k) => k + 1);
                       } catch (err) {
                         toastApiError(err);
@@ -773,12 +840,12 @@ export function NetSuiteCustomerMappingPage() {
                 },
                 {
                   id: "retry",
-                  label: "Retry Export",
+                  label: "Retry Sync",
                   onSelect: () => {
                     void (async () => {
                       try {
-                        await crmApi.syncNetSuiteCustomers([rowMenu.id]);
-                        toastSuccess("Export retried");
+                        await crmApi.syncItemRates([rowMenu.id]);
+                        toastSuccess("Sync retried");
                         setReloadKey((k) => k + 1);
                       } catch (err) {
                         toastApiError(err);
@@ -787,22 +854,9 @@ export function NetSuiteCustomerMappingPage() {
                   },
                 },
                 {
-                  id: "error",
-                  label: "View Error Detail",
-                  onSelect: () => {
-                    void askConfirm({
-                      title: "Export Error Detail",
-                      description:
-                        rowMenu.syncError?.trim() ||
-                        "No export error recorded for this customer.",
-                      confirmLabel: "OK",
-                    });
-                  },
-                },
-                {
                   id: "auto",
-                  label: rowMenu.autoExport ? "Turn Auto Off" : "Turn Auto On",
-                  onSelect: () => void toggleAutoExport(rowMenu),
+                  label: rowMenu.autoSync ? "Turn Auto Off" : "Turn Auto On",
+                  onSelect: () => void toggleAutoSync(rowMenu),
                 },
                 {
                   id: "unmap",
@@ -812,14 +866,14 @@ export function NetSuiteCustomerMappingPage() {
                     void (async () => {
                       const ok = await askConfirm({
                         title: "Unmap from NetSuite?",
-                        description: `Remove NetSuite mapping for ${rowMenu.name}.`,
+                        description: `Remove NetSuite rate mapping for ${rowMenu.name}.`,
                         confirmLabel: "Unmap",
                         destructive: true,
                       });
                       if (!ok) return;
                       try {
-                        await crmApi.unmapNetSuiteCustomer(rowMenu.id);
-                        toastSuccess("Customer unmapped");
+                        await crmApi.unmapItemRate(rowMenu.id);
+                        toastSuccess("Item unmapped");
                         setReloadKey((k) => k + 1);
                       } catch (err) {
                         toastApiError(err);

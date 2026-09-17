@@ -71,6 +71,8 @@ model User {
   tasksCreated        CrmTask[]            @relation("CrmTaskCreator")
   savedViews          SavedView[]
   gpsFlags            GpsFlag[]            @relation("GpsFlagTechnician")
+  netsuiteItemMappingsOwned NetSuiteItemMapping[] @relation("NetSuiteItemMappingOwner")
+  itemRateMappingsOwned     ItemRateMapping[]     @relation("ItemRateMappingOwner")
 }
 
 model PasswordResetToken {
@@ -260,6 +262,71 @@ model NetSuiteCustomerDirectory {
   updatedAt    DateTime @updatedAt
 
   @@index([name])
+}
+
+/** Catalog items mapped to NetSuite item IDs (pricing/service catalog). */
+model NetSuiteItemMapping {
+  id              String    @id @default(uuid())
+  code            String    @unique
+  name            String
+  category        String    @default("SERVICE")
+  netsuiteItemId  String?
+  direction       String    @default("OUTBOUND")
+  directionDetail String?
+  health          String?
+  autoSync        Boolean   @default(true)
+  lastSyncAt      DateTime?
+  lastResult      String?
+  syncError       String?
+  archivedAt      DateTime?
+  ownerId         String?
+  owner           User?     @relation("NetSuiteItemMappingOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([netsuiteItemId])
+  @@index([category])
+  @@index([archivedAt])
+  @@index([ownerId])
+  @@index([lastSyncAt])
+}
+
+/** Local NetSuite item catalog for name-based auto-match. */
+model NetSuiteItemDirectory {
+  id             String   @id @default(cuid())
+  netsuiteItemId String   @unique
+  name           String
+  category       String   @default("SERVICE")
+  rate           Decimal? @db.Decimal(14, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([name])
+}
+
+/** Catalog item rates mapped to NetSuite item rates (1:1 / variance review). */
+model ItemRateMapping {
+  id              String    @id @default(uuid())
+  code            String    @unique
+  name            String
+  dhsRate         Decimal   @db.Decimal(14, 2)
+  netsuiteItemId  String?
+  netsuiteRate    Decimal?  @db.Decimal(14, 2)
+  unit            String?
+  duration        String?
+  effectiveFrom   DateTime?
+  effectiveDetail String?
+  autoSync        Boolean   @default(true)
+  archivedAt      DateTime?
+  ownerId         String?
+  owner           User?     @relation("ItemRateMappingOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([netsuiteItemId])
+  @@index([archivedAt])
+  @@index([ownerId])
+  @@index([effectiveFrom])
 }
 
 // ─── Contact ─────────────────────────────────────────────────────────────────

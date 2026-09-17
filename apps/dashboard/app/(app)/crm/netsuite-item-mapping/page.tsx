@@ -1,10 +1,5 @@
-import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+import { NetSuiteItemMappingPage } from "@/features/crm/netsuite-item-mapping-page";
 
 export default function Page() {
-  return (
-    <ModulePlaceholder
-      title="NetSuite Item Mapping"
-      description="Map catalog items to NetSuite item records. Connect the NetSuite item sync API next."
-    />
-  );
+  return <NetSuiteItemMappingPage />;
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import {
   DashboardBadge,
   DashboardDataTable,
@@ -17,7 +16,7 @@ import {
 import {
   crmApi,
   downloadCsv,
-  type CrmNetSuiteCustomerMapping,
+  type CrmNetSuiteItemMapping,
 } from "@/lib/crm-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { BrandLoader } from "@/features/loading/brand-loader";
@@ -25,8 +24,11 @@ import { useSetHeaderActions } from "@/features/app-shell/header-actions-context
 import { CreateWorkOrderHeaderButton } from "@/features/app-shell/crm-header-actions";
 import { useCrmDialogs } from "./use-crm-dialogs";
 
-type SortKey = "lastSync" | "name" | "status" | "code";
-type StatusFilter = "" | "MAPPED" | "PENDING" | "UNMATCHED" | "FAILED";
+type SortKey = "lastSync" | "name" | "code" | "category";
+type StatusFilter = "" | "MATCHED" | "PENDING" | "UNMATCHED" | "FAILED";
+type WindowChip = "ACTIVE" | "CURRENT" | "FUTURE";
+
+const DEFAULT_WINDOWS: WindowChip[] = ["ACTIVE", "CURRENT", "FUTURE"];
 
 function formatRelative(iso?: string | null) {
   if (!iso) return "—";
@@ -40,6 +42,10 @@ function formatRelative(iso?: string | null) {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
+}
+
+function formatRelativeShort(iso?: string | null) {
+  return formatRelative(iso).replace(" ago", "").toUpperCase();
 }
 
 function SearchIcon() {
@@ -60,10 +66,11 @@ function FilterIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
-        d="M4 6h16M7 12h10M10 18h4"
+        d="M5 12.5 9.5 17 19 7.5"
         stroke="currentColor"
         strokeWidth="1.75"
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
@@ -121,35 +128,44 @@ function KebabIcon() {
   );
 }
 
-function statusBadgeVariant(
-  status: string,
+function matchBadgeVariant(
+  match: string,
 ): "success" | "warning" | "error" | "neutral" {
-  const s = status.toUpperCase();
-  if (s === "MAPPED") return "success";
+  const s = match.toUpperCase();
+  if (s === "MATCHED") return "success";
   if (s === "PENDING") return "warning";
   if (s === "FAILED") return "error";
   return "neutral";
 }
 
-function resultTone(result?: string | null) {
-  const r = (result ?? "").toUpperCase();
-  if (r === "SUCCESS") return "bg-[#1F3A2E] text-[#6EE7B7]";
-  if (r === "PARTIAL") return "bg-[#3A2E1A] text-[#E8C47C]";
-  if (r === "FAILED") return "bg-[#3A1515] text-[#FF6B6B]";
+function statusTone(status: string) {
+  const s = status.toUpperCase();
+  if (s === "SYNCED") return "bg-[#1F3A2E] text-[#6EE7B7]";
+  if (s === "PENDING") return "bg-[#2A2240] text-[#C4B5FD]";
+  if (s === "UNMATCHED") return "bg-[#3A2E1A] text-[#E8C47C]";
+  if (s === "FAILED") return "bg-[#3A1515] text-[#FF6B6B]";
   return "bg-[#2A2A2A] text-[#959597]";
 }
 
-export function NetSuiteCustomerMappingPage() {
+function healthTone(health?: string | null) {
+  const h = (health ?? "").toUpperCase();
+  if (h === "HEALTHY") return "bg-[#1F3A2E] text-[#6EE7B7]";
+  if (h === "DEGRADED") return "bg-[#3A1515] text-[#FF6B6B]";
+  return null;
+}
+
+export function NetSuiteItemMappingPage() {
   const { askConfirm, askPrompt, dialogs } = useCrmDialogs();
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
-  const [rows, setRows] = React.useState<CrmNetSuiteCustomerMapping[]>([]);
+  const [rows, setRows] = React.useState<CrmNetSuiteItemMapping[]>([]);
   const [total, setTotal] = React.useState(0);
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
   const [search, setSearch] = React.useState("");
   const [debouncedQ, setDebouncedQ] = React.useState("");
   const [status, setStatus] = React.useState<StatusFilter>("");
+  const [windows, setWindows] = React.useState<WindowChip[]>(DEFAULT_WINDOWS);
   const [sortKey, setSortKey] = React.useState<SortKey>("lastSync");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
   const [kpi, setKpi] = React.useState({
@@ -178,30 +194,29 @@ export function NetSuiteCustomerMappingPage() {
 
   React.useEffect(() => {
     setPage(1);
-  }, [debouncedQ, status, sortKey, sortDir]);
+  }, [debouncedQ, status, sortKey, sortDir, windows]);
+
+  const windowParam =
+    windows.length > 0 && windows.length < DEFAULT_WINDOWS.length
+      ? windows.join(",")
+      : undefined;
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
       const [listRes, kpiRes] = await Promise.all([
-        crmApi.listNetSuiteCustomerMappings({
+        crmApi.listNetSuiteItemMappings({
           q: debouncedQ || undefined,
           status: status || undefined,
+          window: windowParam,
           page,
           pageSize,
-          sort: sortKey === "status" ? "name" : sortKey,
+          sort: sortKey,
           direction: sortDir,
         }),
-        crmApi.netsuiteCustomerMappingKpi(),
+        crmApi.netsuiteItemMappingKpi(),
       ]);
-      let items = listRes.data.items ?? [];
-      if (sortKey === "status") {
-        items = [...items].sort((a, b) => {
-          const cmp = a.status.localeCompare(b.status);
-          return sortDir === "asc" ? cmp : -cmp;
-        });
-      }
-      setRows(items);
+      setRows(listRes.data.items ?? []);
       setTotal(listRes.data.total ?? 0);
       setKpi({
         mapped: kpiRes.data.mapped ?? 0,
@@ -217,7 +232,16 @@ export function NetSuiteCustomerMappingPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQ, status, page, pageSize, sortKey, sortDir, reloadKey]);
+  }, [
+    debouncedQ,
+    status,
+    windowParam,
+    page,
+    pageSize,
+    sortKey,
+    sortDir,
+    reloadKey,
+  ]);
 
   React.useEffect(() => {
     void load();
@@ -226,10 +250,8 @@ export function NetSuiteCustomerMappingPage() {
   async function handleSyncNow() {
     setBusy(true);
     try {
-      const res = await crmApi.syncNetSuiteCustomers();
-      toastSuccess(
-        `Synced ${res.data.synced} · ${res.data.failed} failed`,
-      );
+      const res = await crmApi.syncNetSuiteItems();
+      toastSuccess(`Synced ${res.data.synced} · ${res.data.failed} failed`);
       setReloadKey((k) => k + 1);
     } catch (err) {
       toastApiError(err);
@@ -241,8 +263,8 @@ export function NetSuiteCustomerMappingPage() {
   async function handleAutoMatch() {
     setBusy(true);
     try {
-      const res = await crmApi.autoMatchNetSuiteCustomers();
-      toastSuccess(`Auto-matched ${res.data.matched} customers`);
+      const res = await crmApi.autoMatchNetSuiteItems();
+      toastSuccess(`Auto-matched ${res.data.matched} items`);
       setReloadKey((k) => k + 1);
     } catch (err) {
       toastApiError(err);
@@ -251,69 +273,79 @@ export function NetSuiteCustomerMappingPage() {
     }
   }
 
-  async function toggleAutoExport(row: CrmNetSuiteCustomerMapping) {
+  async function toggleAutoSync(row: CrmNetSuiteItemMapping) {
     try {
-      await crmApi.setNetSuiteAutoExport(row.id, !row.autoExport);
-      toastSuccess(`Auto-export ${!row.autoExport ? "on" : "off"}`);
+      await crmApi.setNetSuiteItemAutoSync(row.id, !row.autoSync);
+      toastSuccess(`Auto-sync ${!row.autoSync ? "on" : "off"}`);
       setReloadKey((k) => k + 1);
     } catch (err) {
       toastApiError(err);
     }
   }
 
-  async function openMap(row: CrmNetSuiteCustomerMapping) {
+  async function openMap(row: CrmNetSuiteItemMapping) {
     const value = await askPrompt({
-      title: `Map NetSuite ID · ${row.name}`,
-      label: "NetSuite ID",
-      placeholder: "NS-0004471",
+      title: `Map NetSuite Item · ${row.name}`,
+      label: "NetSuite Item ID",
+      placeholder: "NS-ITM-01",
       confirmLabel: "Map",
-      defaultValue: row.netsuiteId ?? "",
+      defaultValue: row.netsuiteItemId ?? "",
     });
     if (value == null) return;
-    const netsuiteId = value.trim().toUpperCase();
-    if (!/^NS-\d{7}$/i.test(netsuiteId)) {
-      toastApiError(new Error("NetSuite ID must match NS-#######"));
+    const netsuiteItemId = value.trim().toUpperCase();
+    if (!/^NS-ITM-[A-Z0-9-]+$/i.test(netsuiteItemId)) {
+      toastApiError(new Error("NetSuite Item ID must match NS-ITM-##"));
       return;
     }
     try {
-      await crmApi.mapNetSuiteCustomer(row.id, netsuiteId);
-      toastSuccess("Customer mapped");
+      await crmApi.mapNetSuiteItem(row.id, netsuiteItemId);
+      toastSuccess("Item mapped");
       setReloadKey((k) => k + 1);
     } catch (err) {
       toastApiError(err);
     }
+  }
+
+  function removeWindow(chip: WindowChip) {
+    setWindows((prev) => prev.filter((w) => w !== chip));
   }
 
   function handleExport() {
     const header = [
-      "Customer",
+      "Item",
       "Code",
-      "NetSuite ID",
-      "Status",
-      "Customer Type",
+      "NetSuite Item",
+      "Match",
+      "Category",
       "Last Sync",
+      "Direction",
+      "Direction Detail",
       "Owner",
-      "Last Result",
-      "Auto Export",
+      "Health",
+      "Auto Sync",
+      "Status",
     ];
     const lines = rows.map((r) =>
       [
         r.name,
         r.code,
-        r.netsuiteId ?? "",
-        r.status,
-        r.customerType,
+        r.netsuiteItemId ?? "",
+        r.match,
+        r.category,
         r.lastSyncAt ?? "",
+        r.direction,
+        r.directionDetail ?? "",
         r.owner?.name ?? "",
-        r.lastResult ?? "",
-        r.autoExport ? "ON" : "OFF",
+        r.health ?? "",
+        r.autoSync ? "ON" : "OFF",
+        r.status,
       ]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(","),
     );
     downloadCsv(
       [header.join(","), ...lines].join("\n"),
-      "netsuite-customer-mapping.csv",
+      "netsuite-item-mapping.csv",
     );
     toastSuccess("Export downloaded");
   }
@@ -321,163 +353,193 @@ export function NetSuiteCustomerMappingPage() {
   useSetHeaderActions(<CreateWorkOrderHeaderButton />, []);
 
   const columns = React.useMemo<
-    DashboardDataTableColumn<CrmNetSuiteCustomerMapping>[]
+    DashboardDataTableColumn<CrmNetSuiteItemMapping>[]
   >(
-      () => [
-        {
-          id: "customer",
-          header: "Customer",
-          className: "min-w-[160px]",
-          cell: (row) => (
-            <div className="min-w-0">
-              <p className="truncate font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                {row.name}
-              </p>
-              <Link
-                href={`/crm/accounts/${row.id}`}
-                className="mt-0.5 inline-block font-sans text-[11px] uppercase tracking-[-0.02em] text-[#60A5FA] underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {row.code}
-              </Link>
-            </div>
-          ),
-        },
-        {
-          id: "netsuiteId",
-          header: "NetSuite ID",
-          className: "min-w-[110px]",
-          cell: (row) =>
-            row.netsuiteId ? (
-              <span className="font-sans text-[12px] uppercase tabular-nums text-[#FDFDFF]">
-                {row.netsuiteId}
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#60A5FA] hover:underline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void openMap(row);
-                }}
-              >
-                + Map
-              </button>
-            ),
-        },
-        {
-          id: "status",
-          header: "Status",
-          className: "min-w-[100px]",
-          cell: (row) => (
-            <DashboardBadge variant={statusBadgeVariant(row.status)} pill>
-              {row.status}
-            </DashboardBadge>
-          ),
-        },
-        {
-          id: "customerType",
-          header: "Customer Type",
-          className: "min-w-[110px]",
-          cell: (row) => (
-            <span className="font-sans text-[12px] uppercase text-[#FDFDFF]">
-              {row.customerType}
+    () => [
+      {
+        id: "item",
+        header: "Item",
+        className: "min-w-[150px]",
+        cell: (row) => (
+          <div className="min-w-0">
+            <p className="truncate font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+              {row.name}
+            </p>
+            <span className="mt-0.5 inline-block font-sans text-[11px] uppercase tracking-[-0.02em] text-[#60A5FA] underline">
+              {row.code}
             </span>
-          ),
-        },
-        {
-          id: "lastSync",
-          header: "Last Sync",
-          className: "min-w-[90px]",
-          cell: (row) => (
+          </div>
+        ),
+      },
+      {
+        id: "netsuiteItem",
+        header: "NetSuite Item",
+        className: "min-w-[110px]",
+        cell: (row) =>
+          row.netsuiteItemId ? (
             <span className="font-sans text-[12px] uppercase tabular-nums text-[#FDFDFF]">
-              {formatRelative(row.lastSyncAt)}
+              {row.netsuiteItemId}
             </span>
+          ) : (
+            <button
+              type="button"
+              className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#60A5FA] hover:underline"
+              onClick={(e) => {
+                e.stopPropagation();
+                void openMap(row);
+              }}
+            >
+              + Map
+            </button>
           ),
-        },
-        {
-          id: "owner",
-          header: "Account Owner",
-          className: "min-w-[120px]",
-          cell: (row) =>
-            row.owner?.name ? (
-              <span className="font-sans text-[12px] uppercase text-[#60A5FA] underline">
-                {row.owner.name}
+      },
+      {
+        id: "match",
+        header: "Match",
+        className: "min-w-[100px]",
+        cell: (row) => (
+          <DashboardBadge variant={matchBadgeVariant(row.match)} pill>
+            {row.match}
+          </DashboardBadge>
+        ),
+      },
+      {
+        id: "category",
+        header: "Category",
+        className: "min-w-[100px]",
+        cell: (row) => (
+          <span className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+            {row.category}
+          </span>
+        ),
+      },
+      {
+        id: "lastSync",
+        header: "Last Sync",
+        className: "min-w-[90px]",
+        cell: (row) => (
+          <span className="font-sans text-[12px] uppercase tabular-nums text-[#FDFDFF]">
+            {formatRelative(row.lastSyncAt)}
+          </span>
+        ),
+      },
+      {
+        id: "direction",
+        header: "Direction",
+        className: "min-w-[110px]",
+        cell: (row) => (
+          <div className="min-w-0">
+            <p className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+              {row.direction || "—"}
+            </p>
+            {row.directionDetail ? (
+              <p className="mt-0.5 font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597]">
+                {row.directionDetail}
+              </p>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        id: "owner",
+        header: "Owner",
+        className: "min-w-[90px]",
+        cell: (row) =>
+          row.owner?.name ? (
+            <span className="font-sans text-[12px] uppercase text-[#60A5FA] underline">
+              {row.owner.name}
+            </span>
+          ) : (
+            <span className="text-[#959597]">—</span>
+          ),
+      },
+      {
+        id: "health",
+        header: "Health",
+        className: "min-w-[100px]",
+        cell: (row) => {
+          const tone = healthTone(row.health);
+          if (!tone) {
+            return (
+              <span
+                className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-[#FF6B6B]/40 text-[#FF6B6B]"
+                title="No health"
+              >
+                —
               </span>
-            ) : (
-              <span className="text-[#959597]">—</span>
-            ),
-        },
-        {
-          id: "lastResult",
-          header: "Last Result",
-          className: "min-w-[140px]",
-          cell: (row) => (
-            <div className="min-w-0">
-              {row.lastResult ? (
-                <span
-                  className={cn(
-                    "inline-flex rounded-full px-2.5 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em]",
-                    resultTone(row.lastResult),
-                  )}
-                >
-                  {row.lastResult}
-                </span>
-              ) : (
-                <span className="text-[#959597]">—</span>
-              )}
-              {row.syncError ? (
-                <p className="mt-1 truncate font-sans text-[10px] uppercase tracking-[-0.02em] text-[#FF6B6B]">
-                  {row.syncError.replace(/\s*-\s*Export.*/i, "")} · View Error
-                </p>
-              ) : null}
-            </div>
-          ),
-        },
-        {
-          id: "autoExport",
-          header: "Auto-Export",
-          className: "min-w-[100px]",
-          cell: (row) => (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                void toggleAutoExport(row);
-              }}
+            );
+          }
+          return (
+            <span
               className={cn(
-                "inline-flex rounded-full px-3 py-1 font-sans text-[10px] font-[590] uppercase tracking-[-0.02em]",
-                row.autoExport
-                  ? "bg-[#1F3A2E] text-[#6EE7B7]"
-                  : "bg-[#2A2A2A] text-[#959597]",
+                "inline-flex rounded-full px-2.5 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em]",
+                tone,
               )}
             >
-              {row.autoExport ? "On" : "Off"}
-            </button>
-          ),
+              {row.health}
+            </span>
+          );
         },
-        {
-          id: "actions",
-          header: "",
-          className: "w-12",
-          cell: (row) => (
-            <button
-              type="button"
-              aria-label="Row actions"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]"
-              onClick={(e) => {
-                e.stopPropagation();
-                rowMenuRef.current = e.currentTarget;
-                setRowMenuId((id) => (id === row.id ? null : row.id));
-              }}
-            >
-              <KebabIcon />
-            </button>
-          ),
-        },
-      ],
-      [],
-    );
+      },
+      {
+        id: "auto",
+        header: "Auto",
+        className: "min-w-[80px]",
+        cell: (row) => (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void toggleAutoSync(row);
+            }}
+            className={cn(
+              "inline-flex rounded-full px-3 py-1 font-sans text-[10px] font-[590] uppercase tracking-[-0.02em]",
+              row.autoSync
+                ? "bg-[#1F3A2E] text-[#6EE7B7]"
+                : "bg-[#3A1515] text-[#FF6B6B]",
+            )}
+          >
+            {row.autoSync ? "On" : "Off"}
+          </button>
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        className: "min-w-[100px]",
+        cell: (row) => (
+          <span
+            className={cn(
+              "inline-flex rounded-full px-2.5 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em]",
+              statusTone(row.status),
+            )}
+          >
+            {row.status}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        className: "w-12",
+        cell: (row) => (
+          <button
+            type="button"
+            aria-label="Row actions"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]"
+            onClick={(e) => {
+              e.stopPropagation();
+              rowMenuRef.current = e.currentTarget;
+              setRowMenuId((id) => (id === row.id ? null : row.id));
+            }}
+          >
+            <KebabIcon />
+          </button>
+        ),
+      },
+    ],
+    [],
+  );
 
   const rowMenu = rows.find((r) => r.id === rowMenuId) ?? null;
 
@@ -506,28 +568,17 @@ export function NetSuiteCustomerMappingPage() {
           <DashboardStatCell
             title="Errors"
             value={String(kpi.errors)}
-            meta="Review"
+            meta="Errors"
             icon="document"
           />
           <DashboardStatCell
-            title="Last Sync"
-            value={formatRelative(kpi.lastSyncAt).replace(" ago", "")}
+            title="Mapped"
+            value={formatRelativeShort(kpi.lastSyncAt)}
             meta="Auto · 15m"
             icon="folder"
           />
         </DashboardStatRow>
       </DashboardStatGrid>
-
-      <div className="rounded-xl border border-divider bg-panel px-4 py-3 sm:px-5">
-        <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-          → Customer records are exported to NetSuite. Changes made in NetSuite
-          are not imported.
-        </p>
-      </div>
-      <p className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597]">
-        Auto-export: pushes changes to NetSuite automatically as they happen.
-        Off = export only when you click Sync Now.
-      </p>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[200px] flex-1 sm:max-w-[280px]">
@@ -537,7 +588,7 @@ export function NetSuiteCustomerMappingPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search customer or NetSuite…"
+            placeholder="Search WO, Customer, Loca…"
             className="h-9 w-full rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] pr-3 pl-9 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none placeholder:text-[#5A5A5A]"
           />
         </div>
@@ -558,9 +609,9 @@ export function NetSuiteCustomerMappingPage() {
             items={[
               { id: "all", label: "All statuses", onSelect: () => setStatus("") },
               {
-                id: "mapped",
-                label: "Mapped",
-                onSelect: () => setStatus("MAPPED"),
+                id: "matched",
+                label: "Matched",
+                onSelect: () => setStatus("MATCHED"),
               },
               {
                 id: "pending",
@@ -592,10 +643,10 @@ export function NetSuiteCustomerMappingPage() {
               {sortKey === "lastSync"
                 ? "Effective (Nearest)"
                 : sortKey === "name"
-                  ? "Customer"
+                  ? "Item"
                   : sortKey === "code"
                     ? "Code"
-                    : "Status"}
+                    : "Category"}
             </DashboardToolbarButton>
             <DashboardMenuPopover
               open={sortOpen}
@@ -622,17 +673,17 @@ export function NetSuiteCustomerMappingPage() {
                 },
                 {
                   id: "name",
-                  label: "Customer A–Z",
+                  label: "Item A–Z",
                   onSelect: () => {
                     setSortKey("name");
                     setSortDir("asc");
                   },
                 },
                 {
-                  id: "status",
-                  label: "Status",
+                  id: "category",
+                  label: "Category",
                   onSelect: () => {
-                    setSortKey("status");
+                    setSortKey("category");
                     setSortDir("asc");
                   },
                 },
@@ -667,12 +718,12 @@ export function NetSuiteCustomerMappingPage() {
                 },
                 {
                   id: "failed",
-                  label: "Failed exports",
+                  label: "Failed syncs",
                   onSelect: () => setStatus("FAILED"),
                 },
                 {
                   id: "unmatched",
-                  label: "Unmatched customers",
+                  label: "Unmatched items",
                   onSelect: () => setStatus("UNMATCHED"),
                 },
                 {
@@ -710,6 +761,44 @@ export function NetSuiteCustomerMappingPage() {
         </div>
       </div>
 
+      {windows.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {windows.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              onClick={() => removeWindow(chip)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#3E3E3E] bg-[#2A2A2A] px-3 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] hover:border-[#5A5A5A]"
+            >
+              {chip}
+              <span aria-hidden className="text-[#959597]">
+                ×
+              </span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setWindows([])}
+            className="font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#959597] hover:text-[#FDFDFF]"
+          >
+            Clear all
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          {DEFAULT_WINDOWS.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              onClick={() => setWindows([chip])}
+              className="inline-flex items-center rounded-full border border-dashed border-[#3E3E3E] px-3 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#959597] hover:border-[#5A5A5A] hover:text-[#FDFDFF]"
+            >
+              + {chip}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading && rows.length === 0 ? (
         <div className="flex min-h-[30vh] items-center justify-center">
           <BrandLoader label="Loading mappings" />
@@ -720,7 +809,7 @@ export function NetSuiteCustomerMappingPage() {
             columns={columns}
             rows={rows}
             getRowId={(r) => r.id}
-            emptyMessage="No customer mappings found"
+            emptyMessage="No item mappings found"
           />
           <DashboardPagination
             page={page}
@@ -745,15 +834,8 @@ export function NetSuiteCustomerMappingPage() {
           rowMenu
             ? [
                 {
-                  id: "open",
-                  label: "Open Customer",
-                  onSelect: () => {
-                    window.location.href = `/crm/accounts/${rowMenu.id}`;
-                  },
-                },
-                {
                   id: "map",
-                  label: "Map to a NetSuite Record",
+                  label: "Map to a NetSuite Item",
                   onSelect: () => void openMap(rowMenu),
                 },
                 {
@@ -762,7 +844,7 @@ export function NetSuiteCustomerMappingPage() {
                   onSelect: () => {
                     void (async () => {
                       try {
-                        await crmApi.createNetSuiteCustomer(rowMenu.id);
+                        await crmApi.createNetSuiteItem(rowMenu.id);
                         toastSuccess("Created in NetSuite");
                         setReloadKey((k) => k + 1);
                       } catch (err) {
@@ -773,12 +855,12 @@ export function NetSuiteCustomerMappingPage() {
                 },
                 {
                   id: "retry",
-                  label: "Retry Export",
+                  label: "Retry Sync",
                   onSelect: () => {
                     void (async () => {
                       try {
-                        await crmApi.syncNetSuiteCustomers([rowMenu.id]);
-                        toastSuccess("Export retried");
+                        await crmApi.syncNetSuiteItems([rowMenu.id]);
+                        toastSuccess("Sync retried");
                         setReloadKey((k) => k + 1);
                       } catch (err) {
                         toastApiError(err);
@@ -791,18 +873,18 @@ export function NetSuiteCustomerMappingPage() {
                   label: "View Error Detail",
                   onSelect: () => {
                     void askConfirm({
-                      title: "Export Error Detail",
+                      title: "Sync Error Detail",
                       description:
                         rowMenu.syncError?.trim() ||
-                        "No export error recorded for this customer.",
+                        "No sync error recorded for this item.",
                       confirmLabel: "OK",
                     });
                   },
                 },
                 {
                   id: "auto",
-                  label: rowMenu.autoExport ? "Turn Auto Off" : "Turn Auto On",
-                  onSelect: () => void toggleAutoExport(rowMenu),
+                  label: rowMenu.autoSync ? "Turn Auto Off" : "Turn Auto On",
+                  onSelect: () => void toggleAutoSync(rowMenu),
                 },
                 {
                   id: "unmap",
@@ -818,8 +900,8 @@ export function NetSuiteCustomerMappingPage() {
                       });
                       if (!ok) return;
                       try {
-                        await crmApi.unmapNetSuiteCustomer(rowMenu.id);
-                        toastSuccess("Customer unmapped");
+                        await crmApi.unmapNetSuiteItem(rowMenu.id);
+                        toastSuccess("Item unmapped");
                         setReloadKey((k) => k + 1);
                       } catch (err) {
                         toastApiError(err);

@@ -549,17 +549,23 @@ export function DashboardSectionLabel({
 export function DashboardWidgetSection({
   title,
   actionLabel,
+  onAction,
   children,
   className,
 }: {
   title: string;
   actionLabel?: string;
+  onAction?: () => void;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <section className={cn("space-y-2", className)}>
-      <DashboardWidgetHeader title={title} actionLabel={actionLabel} />
+      <DashboardWidgetHeader
+        title={title}
+        actionLabel={actionLabel}
+        onAction={onAction}
+      />
       <DashboardPanel className="p-3.5 sm:p-4">{children}</DashboardPanel>
     </section>
   );
