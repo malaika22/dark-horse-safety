@@ -63,3 +63,56 @@ body {
 .dhs-global-loader-bar {
   animation: dhs-global-loader-slide 1.1s ease-in-out infinite;
 }
+
+/* Employee profile print — hide app chrome, keep detail content */
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color: #111 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print\:hidden,
+  [data-app-sidebar],
+  [data-app-header],
+  [data-app-page-toolbar],
+  [data-print-hide],
+  .Toastify__toast-container {
+    display: none !important;
+  }
+
+  [data-scroll-lock-root],
+  main {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  [data-print-root] {
+    background: #fff !important;
+    color: #111 !important;
+    padding: 0 !important;
+  }
+
+  [data-print-root] * {
+    color: #111 !important;
+    border-color: #ccc !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  [data-print-root] input,
+  [data-print-root] select {
+    border: 1px solid #ccc !important;
+    background: #fff !important;
+  }
+}
+

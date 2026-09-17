@@ -31,7 +31,8 @@ export type CrmSavedViewScope =
   | 'ROUTE_RULES'
   | 'EOD_REPORTS'
   | 'SALES_ACTIVITIES'
-  | 'QUOTES';
+  | 'QUOTES'
+  | 'EMPLOYEES';
 
 export type CrmLookupOption = {
   value: string;

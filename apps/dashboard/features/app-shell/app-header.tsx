@@ -281,8 +281,9 @@ export function AppHeader({
 }) {
   return (
     <header
+      data-app-header
       className={cn(
-        "sticky top-0 z-30 shrink-0 bg-black",
+        "sticky top-0 z-30 shrink-0 bg-black print:hidden",
         className,
       )}
     >
@@ -332,7 +333,10 @@ export function AppPageToolbar({
   if (!pageTitle && !actions) return null;
 
   return (
-    <div className="flex w-full flex-col gap-3 bg-shell px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-3.5">
+    <div
+      data-app-page-toolbar
+      className="flex w-full flex-col gap-3 bg-shell px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-3.5 print:hidden"
+    >
       {pageTitle ? (
         <h1 className="min-w-0 flex-1 font-sans text-[18px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[22px]">
           {pageTitle}
