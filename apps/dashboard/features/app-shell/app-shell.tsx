@@ -123,8 +123,8 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
   },
   {
     path: "/hr/pay-cycle",
-    breadcrumb: "Employees & HR",
-    pageTitle: "Pay Cycle Setting",
+    breadcrumb: "Employees & HR / Pay Cycle Setting",
+    pageTitle: "Pay Cycle Settings",
   },
   {
     path: "/hr/payroll-export",
@@ -147,11 +147,16 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
     pageTitle: "Training / SSE",
   },
   {
+    path: "/hr/time-edit-requests",
+    breadcrumb: "Employees & HR / Timesheets / Time Corrections",
+    pageTitle: "Time Edit Requests",
+  },
+  {
     path: "/hr/time-entries",
     breadcrumb: "Employees & HR",
     pageTitle: "Time Entries",
   },
-  { path: "/hr/time-off", breadcrumb: "Employees & HR", pageTitle: "Time Off" },
+  { path: "/hr/time-off", breadcrumb: "Employees & HR / Time Off", pageTitle: "Time Off" },
   { path: "/hr/employees", breadcrumb: "Employees & HR", pageTitle: "Employees" },
   { path: "/hr", breadcrumb: "Employees & HR", pageTitle: "HR Dashboard" },
   {

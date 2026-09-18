@@ -100,7 +100,7 @@ export function CardReconciliationPage({ customerId }: { customerId: string }) {
   );
   const [addChargeOpen, setAddChargeOpen] = React.useState(false);
   const [newCardOpen, setNewCardOpen] = React.useState(false);
-  const [chargeDate, setChargeDate] = React.useState(todayIso());
+  const [chargeDate, setChargeDate] = React.useState("");
   const [chargeMerchant, setChargeMerchant] = React.useState("");
   const [chargeAmount, setChargeAmount] = React.useState("");
   const [cardBrand, setCardBrand] = React.useState("");
@@ -226,7 +226,7 @@ export function CardReconciliationPage({ customerId }: { customerId: string }) {
     setAddChargeOpen(false);
     setChargeMerchant("");
     setChargeAmount("");
-    setChargeDate(todayIso());
+    setChargeDate("");
   }
 
   const cancelHref = `/crm/accounts/${customerId}`;

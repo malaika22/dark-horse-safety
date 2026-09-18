@@ -235,8 +235,8 @@ export function CustomerSiteLocationPanel({
   const [radiusInput, setRadiusInput] = React.useState(
     radiusRaw?.trim() || formatRadiusLabel(parseRadiusMiles(radiusRaw)),
   );
-  const [minBillable, setMinBillable] = React.useState(minBillableProp ?? "15 MIN");
-  const [autoFlag, setAutoFlag] = React.useState(autoFlagProp ?? "AFTER 30MINS");
+  const [minBillable, setMinBillable] = React.useState(minBillableProp ?? "");
+  const [autoFlag, setAutoFlag] = React.useState(autoFlagProp ?? "");
   const { lookups } = useCrmLookups({ includeLocations: false });
   const autoFlagOptions = lookupOptions(lookups, "autoFlagNoShow");
   const [county, setCounty] = React.useState(countyProp ?? "");
@@ -270,11 +270,11 @@ export function CustomerSiteLocationPanel({
   }, [radiusRaw]);
 
   React.useEffect(() => {
-    setMinBillable(minBillableProp ?? "15 MIN");
+    setMinBillable(minBillableProp ?? "");
   }, [minBillableProp]);
 
   React.useEffect(() => {
-    setAutoFlag(autoFlagProp ?? "AFTER 30MINS");
+    setAutoFlag(autoFlagProp ?? "");
   }, [autoFlagProp]);
 
   React.useEffect(() => {

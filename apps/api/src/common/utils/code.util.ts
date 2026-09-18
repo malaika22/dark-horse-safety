@@ -19,4 +19,5 @@ export const CRM_CODE_PREFIX = {
   quote: 'Q',
   workOrder: 'WO',
   task: 'TASK',
+  employee: 'EMP',
 } as const;

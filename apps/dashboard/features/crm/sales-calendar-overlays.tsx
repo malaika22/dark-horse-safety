@@ -190,7 +190,7 @@ export function NewActivityModal({
   const [date, setDate] = React.useState("");
   const [time, setTime] = React.useState("");
   const [duration, setDuration] = React.useState("");
-  const [recurring, setRecurring] = React.useState("DOES NOT REPEAT");
+  const [recurring, setRecurring] = React.useState("");
   const [notes, setNotes] = React.useState("");
   const [file, setFile] = React.useState<File | null>(null);
   const [contactOptions, setContactOptions] = React.useState<
@@ -209,15 +209,11 @@ export function NewActivityModal({
     setContactId("");
     setLocationId("");
     setSubject("");
-    setRepId(prefill.repId || "");
-    setDate(prefill.dayKey);
-    setTime(
-      prefill.hour != null
-        ? `${String(prefill.hour).padStart(2, "0")}:00`
-        : "",
-    );
+    setRepId("");
+    setDate("");
+    setTime("");
     setDuration("");
-    setRecurring("DOES NOT REPEAT");
+    setRecurring("");
     setNotes("");
     setFile(null);
     setContactOptions([]);
@@ -452,13 +448,14 @@ export function NewActivityModal({
             onChange={(e) => setRecurring(e.target.value)}
           >
             {[
+              "",
               "DOES NOT REPEAT",
               "DAILY",
               "WEEKLY",
               "MONTHLY",
             ].map((r) => (
-              <option key={r} value={r}>
-                {r}
+              <option key={r || "empty"} value={r}>
+                {r || "Select recurring"}
               </option>
             ))}
           </select>

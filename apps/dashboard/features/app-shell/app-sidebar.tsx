@@ -205,8 +205,9 @@ export function AppSidebar({
 
       {/* Mobile drawer — must stay fixed overlay (divider-edge-right uses position:relative) */}
       <aside
+        data-app-sidebar
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[280px] max-w-[85vw] flex-col border-r border-divider bg-black transition-transform duration-200 ease-out lg:hidden",
+          "fixed inset-y-0 left-0 z-50 flex w-[280px] max-w-[85vw] flex-col border-r border-divider bg-black transition-transform duration-200 ease-out lg:hidden print:hidden",
           mobileOpen ? "translate-x-0" : "-translate-x-full pointer-events-none",
         )}
         aria-hidden={!mobileOpen}
@@ -216,7 +217,10 @@ export function AppSidebar({
       </aside>
 
       {/* Desktop sidebar — in layout flow only from lg+ */}
-      <aside className="divider-edge-right hidden h-full w-[260px] shrink-0 flex-col bg-black lg:flex">
+      <aside
+        data-app-sidebar
+        className="divider-edge-right hidden h-full w-[260px] shrink-0 flex-col bg-black lg:flex print:hidden"
+      >
         <SidebarBrand />
         <SidebarNav />
       </aside>

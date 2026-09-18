@@ -155,7 +155,8 @@ export type StatIconName =
   | "customers"
   | "folder"
   | "document"
-  | "lightning";
+  | "lightning"
+  | "alert";
 
 /** @deprecated Prefer SVG StatIcon — PNG assets look soft at small sizes. */
 export const STAT_ICON_SRC: Partial<Record<StatIconName, string>> = {};
@@ -230,6 +231,19 @@ export function StatIcon({
             strokeWidth="1.5"
             strokeLinejoin="round"
           />
+        </Svg>
+      );
+    case "alert":
+      return (
+        <Svg className={className}>
+          <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.5" />
+          <path
+            d="M12 8v5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+          <circle cx="12" cy="16.25" r="0.9" fill="currentColor" />
         </Svg>
       );
     case "crm":

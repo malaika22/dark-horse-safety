@@ -267,7 +267,6 @@ export function NetSuiteCustomerMappingPage() {
       label: "NetSuite ID",
       placeholder: "NS-0004471",
       confirmLabel: "Map",
-      defaultValue: row.netsuiteId ?? "",
     });
     if (value == null) return;
     const netsuiteId = value.trim().toUpperCase();

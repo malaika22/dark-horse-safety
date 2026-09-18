@@ -289,7 +289,6 @@ export function NetSuiteItemMappingPage() {
       label: "NetSuite Item ID",
       placeholder: "NS-ITM-01",
       confirmLabel: "Map",
-      defaultValue: row.netsuiteItemId ?? "",
     });
     if (value == null) return;
     const netsuiteItemId = value.trim().toUpperCase();

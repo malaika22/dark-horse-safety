@@ -1,5 +1,7 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+﻿"use client";
+
+import { TimeEntriesPage } from "@/features/hr/time-entries-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Time Entries" />;
+  return <TimeEntriesPage />;
 }

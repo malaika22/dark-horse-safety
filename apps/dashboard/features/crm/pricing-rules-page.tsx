@@ -1093,13 +1093,11 @@ export function PricingRulesPage() {
             key: "from",
             label: "Effective From",
             placeholder: "YYYY-MM-DD",
-            defaultValue: datesModal?.from ?? "",
           },
           {
             key: "to",
             label: "Effective To",
             placeholder: "YYYY-MM-DD",
-            defaultValue: datesModal?.to ?? "",
           },
         ]}
         onClose={() => setDatesModal(null)}

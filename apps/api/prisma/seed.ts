@@ -2,10 +2,19 @@ import {
   AccountStatus,
   CrmRecordStatus,
   CrmTaskPriority,
+  EmployeeStatus,
   EnforcementLevel,
   ExpenseStatus,
+  PayCycleStatus,
   PrismaClient,
   SalesActivityType,
+  TimeEditRequestStatus,
+  TimeEditRequestType,
+  TimeEntryCategory,
+  TimeEntrySource,
+  TimeEntryStatus,
+  TimeOffStatus,
+  TimeOffType,
   UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -2148,11 +2157,90 @@ async function main() {
     where: { reportCode: { in: ['EOD-2026-0904', 'EOD-2026-0905'] } },
   });
 
-  // ─── Pay cycles (pricing effective-from) ──────────────────────────────────
-  const payCycleStart = new Date(Date.UTC(2026, 8, 7));
-  for (let i = 0; i < 24; i++) {
-    const from = new Date(payCycleStart);
-    from.setUTCDate(payCycleStart.getUTCDate() + i * 14);
+  // ─── Pay cycles (HR settings + CRM pricing effective-from) ────────────────
+  const payYear = 2026;
+  const cycle1Start = new Date(Date.UTC(payYear, 0, 5)); // Mon Jan 5 → cycle 12 = Jun 8–21
+  const sampleHours = [
+    498.0, 512.5, 505.0, 520.0, 488.5, 515.0, 530.0, 522.0, 510.5, 518.0, 522.0,
+    542.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ];
+  const sampleAmounts = sampleHours.map((h) =>
+    h > 0 ? Math.round(h * 20.05 * 100) / 100 : 0,
+  );
+
+  for (let i = 0; i < 26; i++) {
+    const from = new Date(cycle1Start);
+    from.setUTCDate(cycle1Start.getUTCDate() + i * 14);
+    const to = new Date(from);
+    to.setUTCDate(from.getUTCDate() + 13);
+    const num = i + 1;
+    const code = `${payYear}-${String(num).padStart(2, '0')}`;
+    const fmt = (d: Date) =>
+      d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        timeZone: 'UTC',
+      });
+    const today = new Date();
+    const todayUtc = new Date(
+      Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
+    );
+    const fromUtc = new Date(
+      Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()),
+    );
+    const toUtc = new Date(
+      Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate()),
+    );
+    let status: PayCycleStatus = PayCycleStatus.UPCOMING;
+    let closedAt: Date | null = null;
+    let lockAt: Date | null = null;
+    if (todayUtc > toUtc) {
+      status = PayCycleStatus.CLOSED;
+      closedAt = new Date(to.getTime() + 23 * 3600 * 1000 + 59 * 60 * 1000);
+      lockAt = closedAt;
+    } else if (todayUtc >= fromUtc && todayUtc <= toUtc) {
+      status = PayCycleStatus.OPEN;
+      lockAt = new Date(to.getTime() + 23 * 3600 * 1000 + 59 * 60 * 1000);
+    } else {
+      status = PayCycleStatus.UPCOMING;
+      lockAt = new Date(to.getTime() + 23 * 3600 * 1000 + 59 * 60 * 1000);
+    }
+    const hours = status === PayCycleStatus.UPCOMING ? null : sampleHours[i] || 480 + i * 2;
+    const amount =
+      status === PayCycleStatus.UPCOMING ? null : sampleAmounts[i] || (hours ?? 0) * 20.05;
+
+    await prisma.payCycle.upsert({
+      where: { code },
+      update: {
+        label: `${code} · ${fmt(from)} – ${fmt(to)}`,
+        cycleNumber: num,
+        startDate: from,
+        endDate: to,
+        status,
+        lockAt,
+        totalHours: hours,
+        totalAmount: amount,
+        closedAt,
+      },
+      create: {
+        code,
+        label: `${code} · ${fmt(from)} – ${fmt(to)}`,
+        cycleNumber: num,
+        startDate: from,
+        endDate: to,
+        status,
+        lockAt,
+        totalHours: hours,
+        totalAmount: amount,
+        closedAt,
+      },
+    });
+  }
+
+  // Legacy CYCLE-* rows used by older CRM seeds — keep a few for lookups
+  for (let i = 0; i < 4; i++) {
+    const from = new Date(Date.UTC(2026, 8, 7 + i * 14));
     const to = new Date(from);
     to.setUTCDate(from.getUTCDate() + 13);
     const cycle = 18 + i;
@@ -2171,6 +2259,7 @@ async function main() {
         cycleNumber: cycle,
         startDate: from,
         endDate: to,
+        status: PayCycleStatus.UPCOMING,
       },
       create: {
         code,
@@ -2178,6 +2267,69 @@ async function main() {
         cycleNumber: cycle,
         startDate: from,
         endDate: to,
+        status: PayCycleStatus.UPCOMING,
+      },
+    });
+  }
+
+  await prisma.payCycleSettings.upsert({
+    where: { id: 'default' },
+    update: {
+      dailyOtThresholdHrs: 8,
+      weeklyOtThresholdHrs: 40,
+      otMultiplier: 1.5,
+      doubleTimeAfterHrs: 12,
+      minBillableBlock: '15 MIN',
+      roundTo: '15 MIN',
+      annualPtoDays: 20,
+      accrualRatePerPeriod: 0.77,
+      annualSickDays: 10,
+      carryoverCapDays: 5,
+      noticeRequiredDays: 14,
+      blackout: 'NONE',
+      cadence: 'BI-WEEKLY',
+      cycleLengthDays: 14,
+      lockTime: '11:59 PM CT',
+      autoApproveRules: 'NO EXCEPTIONS, AFTER 48H',
+      gracePeriodDays: 2,
+    },
+    create: { id: 'default' },
+  });
+
+  const holidayDefs2026: {
+    observedOn: string;
+    name: string;
+    sortOrder: number;
+  }[] = [
+    { observedOn: '2026-01-01', name: "New Year's Day", sortOrder: 1 },
+    { observedOn: '2026-01-19', name: 'MLK Day', sortOrder: 2 },
+    { observedOn: '2026-02-16', name: "Presidents' Day", sortOrder: 3 },
+    { observedOn: '2026-05-25', name: 'Memorial Day', sortOrder: 4 },
+    { observedOn: '2026-07-03', name: 'Independence Day (Observed)', sortOrder: 5 },
+    { observedOn: '2026-09-07', name: 'Labor Day', sortOrder: 6 },
+    { observedOn: '2026-11-11', name: 'Veterans Day', sortOrder: 7 },
+    { observedOn: '2026-11-26', name: 'Thanksgiving', sortOrder: 8 },
+    { observedOn: '2026-11-27', name: 'Day After Thanksgiving', sortOrder: 9 },
+    { observedOn: '2026-12-25', name: 'Christmas Day', sortOrder: 10 },
+  ];
+  for (const h of holidayDefs2026) {
+    const id = `holiday-2026-${h.sortOrder}`;
+    await prisma.observedHoliday.upsert({
+      where: { id },
+      update: {
+        year: 2026,
+        observedOn: new Date(`${h.observedOn}T12:00:00.000Z`),
+        name: h.name,
+        hoursCredited: 8,
+        sortOrder: h.sortOrder,
+      },
+      create: {
+        id,
+        year: 2026,
+        observedOn: new Date(`${h.observedOn}T12:00:00.000Z`),
+        name: h.name,
+        hoursCredited: 8,
+        sortOrder: h.sortOrder,
       },
     });
   }
@@ -2303,6 +2455,1550 @@ async function main() {
     });
   }
 
+  // ─── HR Employees ─────────────────────────────────────────────────────────
+  const martinezDetail = {
+    displayName: 'J. Martinez',
+    email: 'j.martinez@dhs.com',
+    phone: '(701) 555-0142',
+    homeAddress: '221 4th Ave N, Watford City, ND',
+    hireDate: new Date('2019-04-12T12:00:00.000Z'),
+    employmentType: 'FULL-TIME',
+    payType: 'HOURLY',
+    directReportsCount: 3,
+    maxClockInRadiusEnabled: true,
+    maxClockInRadius: '5 MI',
+    minBillableBlock: '15 MIN',
+    autoFlagNoShow: 'AFTER 30 MINS',
+    ptoBalance: 40.0,
+    ptoAnnual: 160.0,
+    ptoUsed: 120.0,
+    ptoScheduled: 0.0,
+    sickBalance: 24.0,
+    sickAnnual: 80.0,
+    sickUsed: 56.0,
+    holidayBalance: 8.0,
+    holidayObserved: 80.0,
+    holidayTaken: 72.0,
+    cycleRt: 42.5,
+    cycleOt: 6.0,
+    cyclePto: 8.0,
+    timeEntries: [
+      {
+        id: 'te1',
+        date: '2026-06-12',
+        client: 'Devon Energy',
+        hours: 8.5,
+        status: 'APPROVED',
+      },
+      {
+        id: 'te2',
+        date: '2026-06-11',
+        client: 'Pioneer Natural',
+        hours: 10.0,
+        status: 'APPROVED',
+      },
+      {
+        id: 'te3',
+        date: '2026-06-10',
+        client: 'Occidental',
+        hours: 8.0,
+        status: 'MISSING OUT',
+      },
+      {
+        id: 'te4',
+        date: '2026-06-09',
+        client: 'Devon Energy',
+        hours: 9.5,
+        status: 'APPROVED',
+      },
+      {
+        id: 'te5',
+        date: '2026-06-08',
+        client: 'EOG Resources',
+        hours: 8.0,
+        status: 'APPROVED',
+      },
+      {
+        id: 'te6',
+        date: '2026-06-07',
+        client: 'Chevron',
+        hours: 8.5,
+        status: 'APPROVED',
+      },
+    ],
+    trainingCerts: [
+      {
+        id: 'tr1',
+        name: 'H2S Awareness',
+        expiresAt: '2026-09-15',
+        status: 'APPROVED',
+      },
+      {
+        id: 'tr2',
+        name: 'First Aid / CPR',
+        expiresAt: '2027-01-02',
+        status: 'APPROVED',
+      },
+      {
+        id: 'tr3',
+        name: 'BBS Weekly',
+        expiresAt: null,
+        subtitle: 'Last Submitted: Jun 9',
+        status: 'DUE',
+      },
+      {
+        id: 'tr4',
+        name: 'Fit Test',
+        expiresAt: '2027-03-01',
+        status: 'APPROVED',
+      },
+    ],
+    equipment: [
+      {
+        id: 'eq1',
+        label: 'Assigned Truck',
+        value: 'TRK-14',
+        action: 'VIEW TRUCK',
+        href: '/fleet/assets',
+      },
+      {
+        id: 'eq2',
+        label: 'Truck Manifest',
+        value: 'Current',
+        action: 'VIEW MANIFEST',
+        href: '/fleet/assets',
+      },
+      {
+        id: 'eq3',
+        label: 'Assigned small equipment',
+        value: 'H2S Monitor, Gas Detector, Radio',
+        badge: '3 ITEMS',
+        badgeTone: 'muted',
+      },
+      {
+        id: 'eq4',
+        label: 'Checked out tools',
+        value: 'Torque wrench set',
+        badge: 'CHECKED OUT',
+        badgeTone: 'warning',
+      },
+      {
+        id: 'eq5',
+        label: 'Open issues',
+        value: 'Radio battery degraded',
+        badge: 'OPEN',
+        badgeTone: 'error',
+      },
+    ],
+    auditHistory: [
+      {
+        id: 'a1',
+        when: '2D AGO',
+        label: 'Time edit submitted',
+        detail: '2026 46006102-WO - 06:42 -> 07:15',
+      },
+      {
+        id: 'a2',
+        when: '1W AGO',
+        label: 'Profile updated',
+        detail: 'Phone number changed',
+      },
+      {
+        id: 'a3',
+        when: '2W AGO',
+        label: 'Time off approved',
+        detail: 'Jun 14 - 1 day vacation',
+      },
+      {
+        id: 'a4',
+        when: '1MO AGO',
+        label: 'H2S training renewed',
+        detail: 'Expires Sep 2026',
+      },
+    ],
+    notes: [] as { id: string; text: string; createdAt: string }[],
+    jobTitle: 'Field Technician',
+    payRate: 28.5,
+    overtimeEligible: true,
+    adpEmployeeId: 'ADP-44218',
+    defaultTimeCategory: 'REGULAR',
+    roleTemplate: 'FIELD TECHNICIAN',
+    moduleOverrides: null as string | null,
+    mobileAppAccess: true,
+    sendInvite: true,
+    sseEnabled: true,
+    ssePeriodDays: 90,
+    sseEvaluationSchedule: 'WEEKLY',
+    companyCreditCard: false,
+    cardLast4: null as string | null,
+    assignedEquipment: ['H2S MONITOR', 'FALL HARNESS'],
+    ppeIssued: ['HARD HAT', 'FR COVERALLS', 'STEEL TOES'],
+    certIssuingBody: 'National Safety Council',
+    certIssueDate: new Date('2024-03-01T12:00:00.000Z'),
+    certExpiryDate: new Date('2025-03-01T12:00:00.000Z'),
+    certReminderLeadDays: 30,
+    emergencyContactName: null as string | null,
+    emergencyContactPhone: null as string | null,
+    dateOfBirth: null as Date | null,
+    payHistory: [
+      {
+        id: 'pay-1',
+        date: '2023-01-30',
+        from: 25.5,
+        to: 28.5,
+        by: 'C. Hollis',
+        label: '$25.50 -> $28.50 / hr',
+      },
+      {
+        id: 'pay-2',
+        date: '2021-04-12',
+        from: 20.0,
+        to: 25.5,
+        by: 'C. Hollis',
+        label: '$20.00 -> $25.50 / hr',
+      },
+      {
+        id: 'pay-3',
+        date: '2019-04-12',
+        from: null,
+        to: 20.0,
+        by: 'System',
+        label: 'Hired at $20.00 / hr',
+      },
+    ],
+  };
+
+  const empSupervisor = {
+    code: 'EMP-1001',
+    firstName: 'Jose',
+    lastName: 'Martinez',
+    roleTitle: 'Tech II · Lead',
+    status: EmployeeStatus.ACTIVE,
+    assignedTruck: 'TRK-14',
+    hoursThisCycle: 56.5,
+    certExpiringLabel: 'NONE',
+    certExpiringTone: 'none',
+    bbsThisWeek: 'SUBMITTED',
+    crew: 'Permian North Crew',
+    certificationHeld: 'H2S',
+    hasOpenTimeEdit: true,
+    missingBbs: false,
+    onLeave: false,
+    ...martinezDetail,
+  };
+
+  await prisma.employee.upsert({
+    where: { code: empSupervisor.code },
+    update: { ...empSupervisor, supervisorId: null, archivedAt: null },
+    create: { ...empSupervisor },
+  });
+  const supervisorEmp = await prisma.employee.findUniqueOrThrow({
+    where: { code: 'EMP-1001' },
+  });
+
+  function basicDetail(partial: {
+    firstName: string;
+    lastName: string;
+    emailLocal: string;
+    truck?: string | null;
+    crew?: string | null;
+    hours: number;
+    cert?: string | null;
+  }) {
+    const name = `${partial.firstName.charAt(0)}. ${partial.lastName}`;
+    return {
+      displayName: name,
+      email: `${partial.emailLocal}@dhs.com`,
+      phone: '(701) 555-0100',
+      homeAddress: 'Midland, TX',
+      hireDate: new Date('2024-01-15T12:00:00.000Z'),
+      employmentType: 'FULL-TIME',
+      payType: 'HOURLY',
+      directReportsCount: 0,
+      maxClockInRadiusEnabled: false,
+      maxClockInRadius: '5 MI',
+      minBillableBlock: '15 MIN',
+      autoFlagNoShow: 'AFTER 30 MINS',
+      ptoBalance: 32.0,
+      ptoAnnual: 160.0,
+      ptoUsed: 40.0,
+      ptoScheduled: 0.0,
+      sickBalance: 40.0,
+      sickAnnual: 80.0,
+      sickUsed: 16.0,
+      holidayBalance: 16.0,
+      holidayObserved: 80.0,
+      holidayTaken: 40.0,
+      cycleRt: Math.max(0, partial.hours - 4),
+      cycleOt: Math.min(4, partial.hours * 0.1),
+      cyclePto: 0,
+      timeEntries: [
+        {
+          id: 'te-a',
+          date: '2026-06-12',
+          client: 'Devon Energy',
+          hours: 8.0,
+          status: 'APPROVED',
+        },
+      ],
+      trainingCerts: partial.cert
+        ? [
+            {
+              id: 'tr-a',
+              name: partial.cert,
+              expiresAt: '2027-01-01',
+              status: 'APPROVED',
+            },
+          ]
+        : [],
+      equipment: partial.truck
+        ? [
+            {
+              id: 'eq-a',
+              label: 'Assigned Truck',
+              value: partial.truck,
+              action: 'VIEW TRUCK',
+              href: '/fleet/assets',
+            },
+          ]
+        : [],
+      auditHistory: [
+        { id: 'a-a', when: '1W AGO', label: 'Profile updated' },
+      ],
+      notes: [],
+    };
+  }
+
+  const employeeDefs = [
+    {
+      code: 'EMP-1002',
+      firstName: 'A.',
+      lastName: 'Nguyen',
+      roleTitle: 'Tech II · Lead',
+      status: EmployeeStatus.ACTIVE,
+      assignedTruck: 'TRK-22',
+      hoursThisCycle: 36.0,
+      certExpiringLabel: 'H2S - 12 Days',
+      certExpiringTone: 'warning',
+      bbsThisWeek: 'PENDING',
+      crew: 'Alpha',
+      certificationHeld: 'H2S',
+      hasOpenTimeEdit: true,
+      missingBbs: false,
+      onLeave: false,
+      supervisorId: supervisorEmp.id,
+      ...basicDetail({
+        firstName: 'A.',
+        lastName: 'Nguyen',
+        emailLocal: 'a.nguyen',
+        truck: 'TRK-22',
+        crew: 'Alpha',
+        hours: 36,
+        cert: 'H2S',
+      }),
+    },
+    {
+      code: 'EMP-1003',
+      firstName: 'M.',
+      lastName: 'Torres',
+      roleTitle: 'Technician',
+      status: EmployeeStatus.NEED_REVIEW,
+      assignedTruck: null as string | null,
+      hoursThisCycle: 22.5,
+      certExpiringLabel: 'CPR - Expired',
+      certExpiringTone: 'error',
+      bbsThisWeek: 'MISSING',
+      crew: 'Bravo',
+      certificationHeld: 'CPR',
+      hasOpenTimeEdit: false,
+      missingBbs: true,
+      onLeave: false,
+      supervisorId: supervisorEmp.id,
+      ...basicDetail({
+        firstName: 'M.',
+        lastName: 'Torres',
+        emailLocal: 'm.torres',
+        crew: 'Bravo',
+        hours: 22.5,
+        cert: 'CPR',
+      }),
+    },
+    {
+      code: 'EMP-1004',
+      firstName: 'R.',
+      lastName: 'Hall',
+      roleTitle: 'Technician',
+      status: EmployeeStatus.ACTIVE,
+      assignedTruck: 'TRK-07',
+      hoursThisCycle: 40.0,
+      certExpiringLabel: 'NONE',
+      certExpiringTone: 'none',
+      bbsThisWeek: 'SUBMITTED',
+      crew: 'Alpha',
+      certificationHeld: 'H2S',
+      hasOpenTimeEdit: false,
+      missingBbs: false,
+      onLeave: false,
+      supervisorId: supervisorEmp.id,
+      ...basicDetail({
+        firstName: 'R.',
+        lastName: 'Hall',
+        emailLocal: 'r.hall',
+        truck: 'TRK-07',
+        crew: 'Alpha',
+        hours: 40,
+        cert: 'H2S',
+      }),
+    },
+    {
+      code: 'EMP-1005',
+      firstName: 'C.',
+      lastName: 'Diaz',
+      roleTitle: 'Technician',
+      status: EmployeeStatus.OFFLINE,
+      assignedTruck: 'TRK-09',
+      hoursThisCycle: 12.0,
+      certExpiringLabel: 'N/A',
+      certExpiringTone: 'na',
+      bbsThisWeek: 'N/A',
+      crew: 'Bravo',
+      certificationHeld: null as string | null,
+      hasOpenTimeEdit: false,
+      missingBbs: false,
+      onLeave: true,
+      supervisorId: supervisorEmp.id,
+      ...basicDetail({
+        firstName: 'C.',
+        lastName: 'Diaz',
+        emailLocal: 'c.diaz',
+        truck: 'TRK-09',
+        crew: 'Bravo',
+        hours: 12,
+      }),
+    },
+    {
+      code: 'EMP-1006',
+      firstName: 'L.',
+      lastName: 'Garcia',
+      roleTitle: 'Tech II · Lead',
+      status: EmployeeStatus.ACTIVE,
+      assignedTruck: null as string | null,
+      hoursThisCycle: 31.5,
+      certExpiringLabel: 'NONE',
+      certExpiringTone: 'none',
+      bbsThisWeek: 'MISSING',
+      crew: 'Charlie',
+      certificationHeld: 'First Aid',
+      hasOpenTimeEdit: true,
+      missingBbs: true,
+      onLeave: false,
+      supervisorId: supervisorEmp.id,
+      ...basicDetail({
+        firstName: 'L.',
+        lastName: 'Garcia',
+        emailLocal: 'l.garcia',
+        crew: 'Charlie',
+        hours: 31.5,
+        cert: 'First Aid',
+      }),
+    },
+    {
+      code: 'EMP-1007',
+      firstName: 'D.',
+      lastName: 'Ford',
+      roleTitle: 'Technician',
+      status: EmployeeStatus.ACTIVE,
+      assignedTruck: 'TRK-03',
+      hoursThisCycle: 28.0,
+      certExpiringLabel: 'H2S - 45 Days',
+      certExpiringTone: 'warning',
+      bbsThisWeek: 'PENDING',
+      crew: 'Charlie',
+      certificationHeld: 'H2S',
+      hasOpenTimeEdit: false,
+      missingBbs: false,
+      onLeave: false,
+      supervisorId: supervisorEmp.id,
+      ...basicDetail({
+        firstName: 'D.',
+        lastName: 'Ford',
+        emailLocal: 'd.ford',
+        truck: 'TRK-03',
+        crew: 'Charlie',
+        hours: 28,
+        cert: 'H2S',
+      }),
+    },
+    {
+      code: 'EMP-1008',
+      firstName: 'S.',
+      lastName: 'Kim',
+      roleTitle: 'Technician',
+      status: EmployeeStatus.NEED_REVIEW,
+      assignedTruck: 'TRK-11',
+      hoursThisCycle: 19.5,
+      certExpiringLabel: 'NONE',
+      certExpiringTone: 'none',
+      bbsThisWeek: 'SUBMITTED',
+      crew: 'Bravo',
+      certificationHeld: 'CPR',
+      hasOpenTimeEdit: true,
+      missingBbs: false,
+      onLeave: false,
+      supervisorId: supervisorEmp.id,
+      ...basicDetail({
+        firstName: 'S.',
+        lastName: 'Kim',
+        emailLocal: 's.kim',
+        truck: 'TRK-11',
+        crew: 'Bravo',
+        hours: 19.5,
+        cert: 'CPR',
+      }),
+    },
+    {
+      code: 'EMP-1009',
+      firstName: 'P.',
+      lastName: 'Brooks',
+      roleTitle: 'Technician',
+      status: EmployeeStatus.ACTIVE,
+      assignedTruck: 'TRK-18',
+      hoursThisCycle: 35.0,
+      certExpiringLabel: 'NONE',
+      certExpiringTone: 'none',
+      bbsThisWeek: 'SUBMITTED',
+      crew: 'Alpha',
+      certificationHeld: 'H2S',
+      hasOpenTimeEdit: false,
+      missingBbs: false,
+      onLeave: false,
+      supervisorId: supervisorEmp.id,
+      ...basicDetail({
+        firstName: 'P.',
+        lastName: 'Brooks',
+        emailLocal: 'p.brooks',
+        truck: 'TRK-18',
+        crew: 'Alpha',
+        hours: 35,
+        cert: 'H2S',
+      }),
+    },
+    {
+      code: 'EMP-1010',
+      firstName: 'T.',
+      lastName: 'Whitlock',
+      roleTitle: 'Technician',
+      status: EmployeeStatus.ACTIVE,
+      assignedTruck: null as string | null,
+      hoursThisCycle: 27.0,
+      certExpiringLabel: 'N/A',
+      certExpiringTone: 'na',
+      bbsThisWeek: 'N/A',
+      crew: null as string | null,
+      certificationHeld: null as string | null,
+      hasOpenTimeEdit: true,
+      missingBbs: false,
+      onLeave: false,
+      supervisorId: supervisorEmp.id,
+      ...basicDetail({
+        firstName: 'T.',
+        lastName: 'Whitlock',
+        emailLocal: 't.whitlock',
+        hours: 27,
+      }),
+    },
+    {
+      code: 'EMP-1011',
+      firstName: 'K.',
+      lastName: 'Hayes',
+      roleTitle: 'Technician',
+      status: EmployeeStatus.ACTIVE,
+      assignedTruck: 'TRK-05',
+      hoursThisCycle: 33.5,
+      certExpiringLabel: 'NONE',
+      certExpiringTone: 'none',
+      bbsThisWeek: 'SUBMITTED',
+      crew: 'Charlie',
+      certificationHeld: 'Confined Space',
+      hasOpenTimeEdit: true,
+      missingBbs: false,
+      onLeave: false,
+      supervisorId: supervisorEmp.id,
+      ...basicDetail({
+        firstName: 'K.',
+        lastName: 'Hayes',
+        emailLocal: 'k.hayes',
+        truck: 'TRK-05',
+        crew: 'Charlie',
+        hours: 33.5,
+        cert: 'Confined Space',
+      }),
+    },
+  ];
+
+  for (const data of employeeDefs) {
+    await prisma.employee.upsert({
+      where: { code: data.code },
+      update: { ...data, archivedAt: null },
+      create: { ...data },
+    });
+  }
+
+  // ─── HR Time Entries ──────────────────────────────────────────────────────
+  const allEmps = await prisma.employee.findMany({
+    where: { archivedAt: null },
+    select: { id: true, code: true },
+    orderBy: { code: 'asc' },
+  });
+  const empByCode = Object.fromEntries(allEmps.map((e) => [e.code, e.id]));
+
+  const cycle = 'CYCLE JUN 1–14';
+  type SeedTe = {
+    code: string;
+    date: string;
+    woShort: string | null;
+    woCode: string | null;
+    category: TimeEntryCategory;
+    clockIn: string | null;
+    clockOut: string | null;
+    source: TimeEntrySource;
+    hours: number;
+    work: number | null;
+    travel: number | null;
+    billable: boolean;
+    gpsFlagged: boolean;
+    gpsLabel: string;
+    status: TimeEntryStatus;
+    locked?: boolean;
+    correction?: boolean;
+  };
+
+  const teDefs: SeedTe[] = [
+    {
+      code: 'EMP-1001',
+      date: '2026-06-12',
+      woShort: 'ST-54321',
+      woCode: '46005950-WO',
+      category: TimeEntryCategory.REGULAR,
+      clockIn: '07:00',
+      clockOut: '15:30',
+      source: TimeEntrySource.MOBILE,
+      hours: 8.5,
+      work: 7.3,
+      travel: 1.2,
+      billable: true,
+      gpsFlagged: false,
+      gpsLabel: 'CLEAR',
+      status: TimeEntryStatus.APPROVED,
+    },
+    {
+      code: 'EMP-1002',
+      date: '2026-06-12',
+      woShort: 'ST-54322',
+      woCode: '46005951-WO',
+      category: TimeEntryCategory.REGULAR,
+      clockIn: '06:45',
+      clockOut: '15:15',
+      source: TimeEntrySource.MOBILE,
+      hours: 8.5,
+      work: 7.5,
+      travel: 1.0,
+      billable: true,
+      gpsFlagged: false,
+      gpsLabel: 'CLEAR',
+      status: TimeEntryStatus.APPROVED,
+    },
+    {
+      code: 'EMP-1003',
+      date: '2026-06-12',
+      woShort: null,
+      woCode: null,
+      category: TimeEntryCategory.NON_BILLABLE,
+      clockIn: '08:00',
+      clockOut: null,
+      source: TimeEntrySource.MOBILE,
+      hours: 0,
+      work: null,
+      travel: null,
+      billable: false,
+      gpsFlagged: false,
+      gpsLabel: 'CLEAR',
+      status: TimeEntryStatus.MISSING_CO,
+    },
+    {
+      code: 'EMP-1004',
+      date: '2026-06-11',
+      woShort: 'ST-54110',
+      woCode: '46005800-WO',
+      category: TimeEntryCategory.OVERTIME,
+      clockIn: '06:00',
+      clockOut: '18:00',
+      source: TimeEntrySource.CORRECTED,
+      hours: 12.0,
+      work: 10.5,
+      travel: 1.5,
+      billable: true,
+      gpsFlagged: true,
+      gpsLabel: '2MIN',
+      status: TimeEntryStatus.PENDING,
+    },
+    {
+      code: 'EMP-1005',
+      date: '2026-06-11',
+      woShort: 'ST-54111',
+      woCode: '46005801-WO',
+      category: TimeEntryCategory.ON_JOB_TRAINING,
+      clockIn: '07:30',
+      clockOut: '16:00',
+      source: TimeEntrySource.IMPORTED,
+      hours: 8.5,
+      work: 8.5,
+      travel: 0,
+      billable: false,
+      gpsFlagged: false,
+      gpsLabel: 'CLEAR',
+      status: TimeEntryStatus.APPROVED,
+    },
+    {
+      code: 'EMP-1006',
+      date: '2026-06-11',
+      woShort: 'ST-54112',
+      woCode: '46005802-WO',
+      category: TimeEntryCategory.REGULAR,
+      clockIn: '07:00',
+      clockOut: '15:30',
+      source: TimeEntrySource.MOBILE,
+      hours: 8.5,
+      work: 7.0,
+      travel: 1.5,
+      billable: true,
+      gpsFlagged: false,
+      gpsLabel: 'CLEAR',
+      status: TimeEntryStatus.REJECTED,
+    },
+    {
+      code: 'EMP-1007',
+      date: '2026-06-10',
+      woShort: 'ST-54001',
+      woCode: '46005700-WO',
+      category: TimeEntryCategory.REGULAR,
+      clockIn: '07:15',
+      clockOut: '15:45',
+      source: TimeEntrySource.MOBILE,
+      hours: 8.5,
+      work: 7.8,
+      travel: 0.7,
+      billable: true,
+      gpsFlagged: false,
+      gpsLabel: 'CLEAR',
+      status: TimeEntryStatus.APPROVED,
+    },
+    {
+      code: 'EMP-1008',
+      date: '2026-06-10',
+      woShort: 'ST-54002',
+      woCode: '46005701-WO',
+      category: TimeEntryCategory.REGULAR,
+      clockIn: '06:30',
+      clockOut: '15:00',
+      source: TimeEntrySource.IMPORTED,
+      hours: 8.5,
+      work: 8.0,
+      travel: 0.5,
+      billable: true,
+      gpsFlagged: true,
+      gpsLabel: '5MIN',
+      status: TimeEntryStatus.PENDING,
+      correction: true,
+    },
+    {
+      code: 'EMP-1009',
+      date: '2026-06-10',
+      woShort: 'ST-54003',
+      woCode: '46005702-WO',
+      category: TimeEntryCategory.NON_BILLABLE,
+      clockIn: '09:00',
+      clockOut: '12:00',
+      source: TimeEntrySource.MOBILE,
+      hours: 3.0,
+      work: 3.0,
+      travel: 0,
+      billable: false,
+      gpsFlagged: false,
+      gpsLabel: 'CLEAR',
+      status: TimeEntryStatus.LOCKED,
+      locked: true,
+    },
+    {
+      code: 'EMP-1010',
+      date: '2026-06-09',
+      woShort: 'ST-53990',
+      woCode: '46005690-WO',
+      category: TimeEntryCategory.REGULAR,
+      clockIn: '07:00',
+      clockOut: '16:00',
+      source: TimeEntrySource.MOBILE,
+      hours: 9.0,
+      work: 8.0,
+      travel: 1.0,
+      billable: true,
+      gpsFlagged: false,
+      gpsLabel: 'CLEAR',
+      status: TimeEntryStatus.APPROVED,
+    },
+    {
+      code: 'EMP-1011',
+      date: '2026-06-09',
+      woShort: null,
+      woCode: null,
+      category: TimeEntryCategory.REGULAR,
+      clockIn: '07:00',
+      clockOut: null,
+      source: TimeEntrySource.MOBILE,
+      hours: 0,
+      work: null,
+      travel: null,
+      billable: true,
+      gpsFlagged: false,
+      gpsLabel: 'CLEAR',
+      status: TimeEntryStatus.MISSING_CO,
+    },
+    {
+      code: 'EMP-1001',
+      date: '2026-06-09',
+      woShort: 'ST-53980',
+      woCode: '46005680-WO',
+      category: TimeEntryCategory.OVERTIME,
+      clockIn: '05:30',
+      clockOut: '17:30',
+      source: TimeEntrySource.CORRECTED,
+      hours: 12.0,
+      work: 11.0,
+      travel: 1.0,
+      billable: true,
+      gpsFlagged: true,
+      gpsLabel: '2MIN',
+      status: TimeEntryStatus.PENDING,
+      correction: true,
+    },
+    {
+      code: 'EMP-1002',
+      date: '2026-06-08',
+      woShort: 'ST-53970',
+      woCode: '46005670-WO',
+      category: TimeEntryCategory.REGULAR,
+      clockIn: '07:00',
+      clockOut: '15:30',
+      source: TimeEntrySource.MOBILE,
+      hours: 8.5,
+      work: 7.5,
+      travel: 1.0,
+      billable: true,
+      gpsFlagged: false,
+      gpsLabel: 'CLEAR',
+      status: TimeEntryStatus.APPROVED,
+    },
+    {
+      code: 'EMP-1003',
+      date: '2026-06-08',
+      woShort: 'ST-53971',
+      woCode: '46005671-WO',
+      category: TimeEntryCategory.ON_JOB_TRAINING,
+      clockIn: '08:00',
+      clockOut: '16:30',
+      source: TimeEntrySource.IMPORTED,
+      hours: 8.5,
+      work: 8.5,
+      travel: 0,
+      billable: false,
+      gpsFlagged: false,
+      gpsLabel: 'CLEAR',
+      status: TimeEntryStatus.APPROVED,
+    },
+    {
+      code: 'EMP-1004',
+      date: '2026-06-07',
+      woShort: 'ST-53950',
+      woCode: '46005650-WO',
+      category: TimeEntryCategory.REGULAR,
+      clockIn: '07:00',
+      clockOut: '15:30',
+      source: TimeEntrySource.MOBILE,
+      hours: 8.5,
+      work: 7.2,
+      travel: 1.3,
+      billable: true,
+      gpsFlagged: false,
+      gpsLabel: 'CLEAR',
+      status: TimeEntryStatus.LOCKED,
+      locked: true,
+    },
+  ];
+
+  // Extra approved rows so KPIs look populated
+  for (let i = 0; i < 20; i++) {
+    const codes = Object.keys(empByCode);
+    const code = codes[i % codes.length]!;
+    const day = 6 - (i % 5);
+    teDefs.push({
+      code,
+      date: `2026-06-0${Math.max(1, day)}`,
+      woShort: `ST-53${800 + i}`,
+      woCode: `46005${700 + i}-WO`,
+      category:
+        i % 7 === 0
+          ? TimeEntryCategory.OVERTIME
+          : i % 5 === 0
+            ? TimeEntryCategory.NON_BILLABLE
+            : TimeEntryCategory.REGULAR,
+      clockIn: '07:00',
+      clockOut: '15:30',
+      source:
+        i % 4 === 0 ? TimeEntrySource.IMPORTED : TimeEntrySource.MOBILE,
+      hours: 8.5,
+      work: 7.5,
+      travel: 1.0,
+      billable: i % 5 !== 0,
+      gpsFlagged: false,
+      gpsLabel: 'CLEAR',
+      status: TimeEntryStatus.APPROVED,
+    });
+  }
+
+  await prisma.timeEntry.deleteMany({});
+  let teIndex = 0;
+  for (const te of teDefs) {
+    const employeeId = empByCode[te.code];
+    if (!employeeId) continue;
+    teIndex += 1;
+    const isFeatured =
+      te.status === TimeEntryStatus.PENDING && te.gpsFlagged && teIndex <= 5;
+    const missingDocs = isFeatured || te.status === TimeEntryStatus.MISSING_CO;
+    const docs = [
+      {
+        id: 'doc-jsa',
+        name: 'JSA - Job Safety Analysis',
+        impact: 'PAYROLL-BLOCKING',
+        status: 'SUBMITTED',
+      },
+      {
+        id: 'doc-air',
+        name: 'Air Quality Testing Report',
+        impact: 'BILLING-IMPACTING',
+        status: missingDocs ? 'MISSING' : 'SUBMITTED',
+      },
+      {
+        id: 'doc-permit',
+        name: 'Permit to Work',
+        impact: 'PAYROLL-BLOCKING',
+        status: missingDocs ? 'MISSING' : 'SUBMITTED',
+      },
+      {
+        id: 'doc-bbs',
+        name: 'BBS Observation',
+        impact: 'SAFETY-ONLY',
+        status: missingDocs ? 'DUE' : 'SUBMITTED',
+      },
+      {
+        id: 'doc-truck',
+        name: 'Truck/Rig Inspection',
+        impact: 'BILLING-IMPACTING',
+        status: missingDocs ? 'MISSING' : 'SUBMITTED',
+      },
+    ];
+    const submitted = docs.filter((d) => d.status === 'SUBMITTED').length;
+    const payrollBlocks = docs.filter(
+      (d) => d.impact === 'PAYROLL-BLOCKING' && d.status !== 'SUBMITTED',
+    ).length;
+    const suggested = Math.max(0, te.hours - (isFeatured ? 0.2 : 0));
+    const history = [
+      {
+        id: 'h1',
+        at: `${te.date}T${te.clockOut ?? '15:30'}:00.000Z`,
+        label: 'Clocked out',
+        detail: `${te.hours}H logged via ${te.source.toLowerCase()} app`,
+      },
+      {
+        id: 'h2',
+        at: `${te.date}T${te.clockIn ?? '07:00'}:00.000Z`,
+        label: 'Clocked in',
+        detail: 'GPS verified via mobile app',
+      },
+    ];
+    if (missingDocs) {
+      history.unshift({
+        id: 'h3',
+        at: `${te.date}T17:02:00.000Z`,
+        label: 'Missing doc auto-flagged',
+        detail: 'System flagged incomplete required forms',
+      });
+    }
+
+    await prisma.timeEntry.create({
+      data: {
+        employeeId,
+        workDate: new Date(`${te.date}T12:00:00.000Z`),
+        cycleLabel: cycle,
+        workOrderShort: te.woShort,
+        workOrderCode: te.woCode ?? (isFeatured ? '2026 46006045-WO' : null),
+        category: te.category,
+        clockIn: te.clockIn,
+        clockOut: te.clockOut,
+        source: te.source,
+        hours: isFeatured ? 7.7 : te.hours,
+        workHours: isFeatured ? 7.5 : te.work,
+        travelHours: te.travel,
+        billable: te.billable,
+        gpsFlagged: te.gpsFlagged,
+        gpsLabel: te.gpsLabel,
+        status: te.status,
+        locked: Boolean(te.locked) || te.status === TimeEntryStatus.LOCKED,
+        correctionRequested: Boolean(te.correction),
+        systemSuggestedHours: suggested,
+        correctionApplied: isFeatured,
+        correctionReason: isFeatured
+          ? 'On-route traffic, confirmed by tech'
+          : null,
+        jobLocation: isFeatured
+          ? 'Marathon Oil - Watford City, ND'
+          : 'Permian Basin Site',
+        jobType: isFeatured ? 'Wellhead Audit' : 'Field Service',
+        salesTicketId: te.woShort?.replace('ST-', 'ST ') ?? 'ST 4600604',
+        customerName: isFeatured ? 'Marathon Oil' : 'Devon Energy',
+        missingDocs,
+        docsSubmitted: submitted,
+        docsRequired: docs.length,
+        payrollBlockCount: payrollBlocks,
+        gpsStatusLabel: te.gpsFlagged
+          ? `FLAGGED ${te.gpsLabel}`
+          : 'Within 0.2 mi of job',
+        clockInLat: 47.8023,
+        clockInLng: -103.6252,
+        clockInDistanceMi: 0.1,
+        clockOutLat: 47.8018,
+        clockOutLng: -103.6257,
+        clockOutDistanceMi: 0.2,
+        jobLat: 47.802,
+        jobLng: -103.6255,
+        jobSiteLabel: isFeatured ? 'Well #22-31H' : 'Pad A',
+        payrollHours: isFeatured ? 7.7 : te.hours,
+        billableHours: isFeatured ? 7.5 : te.work ?? te.hours,
+        nonBillableReason: null,
+        nonBillableHours: null,
+        nonBillableContext: null,
+        adminNote: isFeatured
+          ? 'Reach out re: missing docs before payroll cut-off Friday.'
+          : null,
+        requiredDocuments: docs,
+        editHistory: history,
+        notes: [],
+        gpsTrail: [
+          {
+            at: `${te.date}T${te.clockIn ?? '07:00'}:00.000Z`,
+            lat: 47.8023,
+            lng: -103.6252,
+          },
+          {
+            at: `${te.date}T${te.clockOut ?? '15:30'}:00.000Z`,
+            lat: 47.8018,
+            lng: -103.6257,
+          },
+        ],
+      },
+    });
+  }
+
+  // ─── HR Time Edit Requests ────────────────────────────────────────────────
+  await prisma.timeEditRequest.deleteMany({});
+  const terDefs = [
+    {
+      code: 'EMP-1001',
+      workDate: '2026-06-18',
+      dateLabel: 'JUN 18',
+      workOrderCode: '2026 46006102-WO',
+      customerName: 'Devon Energy',
+      type: TimeEditRequestType.CLOCK_IN_CHANGE,
+      status: TimeEditRequestStatus.PENDING,
+      deltaHours: -0.6,
+      deltaLabel: '-0.6h',
+      differenceKind: 'REGULAR TIME',
+      relativeTime: '2H AGO',
+      originalClockIn: '06:42',
+      originalClockOut: '15:00',
+      originalHours: 8.3,
+      requestedClockIn: '07:15',
+      requestedClockOut: '15:00',
+      requestedHours: 7.7,
+      technicianReason:
+        'Clocked in early by accident while still driving to site. Did not arrive at wellhead until 07:15. GPS log supports the change.',
+      gpsContext:
+        'GPS supports change — tech was 6.1 mi from site at 06:42, arrived 07:16.',
+      needsClarification: false,
+      createdAt: new Date('2026-06-18T16:00:00.000Z'),
+    },
+    {
+      code: 'EMP-1010',
+      workDate: '2026-06-17',
+      dateLabel: 'JUN 17',
+      workOrderCode: '2026 46006045-WO',
+      customerName: 'Marathon Oil',
+      type: TimeEditRequestType.CLOCK_OUT_CHANGE,
+      status: TimeEditRequestStatus.NEEDS_CLARIFICATION,
+      deltaHours: 1.2,
+      deltaLabel: '+1.2h OT',
+      differenceKind: 'OVERTIME',
+      relativeTime: '1D AGO',
+      originalClockIn: '06:45',
+      originalClockOut: '14:30',
+      originalHours: 7.7,
+      requestedClockIn: '06:45',
+      requestedClockOut: '15:42',
+      requestedHours: 8.9,
+      technicianReason:
+        'Stayed on site for overtime wellhead work after clock-out reminder. Need hours adjusted to match GPS exit.',
+      gpsContext:
+        'GPS shows tech still on pad until 15:40. Clock-out at 14:30 appears early.',
+      needsClarification: true,
+      createdAt: new Date('2026-06-17T18:00:00.000Z'),
+    },
+    {
+      code: 'EMP-1011',
+      workDate: '2026-05-28',
+      dateLabel: 'MAY 28',
+      workOrderCode: '2026 46005880-WO',
+      customerName: 'Devon Energy',
+      type: TimeEditRequestType.ADMIN_OVERRIDE,
+      status: TimeEditRequestStatus.PENDING,
+      deltaHours: 1.5,
+      deltaLabel: '+1.5H',
+      differenceKind: 'ADMIN OVERRIDE',
+      relativeTime: '3D AGO',
+      originalClockIn: '07:00',
+      originalClockOut: '15:00',
+      originalHours: 8.0,
+      requestedClockIn: '07:00',
+      requestedClockOut: '16:30',
+      requestedHours: 9.5,
+      technicianReason:
+        'Tech submitted a correction after the pay cycle closed. Requesting off-cycle adjustment for 1.5 additional hours worked Jun 15.',
+      gpsContext: null,
+      needsClarification: false,
+      lockedCycle: true,
+      payrollCycleLabel: 'Payroll Cycle 2026-10',
+      cycleClosedLabel: 'Closed May 31',
+      dollarDelta: 42,
+      dollarDeltaLabel: '+$42.00',
+      auditWarning:
+        'Cycle 2026-10 is closed and payroll was already exported. Approving will process this as an off-cycle adjustment and will be permanently logged: who overrode, timestamp, original vs. new hours, dollar delta, and the adjustment pay run it lands in.',
+      offCycleRunLabel: 'Off-Cycle Run #2026-10B · Processes Jun 20',
+      createdAt: new Date('2026-06-15T12:00:00.000Z'),
+    },
+  ];
+
+  let terCount = 0;
+  for (const ter of terDefs) {
+    const employeeId = empByCode[ter.code];
+    if (!employeeId) continue;
+    const linked = await prisma.timeEntry.findFirst({
+      where: { employeeId },
+      orderBy: { workDate: 'desc' },
+      select: { id: true },
+    });
+    await prisma.timeEditRequest.create({
+      data: {
+        employeeId,
+        timeEntryId: linked?.id ?? null,
+        workDate: new Date(`${ter.workDate}T12:00:00.000Z`),
+        dateLabel: ter.dateLabel,
+        cycleLabel: cycle,
+        workOrderCode: ter.workOrderCode,
+        customerName: ter.customerName,
+        type: ter.type,
+        status: ter.status,
+        deltaHours: ter.deltaHours,
+        deltaLabel: ter.deltaLabel,
+        differenceKind: ter.differenceKind,
+        relativeTime: ter.relativeTime,
+        originalClockIn: ter.originalClockIn,
+        originalClockOut: ter.originalClockOut,
+        originalHours: ter.originalHours,
+        requestedClockIn: ter.requestedClockIn,
+        requestedClockOut: ter.requestedClockOut,
+        requestedHours: ter.requestedHours,
+        technicianReason: ter.technicianReason,
+        gpsContext: ter.gpsContext,
+        adminNote: null,
+        needsClarification: ter.needsClarification,
+        lockedCycle: Boolean(ter.lockedCycle),
+        payrollCycleLabel: ter.payrollCycleLabel ?? null,
+        cycleClosedLabel: ter.cycleClosedLabel ?? null,
+        dollarDelta: ter.dollarDelta ?? null,
+        dollarDeltaLabel: ter.dollarDeltaLabel ?? null,
+        auditWarning: ter.auditWarning ?? null,
+        offCycleRunLabel: ter.offCycleRunLabel ?? null,
+        createdAt: ter.createdAt,
+        updatedAt: ter.createdAt,
+      },
+    });
+    terCount += 1;
+  }
+
+  // Seed resolved cycle history for KPI cards
+  const martinezId = empByCode['EMP-1001'];
+  if (martinezId) {
+    for (let i = 0; i < 8; i += 1) {
+      await prisma.timeEditRequest.create({
+        data: {
+          employeeId: martinezId,
+          workDate: new Date(`2026-06-${String(10 + (i % 5)).padStart(2, '0')}T12:00:00.000Z`),
+          dateLabel: `JUN ${10 + (i % 5)}`,
+          cycleLabel: cycle,
+          workOrderCode: `2026 46005${800 + i}-WO`,
+          customerName: 'Devon Energy',
+          type: TimeEditRequestType.CLOCK_IN_CHANGE,
+          status: TimeEditRequestStatus.APPROVED,
+          deltaHours: -0.3,
+          deltaLabel: '-0.3h',
+          differenceKind: 'REGULAR TIME',
+          relativeTime: '1W AGO',
+          originalClockIn: '06:30',
+          originalClockOut: '15:00',
+          originalHours: 8.5,
+          requestedClockIn: '06:48',
+          requestedClockOut: '15:00',
+          requestedHours: 8.2,
+          technicianReason: 'Minor clock-in correction.',
+          gpsContext: 'GPS supports change.',
+          needsClarification: false,
+          createdAt: new Date(`2026-06-${String(10 + (i % 5)).padStart(2, '0')}T08:00:00.000Z`),
+          resolvedAt: new Date(`2026-06-${String(10 + (i % 5)).padStart(2, '0')}T12:00:00.000Z`),
+          updatedAt: new Date(`2026-06-${String(10 + (i % 5)).padStart(2, '0')}T12:00:00.000Z`),
+        },
+      });
+      terCount += 1;
+    }
+    await prisma.timeEditRequest.create({
+      data: {
+        employeeId: martinezId,
+        workDate: new Date('2026-06-05T12:00:00.000Z'),
+        dateLabel: 'JUN 5',
+        cycleLabel: cycle,
+        workOrderCode: '2026 46005700-WO',
+        customerName: 'Marathon Oil',
+        type: TimeEditRequestType.CLOCK_OUT_CHANGE,
+        status: TimeEditRequestStatus.REJECTED,
+        deltaHours: 2.0,
+        deltaLabel: '+2.0h',
+        differenceKind: 'OVERTIME',
+        relativeTime: '2W AGO',
+        originalClockIn: '07:00',
+        originalClockOut: '15:00',
+        originalHours: 8.0,
+        requestedClockIn: '07:00',
+        requestedClockOut: '17:00',
+        requestedHours: 10.0,
+        technicianReason: 'Claimed overtime not supported by GPS.',
+        gpsContext: 'GPS shows exit at 15:05.',
+        needsClarification: false,
+        createdAt: new Date('2026-06-05T09:00:00.000Z'),
+        resolvedAt: new Date('2026-06-05T14:00:00.000Z'),
+        updatedAt: new Date('2026-06-05T14:00:00.000Z'),
+      },
+    });
+    terCount += 1;
+  }
+
+  // ─── HR Time Off Requests ─────────────────────────────────────────────────
+  await prisma.timeOffRequest.deleteMany({});
+  const toDefs: Array<{
+    code: string;
+    type: TimeOffType;
+    status: TimeOffStatus;
+    start: string;
+    end: string;
+    startLabel: string;
+    endLabel: string;
+    days: number;
+    hours: number;
+    balanceAfter: number;
+    coverage: string;
+    requested: string;
+    requestedLabel: string;
+    crossesPayCycle?: boolean;
+    reason?: string;
+    onCallDates?: string[];
+    assignedJobs?: Array<{ code: string; date: string }>;
+  }> = [
+    {
+      code: 'EMP-1001',
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-20',
+      end: '2026-06-22',
+      startLabel: 'JUN 20',
+      endLabel: 'JUN 22',
+      days: 3,
+      hours: 24,
+      balanceAfter: 16,
+      coverage: 'COVERED',
+      requested: '2026-06-10',
+      requestedLabel: 'JUN 10',
+    },
+    {
+      code: 'EMP-1002',
+      type: TimeOffType.SICK,
+      status: TimeOffStatus.PENDING,
+      start: '2026-06-18',
+      end: '2026-06-18',
+      startLabel: 'JUN 18',
+      endLabel: 'JUN 18',
+      days: 1,
+      hours: 8,
+      balanceAfter: 32,
+      coverage: 'COVERED',
+      requested: '2026-06-10',
+      requestedLabel: 'JUN 10',
+    },
+    {
+      code: 'EMP-1010',
+      type: TimeOffType.SICK,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-17',
+      end: '2026-06-17',
+      startLabel: 'JUN 17',
+      endLabel: 'JUN 17',
+      days: 1,
+      hours: 8,
+      balanceAfter: 24,
+      coverage: 'COVERED',
+      requested: '2026-06-16',
+      requestedLabel: 'JUN 16',
+    },
+    {
+      code: 'EMP-1008',
+      type: TimeOffType.BEREAVEMENT,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-19',
+      end: '2026-06-20',
+      startLabel: 'JUN 19',
+      endLabel: 'JUN 20',
+      days: 2,
+      hours: 16,
+      balanceAfter: 48,
+      coverage: 'COVERED',
+      requested: '2026-06-12',
+      requestedLabel: 'JUN 12',
+    },
+    {
+      code: 'EMP-1010',
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-24',
+      end: '2026-06-28',
+      startLabel: 'JUN 24',
+      endLabel: 'JUN 28',
+      days: 5,
+      hours: 40,
+      balanceAfter: 8,
+      coverage: 'NEEDED',
+      requested: '2026-06-13',
+      requestedLabel: 'JUN 13',
+      crossesPayCycle: true,
+    },
+    {
+      code: 'EMP-1006',
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-25',
+      end: '2026-06-26',
+      startLabel: 'JUN 25',
+      endLabel: 'JUN 26',
+      days: 2,
+      hours: 16,
+      balanceAfter: 16,
+      coverage: 'COVERED',
+      requested: '2026-06-14',
+      requestedLabel: 'JUN 14',
+    },
+    {
+      code: 'EMP-1007',
+      type: TimeOffType.UNPAID,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-21',
+      end: '2026-06-21',
+      startLabel: 'JUN 21',
+      endLabel: 'JUN 21',
+      days: 1,
+      hours: 8,
+      balanceAfter: 28,
+      coverage: 'COVERED',
+      requested: '2026-06-15',
+      requestedLabel: 'JUN 15',
+    },
+    {
+      code: 'EMP-1004',
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.PENDING,
+      start: '2026-07-01',
+      end: '2026-07-03',
+      startLabel: 'JUL 1',
+      endLabel: 'JUL 3',
+      days: 3,
+      hours: 24,
+      balanceAfter: 16,
+      coverage: 'NEEDED',
+      requested: '2026-06-08',
+      requestedLabel: 'JUN 8',
+      onCallDates: ['2026-07-02'],
+      assignedJobs: [{ code: '46005990', date: '2026-07-01' }],
+    },
+    {
+      code: 'EMP-1009',
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-30',
+      end: '2026-07-02',
+      startLabel: 'JUN 30',
+      endLabel: 'JUL 2',
+      days: 3,
+      hours: 24,
+      balanceAfter: 12,
+      coverage: 'COVERED',
+      requested: '2026-06-20',
+      requestedLabel: 'JUN 20',
+    },
+    {
+      code: 'EMP-1003',
+      type: TimeOffType.UNPAID,
+      status: TimeOffStatus.PENDING,
+      start: '2026-06-24',
+      end: '2026-06-26',
+      startLabel: 'JUN 24',
+      endLabel: 'JUN 26',
+      days: 3,
+      hours: 24,
+      balanceAfter: 40,
+      coverage: 'NEEDED',
+      requested: '2026-06-12',
+      requestedLabel: 'JUN 12',
+    },
+    {
+      code: 'EMP-1005',
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.DENIED,
+      start: '2026-07-01',
+      end: '2026-07-05',
+      startLabel: 'JUL 1',
+      endLabel: 'JUL 5',
+      days: 5,
+      hours: 40,
+      balanceAfter: 0,
+      coverage: 'COVERED',
+      requested: '2026-06-05',
+      requestedLabel: 'JUN 5',
+      reason: 'Insufficient coverage on Bravo crew',
+    },
+    {
+      code: 'EMP-1011',
+      type: TimeOffType.SICK,
+      status: TimeOffStatus.PENDING,
+      start: '2026-06-22',
+      end: '2026-06-23',
+      startLabel: 'JUN 22',
+      endLabel: 'JUN 23',
+      days: 2,
+      hours: 16,
+      balanceAfter: 24,
+      coverage: 'COVERED',
+      requested: '2026-06-16',
+      requestedLabel: 'JUN 16',
+    },
+    {
+      code: 'EMP-1001',
+      type: TimeOffType.BEREAVEMENT,
+      status: TimeOffStatus.PENDING,
+      start: '2026-07-02',
+      end: '2026-07-03',
+      startLabel: 'JUL 2',
+      endLabel: 'JUL 3',
+      days: 2,
+      hours: 16,
+      balanceAfter: 48,
+      coverage: 'NEEDED',
+      requested: '2026-06-18',
+      requestedLabel: 'JUN 18',
+    },
+  ];
+
+  // Pad pending/denied counts toward Figma-scale KPIs
+  for (let i = 0; i < 26; i += 1) {
+    const codes = Object.keys(empByCode);
+    const code = codes[i % codes.length];
+    toDefs.push({
+      code,
+      type: i % 3 === 0 ? TimeOffType.SICK : TimeOffType.PTO,
+      status: TimeOffStatus.PENDING,
+      start: `2026-07-${String(10 + (i % 15)).padStart(2, '0')}`,
+      end: `2026-07-${String(11 + (i % 15)).padStart(2, '0')}`,
+      startLabel: `JUL ${10 + (i % 15)}`,
+      endLabel: `JUL ${11 + (i % 15)}`,
+      days: 2,
+      hours: 16,
+      balanceAfter: Math.max(0, 40 - i),
+      coverage: i % 7 === 0 ? 'NEEDED' : 'COVERED',
+      requested: '2026-06-15',
+      requestedLabel: 'JUN 15',
+    });
+  }
+  for (let i = 0; i < 30; i += 1) {
+    const codes = Object.keys(empByCode);
+    const code = codes[i % codes.length];
+    toDefs.push({
+      code,
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.DENIED,
+      start: `2026-05-${String(5 + (i % 20)).padStart(2, '0')}`,
+      end: `2026-05-${String(6 + (i % 20)).padStart(2, '0')}`,
+      startLabel: `MAY ${5 + (i % 20)}`,
+      endLabel: `MAY ${6 + (i % 20)}`,
+      days: 2,
+      hours: 16,
+      balanceAfter: 20,
+      coverage: 'COVERED',
+      requested: '2026-05-01',
+      requestedLabel: 'MAY 1',
+      reason: 'Crew coverage conflict',
+    });
+  }
+
+  let toCount = 0;
+  for (const row of toDefs) {
+    const employeeId = empByCode[row.code];
+    if (!employeeId) continue;
+    await prisma.timeOffRequest.create({
+      data: {
+        employeeId,
+        type: row.type,
+        status: row.status,
+        startDate: new Date(`${row.start}T12:00:00.000Z`),
+        endDate: new Date(`${row.end}T12:00:00.000Z`),
+        startLabel: row.startLabel,
+        endLabel: row.endLabel,
+        dayCount: row.days,
+        hoursRequested: row.hours,
+        balanceAfter: row.balanceAfter,
+        coverage: row.coverage,
+        requestedAt: new Date(`${row.requested}T12:00:00.000Z`),
+        requestedLabel: row.requestedLabel,
+        crossesPayCycle: Boolean(row.crossesPayCycle),
+        reason: row.reason ?? null,
+        onCallDates: row.onCallDates ?? [],
+        assignedJobs: row.assignedJobs ?? [],
+      },
+    });
+    toCount += 1;
+  }
+
   await prisma.$executeRaw`
     INSERT INTO "CrmSyncState" (
       "id", "syncedAt", "updatedAt",
@@ -2335,6 +4031,9 @@ async function main() {
   );
   console.log(
     `Expenses ${expenseDefs.length}, tasks ${taskDefs.length}, card ${companyCard.label}`,
+  );
+  console.log(
+    `HR employees ${1 + employeeDefs.length}, time entries ${teDefs.length}, time edit requests ${terCount}, time off ${toCount}`,
   );
 }
 

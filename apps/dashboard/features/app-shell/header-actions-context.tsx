@@ -57,17 +57,26 @@ export function useHeaderActionsSlot() {
   return ctx;
 }
 
-/** Register dynamic header row-2 actions for the current page. Clears on unmount. */
+/**
+ * Register dynamic header row-2 actions for the current page.
+ * Clears only on unmount (not when deps change) to avoid update loops.
+ */
 export function useSetHeaderActions(
   actions: React.ReactNode | null,
-  deps: React.DependencyList,
+  deps: React.DependencyList = [],
 ) {
   const { setActionsOverride } = useHeaderActionsSlot();
+  const actionsRef = React.useRef(actions);
+  actionsRef.current = actions;
+
   React.useEffect(() => {
-    setActionsOverride(actions);
-    return () => setActionsOverride(undefined);
+    setActionsOverride(actionsRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
+
+  React.useEffect(() => {
+    return () => setActionsOverride(undefined);
+  }, [setActionsOverride]);
 }
 
 /** Override breadcrumb trail (e.g. include entity name on detail). Clears on unmount. */
@@ -75,8 +84,11 @@ export function useSetHeaderBreadcrumb(breadcrumb: string | null) {
   const { setBreadcrumbOverride } = useHeaderActionsSlot();
   React.useEffect(() => {
     setBreadcrumbOverride(breadcrumb);
-    return () => setBreadcrumbOverride(null);
   }, [breadcrumb, setBreadcrumbOverride]);
+
+  React.useEffect(() => {
+    return () => setBreadcrumbOverride(null);
+  }, [setBreadcrumbOverride]);
 }
 
 /** Override page title (e.g. drill-down views). Clears on unmount. */
@@ -84,6 +96,9 @@ export function useSetHeaderPageTitle(pageTitle: string | null) {
   const { setPageTitleOverride } = useHeaderActionsSlot();
   React.useEffect(() => {
     setPageTitleOverride(pageTitle);
-    return () => setPageTitleOverride(null);
   }, [pageTitle, setPageTitleOverride]);
+
+  React.useEffect(() => {
+    return () => setPageTitleOverride(null);
+  }, [setPageTitleOverride]);
 }

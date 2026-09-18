@@ -101,6 +101,11 @@ export const APP_NAV: NavItem[] = [
       { id: "hr-dashboard", label: "HR Dashboard", href: "/hr" },
       { id: "hr-employees", label: "Employees", href: "/hr/employees" },
       { id: "hr-time-entries", label: "Time Entries", href: "/hr/time-entries" },
+      {
+        id: "hr-time-edit-requests",
+        label: "Time Edit Requests",
+        href: "/hr/time-edit-requests",
+      },
       { id: "hr-time-off", label: "Time Off", href: "/hr/time-off" },
       {
         id: "hr-payroll-review",

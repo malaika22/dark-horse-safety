@@ -1039,9 +1039,7 @@ export function RouteRulesPage() {
     const site = overview?.siteOverrides.find((r) => r.id === ruleId);
     const customer = overview?.customerDefaults.find((r) => r.id === ruleId);
     setGeofenceRuleId(ruleId);
-    setGeofenceDefault(
-      site?.geofenceRadius ?? customer?.geofenceRadius ?? "500 FT",
-    );
+    setGeofenceDefault("");
     if (site?.locationId) setSelectedLocationId(site.locationId);
     setGeofenceOpen(true);
   }
@@ -1175,10 +1173,10 @@ export function RouteRulesPage() {
         key: "geofenceRadius",
         label: "Geofence Radius (ft)",
         placeholder: "e.g. 500",
-        defaultValue: geofenceDefault,
+        defaultValue: "",
       },
     ],
-    [geofenceDefault],
+    [],
   );
 
   const testFields = React.useMemo(

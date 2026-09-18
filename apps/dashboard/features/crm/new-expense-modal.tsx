@@ -110,18 +110,11 @@ export function NewExpenseModal({
   const showAttendeeHint = needsAttendees(category);
 
   const reset = React.useCallback(() => {
-    const dateFromDefault = defaults?.expenseDate
-      ? defaults.expenseDate.slice(0, 10)
-      : "";
-    setMerchant(defaults?.merchant ?? "");
-    setAmount(
-      defaults?.amount != null && defaults.amount !== ""
-        ? String(defaults.amount)
-        : "",
-    );
-    setExpenseDate(dateFromDefault);
+    setMerchant("");
+    setAmount("");
+    setExpenseDate("");
     setCategory("");
-    setPaymentMethod(defaults?.paymentMethod ?? "");
+    setPaymentMethod("");
     setLocationId("");
     setNotes("");
     setNoReceipt(false);
@@ -131,7 +124,7 @@ export function NewExpenseModal({
     setReceiptFile(null);
     setBusy(null);
     setDragOver(false);
-  }, [defaults]);
+  }, []);
 
   React.useEffect(() => {
     if (!open) return;
