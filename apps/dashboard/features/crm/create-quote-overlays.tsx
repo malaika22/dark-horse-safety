@@ -163,14 +163,14 @@ export function AddCustomItemModal({
   useModalLock(open, onClose);
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
-  const [qty, setQty] = React.useState("1");
+  const [qty, setQty] = React.useState("");
   const [rate, setRate] = React.useState("");
 
   React.useEffect(() => {
     if (!open) return;
     setName(initial?.name ?? "");
     setDescription(initial?.description ?? "");
-    setQty(initial?.qty ?? "1");
+    setQty(initial?.qty ?? "");
     setRate(initial?.rate ?? "");
   }, [open, initial]);
 
@@ -286,7 +286,7 @@ export function AddCustomItemModal({
               onSubmit({
                 name: name.trim(),
                 description: description.trim(),
-                qty: qty.trim() || "1",
+                qty: qty.trim(),
                 rate: rate.trim(),
               });
               onClose();

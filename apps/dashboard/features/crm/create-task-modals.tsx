@@ -44,7 +44,7 @@ export function CreateTaskModal({
   open,
   onClose,
   busy,
-  defaults,
+  defaults: _defaults,
   reps,
   onCreate,
 }: {
@@ -73,16 +73,16 @@ export function CreateTaskModal({
 
   React.useEffect(() => {
     if (!open) return;
-    setTaskType(defaults.taskType ?? "");
-    setRelatedTo(defaults.relatedTo ?? "");
+    setTaskType("");
+    setRelatedTo("");
     setDueDate("");
     setDueTime("");
-    setAssignedTo(defaults.assignedTo ?? "");
+    setAssignedTo("");
     setPriority("");
-    setNotes(defaults.notes ?? "");
+    setNotes("");
     setReminder("");
     setFile(null);
-  }, [open, defaults, reps]);
+  }, [open]);
 
   return (
     <DashboardModal

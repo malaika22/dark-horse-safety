@@ -84,34 +84,16 @@ export function SendQuoteModal({
 
   React.useEffect(() => {
     if (!open) return;
-    setRecipient(defaultRecipient);
-    setCc(defaultCc);
-    setSubject(defaultSubject);
-    setMessage(defaultMessage);
+    setRecipient("");
+    setCc("");
+    setSubject("");
+    setMessage("");
     setSchedule("now");
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(9, 0, 0, 0);
-    setScheduledAt(
-      d.toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      }).toUpperCase(),
-    );
+    setScheduledAt("");
     setFiles([]);
-    setIncludePdf(Boolean(defaultPdfName));
+    setIncludePdf(false);
     setSubmitting(false);
-  }, [
-    open,
-    defaultRecipient,
-    defaultCc,
-    defaultSubject,
-    defaultMessage,
-    defaultPdfName,
-  ]);
+  }, [open]);
 
   return (
     <DashboardModal

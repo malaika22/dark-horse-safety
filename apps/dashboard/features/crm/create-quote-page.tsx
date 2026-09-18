@@ -60,7 +60,7 @@ function newLine(partial?: Partial<LineItem>): LineItem {
     key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     item: partial?.item ?? "",
     description: partial?.description ?? "",
-    qty: partial?.qty ?? "1",
+    qty: partial?.qty ?? "",
     rate: partial?.rate ?? "",
     kind: partial?.kind ?? "standard",
     catalogRate:
@@ -238,21 +238,15 @@ export function CreateQuotePage({
     searchParams.get("contactId") ?? "",
   );
   const [locationId, setLocationId] = React.useState("");
-  const [quoteDate, setQuoteDate] = React.useState(
-    () => new Date().toISOString().slice(0, 10),
-  );
-  const [validUntil, setValidUntil] = React.useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 30);
-    return d.toISOString().slice(0, 10);
-  });
+  const [quoteDate, setQuoteDate] = React.useState("");
+  const [validUntil, setValidUntil] = React.useState("");
   const [terms, setTerms] = React.useState("");
   const [discountPct, setDiscountPct] = React.useState("");
   const [taxPct, setTaxPct] = React.useState("");
   const [customerNotes, setCustomerNotes] = React.useState("");
   const [internalNotes, setInternalNotes] = React.useState("");
   const [contactEmail, setContactEmail] = React.useState("");
-  const [status, setStatus] = React.useState("DRAFT");
+  const [status, setStatus] = React.useState("");
   const [lines, setLines] = React.useState<LineItem[]>([newLine()]);
   const [pendingFiles, setPendingFiles] = React.useState<File[]>([]);
   const [savedAttachments, setSavedAttachments] = React.useState<
@@ -474,7 +468,7 @@ export function CreateQuotePage({
       const rate = matchRate(itemName, pricingRules);
       return newLine({
         item: itemName,
-        qty: "1",
+        qty: "",
         rate: rate != null ? String(rate) : "",
         kind: "standard",
         catalogRate: rate,
@@ -514,7 +508,7 @@ export function CreateQuotePage({
       ...prev.filter((l) => l.item.trim() || l.rate.trim()),
       newLine({
         item: rule.label,
-        qty: "1",
+        qty: "",
         rate: String(rule.rate),
         kind: "standard",
         catalogRate: rule.rate,
@@ -532,7 +526,7 @@ export function CreateQuotePage({
       pricingRules.map((r) =>
         newLine({
           item: r.label,
-          qty: "1",
+          qty: "",
           rate: String(r.rate),
           kind: "standard",
           catalogRate: r.rate,
@@ -788,7 +782,9 @@ export function CreateQuotePage({
         setLines([newLine()]);
         setPendingFiles([]);
         setSavedAttachments([]);
-        setStatus("DRAFT");
+        setStatus("");
+        setQuoteDate("");
+        setValidUntil("");
         router.push("/crm/quotes/new");
         return;
       }

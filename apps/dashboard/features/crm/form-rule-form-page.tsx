@@ -286,7 +286,7 @@ export function FormRuleFormPage({
       if (addAnother && !isEdit) {
         setFormTemplate("");
         setVersion("");
-        setVersionMode("ALWAYS_LATEST");
+        setVersionMode("");
         setOverrideRoles([]);
         setImpactAck(false);
       } else {

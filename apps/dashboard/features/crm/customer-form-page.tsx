@@ -243,7 +243,7 @@ export function CustomerFormPage({
   const [mailing, setMailing] = React.useState<AddressParts>({
     ...EMPTY_ADDRESS,
   });
-  const [sameAsBilling, setSameAsBilling] = React.useState(true);
+  const [sameAsBilling, setSameAsBilling] = React.useState(false);
   const [paymentTerms, setPaymentTerms] = React.useState("");
   const [creditLimit, setCreditLimit] = React.useState("");
   const [taxExempt, setTaxExempt] = React.useState(false);
@@ -675,7 +675,7 @@ export function CustomerFormPage({
       if (addAnother && !isEdit) {
         setName("");
         setLegalEntityName("");
-        setStatus("ACTIVE");
+        setStatus("");
         setAssignedRep("");
         setCustomerType("");
         setPaymentTerms("");
@@ -685,6 +685,7 @@ export function CustomerFormPage({
         setPhone("");
         setBilling({ ...EMPTY_ADDRESS });
         setMailing({ ...EMPTY_ADDRESS });
+        setSameAsBilling(false);
         setCreditLimit("");
         setNetsuiteId("");
         setIsnId("");

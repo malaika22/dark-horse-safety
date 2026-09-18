@@ -1378,7 +1378,6 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                         const next = await askPrompt({
                           title: "Replace document URL",
                           label: "Document URL",
-                          defaultValue: doc.url ?? "",
                           placeholder: "https://…",
                           confirmLabel: "Save",
                         });
@@ -1403,7 +1402,6 @@ export function CustomerDetailPage({ customerId }: { customerId: string }) {
                         const next = await askPrompt({
                           title: "Set expiry reminder",
                           label: "Expiry date (YYYY-MM-DD)",
-                          defaultValue: doc.expiresAt?.slice(0, 10) ?? "",
                           placeholder: "YYYY-MM-DD",
                           confirmLabel: "Save",
                         });
