@@ -537,9 +537,11 @@ export const hrApi = {
     api.post<ApiData<HrEmployee>>("/hr/employees", body),
   updateEmployee: (
     id: string,
-    body: Partial<CreateEmployeeBody> & {
+    body: {
+      [K in keyof CreateEmployeeBody]?: CreateEmployeeBody[K] | null;
+    } & {
       onLeave?: boolean;
-      bbsThisWeek?: string;
+      bbsThisWeek?: string | null;
       missingBbs?: boolean;
       maxClockInRadiusEnabled?: boolean;
       maxClockInRadius?: string | null;

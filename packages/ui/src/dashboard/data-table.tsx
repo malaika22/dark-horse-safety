@@ -5,7 +5,7 @@ import { cn } from "../lib/cn";
 
 export interface DashboardDataTableColumn<T> {
   id: string;
-  header: string;
+  header: React.ReactNode;
   /** Tailwind width / min-width hint, e.g. "min-w-[140px]" */
   className?: string;
   align?: "left" | "center" | "right";
