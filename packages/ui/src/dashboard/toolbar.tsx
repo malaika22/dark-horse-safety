@@ -124,7 +124,7 @@ export const DashboardToolbarButton = React.forwardRef<
       ref={ref}
       type="button"
       className={cn(
-        "btn-base inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap font-sans font-[510] uppercase tracking-[-0.02em]",
+        "btn-base inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap font-sans font-[510] uppercase leading-none tracking-[-0.02em]",
         variant === "glass" && "btn-glass-surface text-white",
         variant === "muted" &&
           "border border-[#3E3E3E] bg-[#353535] text-foreground-muted hover:bg-[#3D3D3D] hover:text-foreground-muted",
@@ -133,9 +133,17 @@ export const DashboardToolbarButton = React.forwardRef<
       )}
       {...props}
     >
-      {leftIcon}
-      <span>{children}</span>
-      {rightIcon}
+      {leftIcon ? (
+        <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center [&_svg]:block">
+          {leftIcon}
+        </span>
+      ) : null}
+      <span className="leading-none">{children}</span>
+      {rightIcon ? (
+        <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center [&_svg]:block">
+          {rightIcon}
+        </span>
+      ) : null}
       {showChevron ? <ChevronDownIcon className="shrink-0" /> : null}
     </button>
   );

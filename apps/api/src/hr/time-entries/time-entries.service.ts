@@ -331,8 +331,12 @@ export class TimeEntriesService {
           updatedAt: { gte: todayStart },
         },
       }),
-      this.prisma.timeEntry.count({
-        where: { ...base, correctionRequested: true },
+      this.prisma.timeEditRequest.count({
+        where: {
+          status: {
+            in: ['PENDING', 'NEEDS_CLARIFICATION'],
+          },
+        },
       }),
     ]);
 

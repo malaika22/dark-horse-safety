@@ -5,11 +5,16 @@ import {
   EmployeeStatus,
   EnforcementLevel,
   ExpenseStatus,
+  PayCycleStatus,
   PrismaClient,
   SalesActivityType,
+  TimeEditRequestStatus,
+  TimeEditRequestType,
   TimeEntryCategory,
   TimeEntrySource,
   TimeEntryStatus,
+  TimeOffStatus,
+  TimeOffType,
   UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -2152,11 +2157,90 @@ async function main() {
     where: { reportCode: { in: ['EOD-2026-0904', 'EOD-2026-0905'] } },
   });
 
-  // ─── Pay cycles (pricing effective-from) ──────────────────────────────────
-  const payCycleStart = new Date(Date.UTC(2026, 8, 7));
-  for (let i = 0; i < 24; i++) {
-    const from = new Date(payCycleStart);
-    from.setUTCDate(payCycleStart.getUTCDate() + i * 14);
+  // ─── Pay cycles (HR settings + CRM pricing effective-from) ────────────────
+  const payYear = 2026;
+  const cycle1Start = new Date(Date.UTC(payYear, 0, 5)); // Mon Jan 5 → cycle 12 = Jun 8–21
+  const sampleHours = [
+    498.0, 512.5, 505.0, 520.0, 488.5, 515.0, 530.0, 522.0, 510.5, 518.0, 522.0,
+    542.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ];
+  const sampleAmounts = sampleHours.map((h) =>
+    h > 0 ? Math.round(h * 20.05 * 100) / 100 : 0,
+  );
+
+  for (let i = 0; i < 26; i++) {
+    const from = new Date(cycle1Start);
+    from.setUTCDate(cycle1Start.getUTCDate() + i * 14);
+    const to = new Date(from);
+    to.setUTCDate(from.getUTCDate() + 13);
+    const num = i + 1;
+    const code = `${payYear}-${String(num).padStart(2, '0')}`;
+    const fmt = (d: Date) =>
+      d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        timeZone: 'UTC',
+      });
+    const today = new Date();
+    const todayUtc = new Date(
+      Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
+    );
+    const fromUtc = new Date(
+      Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()),
+    );
+    const toUtc = new Date(
+      Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate()),
+    );
+    let status: PayCycleStatus = PayCycleStatus.UPCOMING;
+    let closedAt: Date | null = null;
+    let lockAt: Date | null = null;
+    if (todayUtc > toUtc) {
+      status = PayCycleStatus.CLOSED;
+      closedAt = new Date(to.getTime() + 23 * 3600 * 1000 + 59 * 60 * 1000);
+      lockAt = closedAt;
+    } else if (todayUtc >= fromUtc && todayUtc <= toUtc) {
+      status = PayCycleStatus.OPEN;
+      lockAt = new Date(to.getTime() + 23 * 3600 * 1000 + 59 * 60 * 1000);
+    } else {
+      status = PayCycleStatus.UPCOMING;
+      lockAt = new Date(to.getTime() + 23 * 3600 * 1000 + 59 * 60 * 1000);
+    }
+    const hours = status === PayCycleStatus.UPCOMING ? null : sampleHours[i] || 480 + i * 2;
+    const amount =
+      status === PayCycleStatus.UPCOMING ? null : sampleAmounts[i] || (hours ?? 0) * 20.05;
+
+    await prisma.payCycle.upsert({
+      where: { code },
+      update: {
+        label: `${code} · ${fmt(from)} – ${fmt(to)}`,
+        cycleNumber: num,
+        startDate: from,
+        endDate: to,
+        status,
+        lockAt,
+        totalHours: hours,
+        totalAmount: amount,
+        closedAt,
+      },
+      create: {
+        code,
+        label: `${code} · ${fmt(from)} – ${fmt(to)}`,
+        cycleNumber: num,
+        startDate: from,
+        endDate: to,
+        status,
+        lockAt,
+        totalHours: hours,
+        totalAmount: amount,
+        closedAt,
+      },
+    });
+  }
+
+  // Legacy CYCLE-* rows used by older CRM seeds — keep a few for lookups
+  for (let i = 0; i < 4; i++) {
+    const from = new Date(Date.UTC(2026, 8, 7 + i * 14));
     const to = new Date(from);
     to.setUTCDate(from.getUTCDate() + 13);
     const cycle = 18 + i;
@@ -2175,6 +2259,7 @@ async function main() {
         cycleNumber: cycle,
         startDate: from,
         endDate: to,
+        status: PayCycleStatus.UPCOMING,
       },
       create: {
         code,
@@ -2182,6 +2267,69 @@ async function main() {
         cycleNumber: cycle,
         startDate: from,
         endDate: to,
+        status: PayCycleStatus.UPCOMING,
+      },
+    });
+  }
+
+  await prisma.payCycleSettings.upsert({
+    where: { id: 'default' },
+    update: {
+      dailyOtThresholdHrs: 8,
+      weeklyOtThresholdHrs: 40,
+      otMultiplier: 1.5,
+      doubleTimeAfterHrs: 12,
+      minBillableBlock: '15 MIN',
+      roundTo: '15 MIN',
+      annualPtoDays: 20,
+      accrualRatePerPeriod: 0.77,
+      annualSickDays: 10,
+      carryoverCapDays: 5,
+      noticeRequiredDays: 14,
+      blackout: 'NONE',
+      cadence: 'BI-WEEKLY',
+      cycleLengthDays: 14,
+      lockTime: '11:59 PM CT',
+      autoApproveRules: 'NO EXCEPTIONS, AFTER 48H',
+      gracePeriodDays: 2,
+    },
+    create: { id: 'default' },
+  });
+
+  const holidayDefs2026: {
+    observedOn: string;
+    name: string;
+    sortOrder: number;
+  }[] = [
+    { observedOn: '2026-01-01', name: "New Year's Day", sortOrder: 1 },
+    { observedOn: '2026-01-19', name: 'MLK Day', sortOrder: 2 },
+    { observedOn: '2026-02-16', name: "Presidents' Day", sortOrder: 3 },
+    { observedOn: '2026-05-25', name: 'Memorial Day', sortOrder: 4 },
+    { observedOn: '2026-07-03', name: 'Independence Day (Observed)', sortOrder: 5 },
+    { observedOn: '2026-09-07', name: 'Labor Day', sortOrder: 6 },
+    { observedOn: '2026-11-11', name: 'Veterans Day', sortOrder: 7 },
+    { observedOn: '2026-11-26', name: 'Thanksgiving', sortOrder: 8 },
+    { observedOn: '2026-11-27', name: 'Day After Thanksgiving', sortOrder: 9 },
+    { observedOn: '2026-12-25', name: 'Christmas Day', sortOrder: 10 },
+  ];
+  for (const h of holidayDefs2026) {
+    const id = `holiday-2026-${h.sortOrder}`;
+    await prisma.observedHoliday.upsert({
+      where: { id },
+      update: {
+        year: 2026,
+        observedOn: new Date(`${h.observedOn}T12:00:00.000Z`),
+        name: h.name,
+        hoursCredited: 8,
+        sortOrder: h.sortOrder,
+      },
+      create: {
+        id,
+        year: 2026,
+        observedOn: new Date(`${h.observedOn}T12:00:00.000Z`),
+        name: h.name,
+        hoursCredited: 8,
+        sortOrder: h.sortOrder,
       },
     });
   }
@@ -2382,25 +2530,26 @@ async function main() {
       {
         id: 'tr1',
         name: 'H2S Awareness',
-        expiresAt: '2027-01-15',
+        expiresAt: '2026-09-15',
         status: 'APPROVED',
       },
       {
         id: 'tr2',
         name: 'First Aid / CPR',
-        expiresAt: '2026-11-02',
+        expiresAt: '2027-01-02',
         status: 'APPROVED',
       },
       {
         id: 'tr3',
         name: 'BBS Weekly',
-        expiresAt: '2026-06-15',
+        expiresAt: null,
+        subtitle: 'Last Submitted: Jun 9',
         status: 'DUE',
       },
       {
         id: 'tr4',
         name: 'Fit Test',
-        expiresAt: '2026-12-01',
+        expiresAt: '2027-03-01',
         status: 'APPROVED',
       },
     ],
@@ -2442,14 +2591,30 @@ async function main() {
       },
     ],
     auditHistory: [
-      { id: 'a1', when: '2D AGO', label: 'Time edit submitted' },
+      {
+        id: 'a1',
+        when: '2D AGO',
+        label: 'Time edit submitted',
+        detail: '2026 46006102-WO - 06:42 -> 07:15',
+      },
       {
         id: 'a2',
         when: '1W AGO',
-        label: 'Profile updated — phone number changed',
+        label: 'Profile updated',
+        detail: 'Phone number changed',
       },
-      { id: 'a3', when: '2W AGO', label: 'Time off approved' },
-      { id: 'a4', when: '1MO AGO', label: 'H2S training renewed' },
+      {
+        id: 'a3',
+        when: '2W AGO',
+        label: 'Time off approved',
+        detail: 'Jun 14 - 1 day vacation',
+      },
+      {
+        id: 'a4',
+        when: '1MO AGO',
+        label: 'H2S training renewed',
+        detail: 'Expires Sep 2026',
+      },
     ],
     notes: [] as { id: string; text: string; createdAt: string }[],
     jobTitle: 'Field Technician',
@@ -2516,7 +2681,7 @@ async function main() {
     bbsThisWeek: 'SUBMITTED',
     crew: 'Permian North Crew',
     certificationHeld: 'H2S',
-    hasOpenTimeEdit: false,
+    hasOpenTimeEdit: true,
     missingBbs: false,
     onLeave: false,
     ...martinezDetail,
@@ -2821,7 +2986,7 @@ async function main() {
     {
       code: 'EMP-1010',
       firstName: 'T.',
-      lastName: 'Reed',
+      lastName: 'Whitlock',
       roleTitle: 'Technician',
       status: EmployeeStatus.ACTIVE,
       assignedTruck: null as string | null,
@@ -2831,21 +2996,21 @@ async function main() {
       bbsThisWeek: 'N/A',
       crew: null as string | null,
       certificationHeld: null as string | null,
-      hasOpenTimeEdit: false,
+      hasOpenTimeEdit: true,
       missingBbs: false,
       onLeave: false,
       supervisorId: supervisorEmp.id,
       ...basicDetail({
         firstName: 'T.',
-        lastName: 'Reed',
-        emailLocal: 't.reed',
+        lastName: 'Whitlock',
+        emailLocal: 't.whitlock',
         hours: 27,
       }),
     },
     {
       code: 'EMP-1011',
       firstName: 'K.',
-      lastName: 'Patel',
+      lastName: 'Hayes',
       roleTitle: 'Technician',
       status: EmployeeStatus.ACTIVE,
       assignedTruck: 'TRK-05',
@@ -2855,14 +3020,14 @@ async function main() {
       bbsThisWeek: 'SUBMITTED',
       crew: 'Charlie',
       certificationHeld: 'Confined Space',
-      hasOpenTimeEdit: false,
+      hasOpenTimeEdit: true,
       missingBbs: false,
       onLeave: false,
       supervisorId: supervisorEmp.id,
       ...basicDetail({
         firstName: 'K.',
-        lastName: 'Patel',
-        emailLocal: 'k.patel',
+        lastName: 'Hayes',
+        emailLocal: 'k.hayes',
         truck: 'TRK-05',
         crew: 'Charlie',
         hours: 33.5,
@@ -3343,6 +3508,497 @@ async function main() {
     });
   }
 
+  // ─── HR Time Edit Requests ────────────────────────────────────────────────
+  await prisma.timeEditRequest.deleteMany({});
+  const terDefs = [
+    {
+      code: 'EMP-1001',
+      workDate: '2026-06-18',
+      dateLabel: 'JUN 18',
+      workOrderCode: '2026 46006102-WO',
+      customerName: 'Devon Energy',
+      type: TimeEditRequestType.CLOCK_IN_CHANGE,
+      status: TimeEditRequestStatus.PENDING,
+      deltaHours: -0.6,
+      deltaLabel: '-0.6h',
+      differenceKind: 'REGULAR TIME',
+      relativeTime: '2H AGO',
+      originalClockIn: '06:42',
+      originalClockOut: '15:00',
+      originalHours: 8.3,
+      requestedClockIn: '07:15',
+      requestedClockOut: '15:00',
+      requestedHours: 7.7,
+      technicianReason:
+        'Clocked in early by accident while still driving to site. Did not arrive at wellhead until 07:15. GPS log supports the change.',
+      gpsContext:
+        'GPS supports change — tech was 6.1 mi from site at 06:42, arrived 07:16.',
+      needsClarification: false,
+      createdAt: new Date('2026-06-18T16:00:00.000Z'),
+    },
+    {
+      code: 'EMP-1010',
+      workDate: '2026-06-17',
+      dateLabel: 'JUN 17',
+      workOrderCode: '2026 46006045-WO',
+      customerName: 'Marathon Oil',
+      type: TimeEditRequestType.CLOCK_OUT_CHANGE,
+      status: TimeEditRequestStatus.NEEDS_CLARIFICATION,
+      deltaHours: 1.2,
+      deltaLabel: '+1.2h OT',
+      differenceKind: 'OVERTIME',
+      relativeTime: '1D AGO',
+      originalClockIn: '06:45',
+      originalClockOut: '14:30',
+      originalHours: 7.7,
+      requestedClockIn: '06:45',
+      requestedClockOut: '15:42',
+      requestedHours: 8.9,
+      technicianReason:
+        'Stayed on site for overtime wellhead work after clock-out reminder. Need hours adjusted to match GPS exit.',
+      gpsContext:
+        'GPS shows tech still on pad until 15:40. Clock-out at 14:30 appears early.',
+      needsClarification: true,
+      createdAt: new Date('2026-06-17T18:00:00.000Z'),
+    },
+    {
+      code: 'EMP-1011',
+      workDate: '2026-05-28',
+      dateLabel: 'MAY 28',
+      workOrderCode: '2026 46005880-WO',
+      customerName: 'Devon Energy',
+      type: TimeEditRequestType.ADMIN_OVERRIDE,
+      status: TimeEditRequestStatus.PENDING,
+      deltaHours: 1.5,
+      deltaLabel: '+1.5H',
+      differenceKind: 'ADMIN OVERRIDE',
+      relativeTime: '3D AGO',
+      originalClockIn: '07:00',
+      originalClockOut: '15:00',
+      originalHours: 8.0,
+      requestedClockIn: '07:00',
+      requestedClockOut: '16:30',
+      requestedHours: 9.5,
+      technicianReason:
+        'Tech submitted a correction after the pay cycle closed. Requesting off-cycle adjustment for 1.5 additional hours worked Jun 15.',
+      gpsContext: null,
+      needsClarification: false,
+      lockedCycle: true,
+      payrollCycleLabel: 'Payroll Cycle 2026-10',
+      cycleClosedLabel: 'Closed May 31',
+      dollarDelta: 42,
+      dollarDeltaLabel: '+$42.00',
+      auditWarning:
+        'Cycle 2026-10 is closed and payroll was already exported. Approving will process this as an off-cycle adjustment and will be permanently logged: who overrode, timestamp, original vs. new hours, dollar delta, and the adjustment pay run it lands in.',
+      offCycleRunLabel: 'Off-Cycle Run #2026-10B · Processes Jun 20',
+      createdAt: new Date('2026-06-15T12:00:00.000Z'),
+    },
+  ];
+
+  let terCount = 0;
+  for (const ter of terDefs) {
+    const employeeId = empByCode[ter.code];
+    if (!employeeId) continue;
+    const linked = await prisma.timeEntry.findFirst({
+      where: { employeeId },
+      orderBy: { workDate: 'desc' },
+      select: { id: true },
+    });
+    await prisma.timeEditRequest.create({
+      data: {
+        employeeId,
+        timeEntryId: linked?.id ?? null,
+        workDate: new Date(`${ter.workDate}T12:00:00.000Z`),
+        dateLabel: ter.dateLabel,
+        cycleLabel: cycle,
+        workOrderCode: ter.workOrderCode,
+        customerName: ter.customerName,
+        type: ter.type,
+        status: ter.status,
+        deltaHours: ter.deltaHours,
+        deltaLabel: ter.deltaLabel,
+        differenceKind: ter.differenceKind,
+        relativeTime: ter.relativeTime,
+        originalClockIn: ter.originalClockIn,
+        originalClockOut: ter.originalClockOut,
+        originalHours: ter.originalHours,
+        requestedClockIn: ter.requestedClockIn,
+        requestedClockOut: ter.requestedClockOut,
+        requestedHours: ter.requestedHours,
+        technicianReason: ter.technicianReason,
+        gpsContext: ter.gpsContext,
+        adminNote: null,
+        needsClarification: ter.needsClarification,
+        lockedCycle: Boolean(ter.lockedCycle),
+        payrollCycleLabel: ter.payrollCycleLabel ?? null,
+        cycleClosedLabel: ter.cycleClosedLabel ?? null,
+        dollarDelta: ter.dollarDelta ?? null,
+        dollarDeltaLabel: ter.dollarDeltaLabel ?? null,
+        auditWarning: ter.auditWarning ?? null,
+        offCycleRunLabel: ter.offCycleRunLabel ?? null,
+        createdAt: ter.createdAt,
+        updatedAt: ter.createdAt,
+      },
+    });
+    terCount += 1;
+  }
+
+  // Seed resolved cycle history for KPI cards
+  const martinezId = empByCode['EMP-1001'];
+  if (martinezId) {
+    for (let i = 0; i < 8; i += 1) {
+      await prisma.timeEditRequest.create({
+        data: {
+          employeeId: martinezId,
+          workDate: new Date(`2026-06-${String(10 + (i % 5)).padStart(2, '0')}T12:00:00.000Z`),
+          dateLabel: `JUN ${10 + (i % 5)}`,
+          cycleLabel: cycle,
+          workOrderCode: `2026 46005${800 + i}-WO`,
+          customerName: 'Devon Energy',
+          type: TimeEditRequestType.CLOCK_IN_CHANGE,
+          status: TimeEditRequestStatus.APPROVED,
+          deltaHours: -0.3,
+          deltaLabel: '-0.3h',
+          differenceKind: 'REGULAR TIME',
+          relativeTime: '1W AGO',
+          originalClockIn: '06:30',
+          originalClockOut: '15:00',
+          originalHours: 8.5,
+          requestedClockIn: '06:48',
+          requestedClockOut: '15:00',
+          requestedHours: 8.2,
+          technicianReason: 'Minor clock-in correction.',
+          gpsContext: 'GPS supports change.',
+          needsClarification: false,
+          createdAt: new Date(`2026-06-${String(10 + (i % 5)).padStart(2, '0')}T08:00:00.000Z`),
+          resolvedAt: new Date(`2026-06-${String(10 + (i % 5)).padStart(2, '0')}T12:00:00.000Z`),
+          updatedAt: new Date(`2026-06-${String(10 + (i % 5)).padStart(2, '0')}T12:00:00.000Z`),
+        },
+      });
+      terCount += 1;
+    }
+    await prisma.timeEditRequest.create({
+      data: {
+        employeeId: martinezId,
+        workDate: new Date('2026-06-05T12:00:00.000Z'),
+        dateLabel: 'JUN 5',
+        cycleLabel: cycle,
+        workOrderCode: '2026 46005700-WO',
+        customerName: 'Marathon Oil',
+        type: TimeEditRequestType.CLOCK_OUT_CHANGE,
+        status: TimeEditRequestStatus.REJECTED,
+        deltaHours: 2.0,
+        deltaLabel: '+2.0h',
+        differenceKind: 'OVERTIME',
+        relativeTime: '2W AGO',
+        originalClockIn: '07:00',
+        originalClockOut: '15:00',
+        originalHours: 8.0,
+        requestedClockIn: '07:00',
+        requestedClockOut: '17:00',
+        requestedHours: 10.0,
+        technicianReason: 'Claimed overtime not supported by GPS.',
+        gpsContext: 'GPS shows exit at 15:05.',
+        needsClarification: false,
+        createdAt: new Date('2026-06-05T09:00:00.000Z'),
+        resolvedAt: new Date('2026-06-05T14:00:00.000Z'),
+        updatedAt: new Date('2026-06-05T14:00:00.000Z'),
+      },
+    });
+    terCount += 1;
+  }
+
+  // ─── HR Time Off Requests ─────────────────────────────────────────────────
+  await prisma.timeOffRequest.deleteMany({});
+  const toDefs: Array<{
+    code: string;
+    type: TimeOffType;
+    status: TimeOffStatus;
+    start: string;
+    end: string;
+    startLabel: string;
+    endLabel: string;
+    days: number;
+    hours: number;
+    balanceAfter: number;
+    coverage: string;
+    requested: string;
+    requestedLabel: string;
+    crossesPayCycle?: boolean;
+    reason?: string;
+    onCallDates?: string[];
+    assignedJobs?: Array<{ code: string; date: string }>;
+  }> = [
+    {
+      code: 'EMP-1001',
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-20',
+      end: '2026-06-22',
+      startLabel: 'JUN 20',
+      endLabel: 'JUN 22',
+      days: 3,
+      hours: 24,
+      balanceAfter: 16,
+      coverage: 'COVERED',
+      requested: '2026-06-10',
+      requestedLabel: 'JUN 10',
+    },
+    {
+      code: 'EMP-1002',
+      type: TimeOffType.SICK,
+      status: TimeOffStatus.PENDING,
+      start: '2026-06-18',
+      end: '2026-06-18',
+      startLabel: 'JUN 18',
+      endLabel: 'JUN 18',
+      days: 1,
+      hours: 8,
+      balanceAfter: 32,
+      coverage: 'COVERED',
+      requested: '2026-06-10',
+      requestedLabel: 'JUN 10',
+    },
+    {
+      code: 'EMP-1010',
+      type: TimeOffType.SICK,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-17',
+      end: '2026-06-17',
+      startLabel: 'JUN 17',
+      endLabel: 'JUN 17',
+      days: 1,
+      hours: 8,
+      balanceAfter: 24,
+      coverage: 'COVERED',
+      requested: '2026-06-16',
+      requestedLabel: 'JUN 16',
+    },
+    {
+      code: 'EMP-1008',
+      type: TimeOffType.BEREAVEMENT,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-19',
+      end: '2026-06-20',
+      startLabel: 'JUN 19',
+      endLabel: 'JUN 20',
+      days: 2,
+      hours: 16,
+      balanceAfter: 48,
+      coverage: 'COVERED',
+      requested: '2026-06-12',
+      requestedLabel: 'JUN 12',
+    },
+    {
+      code: 'EMP-1010',
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-24',
+      end: '2026-06-28',
+      startLabel: 'JUN 24',
+      endLabel: 'JUN 28',
+      days: 5,
+      hours: 40,
+      balanceAfter: 8,
+      coverage: 'NEEDED',
+      requested: '2026-06-13',
+      requestedLabel: 'JUN 13',
+      crossesPayCycle: true,
+    },
+    {
+      code: 'EMP-1006',
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-25',
+      end: '2026-06-26',
+      startLabel: 'JUN 25',
+      endLabel: 'JUN 26',
+      days: 2,
+      hours: 16,
+      balanceAfter: 16,
+      coverage: 'COVERED',
+      requested: '2026-06-14',
+      requestedLabel: 'JUN 14',
+    },
+    {
+      code: 'EMP-1007',
+      type: TimeOffType.UNPAID,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-21',
+      end: '2026-06-21',
+      startLabel: 'JUN 21',
+      endLabel: 'JUN 21',
+      days: 1,
+      hours: 8,
+      balanceAfter: 28,
+      coverage: 'COVERED',
+      requested: '2026-06-15',
+      requestedLabel: 'JUN 15',
+    },
+    {
+      code: 'EMP-1004',
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.PENDING,
+      start: '2026-07-01',
+      end: '2026-07-03',
+      startLabel: 'JUL 1',
+      endLabel: 'JUL 3',
+      days: 3,
+      hours: 24,
+      balanceAfter: 16,
+      coverage: 'NEEDED',
+      requested: '2026-06-08',
+      requestedLabel: 'JUN 8',
+      onCallDates: ['2026-07-02'],
+      assignedJobs: [{ code: '46005990', date: '2026-07-01' }],
+    },
+    {
+      code: 'EMP-1009',
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.APPROVED,
+      start: '2026-06-30',
+      end: '2026-07-02',
+      startLabel: 'JUN 30',
+      endLabel: 'JUL 2',
+      days: 3,
+      hours: 24,
+      balanceAfter: 12,
+      coverage: 'COVERED',
+      requested: '2026-06-20',
+      requestedLabel: 'JUN 20',
+    },
+    {
+      code: 'EMP-1003',
+      type: TimeOffType.UNPAID,
+      status: TimeOffStatus.PENDING,
+      start: '2026-06-24',
+      end: '2026-06-26',
+      startLabel: 'JUN 24',
+      endLabel: 'JUN 26',
+      days: 3,
+      hours: 24,
+      balanceAfter: 40,
+      coverage: 'NEEDED',
+      requested: '2026-06-12',
+      requestedLabel: 'JUN 12',
+    },
+    {
+      code: 'EMP-1005',
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.DENIED,
+      start: '2026-07-01',
+      end: '2026-07-05',
+      startLabel: 'JUL 1',
+      endLabel: 'JUL 5',
+      days: 5,
+      hours: 40,
+      balanceAfter: 0,
+      coverage: 'COVERED',
+      requested: '2026-06-05',
+      requestedLabel: 'JUN 5',
+      reason: 'Insufficient coverage on Bravo crew',
+    },
+    {
+      code: 'EMP-1011',
+      type: TimeOffType.SICK,
+      status: TimeOffStatus.PENDING,
+      start: '2026-06-22',
+      end: '2026-06-23',
+      startLabel: 'JUN 22',
+      endLabel: 'JUN 23',
+      days: 2,
+      hours: 16,
+      balanceAfter: 24,
+      coverage: 'COVERED',
+      requested: '2026-06-16',
+      requestedLabel: 'JUN 16',
+    },
+    {
+      code: 'EMP-1001',
+      type: TimeOffType.BEREAVEMENT,
+      status: TimeOffStatus.PENDING,
+      start: '2026-07-02',
+      end: '2026-07-03',
+      startLabel: 'JUL 2',
+      endLabel: 'JUL 3',
+      days: 2,
+      hours: 16,
+      balanceAfter: 48,
+      coverage: 'NEEDED',
+      requested: '2026-06-18',
+      requestedLabel: 'JUN 18',
+    },
+  ];
+
+  // Pad pending/denied counts toward Figma-scale KPIs
+  for (let i = 0; i < 26; i += 1) {
+    const codes = Object.keys(empByCode);
+    const code = codes[i % codes.length];
+    toDefs.push({
+      code,
+      type: i % 3 === 0 ? TimeOffType.SICK : TimeOffType.PTO,
+      status: TimeOffStatus.PENDING,
+      start: `2026-07-${String(10 + (i % 15)).padStart(2, '0')}`,
+      end: `2026-07-${String(11 + (i % 15)).padStart(2, '0')}`,
+      startLabel: `JUL ${10 + (i % 15)}`,
+      endLabel: `JUL ${11 + (i % 15)}`,
+      days: 2,
+      hours: 16,
+      balanceAfter: Math.max(0, 40 - i),
+      coverage: i % 7 === 0 ? 'NEEDED' : 'COVERED',
+      requested: '2026-06-15',
+      requestedLabel: 'JUN 15',
+    });
+  }
+  for (let i = 0; i < 30; i += 1) {
+    const codes = Object.keys(empByCode);
+    const code = codes[i % codes.length];
+    toDefs.push({
+      code,
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.DENIED,
+      start: `2026-05-${String(5 + (i % 20)).padStart(2, '0')}`,
+      end: `2026-05-${String(6 + (i % 20)).padStart(2, '0')}`,
+      startLabel: `MAY ${5 + (i % 20)}`,
+      endLabel: `MAY ${6 + (i % 20)}`,
+      days: 2,
+      hours: 16,
+      balanceAfter: 20,
+      coverage: 'COVERED',
+      requested: '2026-05-01',
+      requestedLabel: 'MAY 1',
+      reason: 'Crew coverage conflict',
+    });
+  }
+
+  let toCount = 0;
+  for (const row of toDefs) {
+    const employeeId = empByCode[row.code];
+    if (!employeeId) continue;
+    await prisma.timeOffRequest.create({
+      data: {
+        employeeId,
+        type: row.type,
+        status: row.status,
+        startDate: new Date(`${row.start}T12:00:00.000Z`),
+        endDate: new Date(`${row.end}T12:00:00.000Z`),
+        startLabel: row.startLabel,
+        endLabel: row.endLabel,
+        dayCount: row.days,
+        hoursRequested: row.hours,
+        balanceAfter: row.balanceAfter,
+        coverage: row.coverage,
+        requestedAt: new Date(`${row.requested}T12:00:00.000Z`),
+        requestedLabel: row.requestedLabel,
+        crossesPayCycle: Boolean(row.crossesPayCycle),
+        reason: row.reason ?? null,
+        onCallDates: row.onCallDates ?? [],
+        assignedJobs: row.assignedJobs ?? [],
+      },
+    });
+    toCount += 1;
+  }
+
   await prisma.$executeRaw`
     INSERT INTO "CrmSyncState" (
       "id", "syncedAt", "updatedAt",
@@ -3377,7 +4033,7 @@ async function main() {
     `Expenses ${expenseDefs.length}, tasks ${taskDefs.length}, card ${companyCard.label}`,
   );
   console.log(
-    `HR employees ${1 + employeeDefs.length}, time entries ${teDefs.length}`,
+    `HR employees ${1 + employeeDefs.length}, time entries ${teDefs.length}, time edit requests ${terCount}, time off ${toCount}`,
   );
 }
 

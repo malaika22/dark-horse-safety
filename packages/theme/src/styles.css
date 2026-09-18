@@ -152,14 +152,18 @@ input:disabled {
 /* Auth / primary CTA — Figma: 380×32, padding 12, radius 8, border 0.97 */
 @utility btn-base {
   box-sizing: border-box;
+  display: inline-flex;
   height: 32px;
   min-height: 32px;
+  max-height: 32px;
   padding: 0 12px;
   border-radius: 8px;
   align-items: center;
+  justify-content: center;
   gap: 0;
   font-size: 12px;
-  line-height: 100%;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 /* Primary button surface — Figma: white fill, gradient border, layered shadows */
@@ -181,7 +185,7 @@ input:disabled {
 @utility btn-primary-surface {
   color: #09090b;
   background-color: var(--dhs-btn-primary-bg);
-  border: var(--dhs-btn-primary-border-width) solid transparent;
+  border: 1px solid transparent;
   background-image:
     linear-gradient(var(--dhs-btn-primary-bg), var(--dhs-btn-primary-bg)),
     var(--dhs-btn-primary-border-gradient);
@@ -190,7 +194,7 @@ input:disabled {
   box-shadow: var(--dhs-btn-primary-shadow);
   font-weight: 510;
   font-size: 12px;
-  line-height: 100%;
+  line-height: 1;
   letter-spacing: -0.2px;
   text-transform: uppercase;
   vertical-align: middle;
@@ -217,7 +221,7 @@ input:disabled {
   font-family: var(--dhs-font-sans);
   font-weight: 510;
   font-size: 12px;
-  line-height: 100%;
+  line-height: 1;
   letter-spacing: -0.2px;
   text-transform: uppercase;
   vertical-align: middle;

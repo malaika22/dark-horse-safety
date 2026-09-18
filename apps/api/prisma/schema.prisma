@@ -206,6 +206,33 @@ enum TimeEntrySource {
   CORRECTED
 }
 
+enum TimeEditRequestStatus {
+  PENDING
+  NEEDS_CLARIFICATION
+  APPROVED
+  REJECTED
+}
+
+enum TimeEditRequestType {
+  CLOCK_IN_CHANGE
+  CLOCK_OUT_CHANGE
+  ADMIN_OVERRIDE
+}
+
+enum TimeOffStatus {
+  PENDING
+  APPROVED
+  DENIED
+}
+
+enum TimeOffType {
+  PTO
+  SICK
+  UNPAID
+  BEREAVEMENT
+  HOLIDAY
+}
+
 // ─── Customer (Account) ──────────────────────────────────────────────────────
 
 model Customer {
@@ -1101,20 +1128,71 @@ model CrmDocument {
   @@index([customerId])
 }
 
-// ─── Pay cycles (CRM pricing effective dates) ────────────────────────────────
+// ─── Pay cycles (CRM pricing + HR payroll cadence) ───────────────────────────
+
+enum PayCycleStatus {
+  CLOSED
+  OPEN
+  UPCOMING
+}
 
 model PayCycle {
-  id          String   @id @default(uuid())
-  code        String   @unique
+  id          String         @id @default(uuid())
+  code        String         @unique
   label       String
   cycleNumber Int
-  startDate   DateTime @db.Date
-  endDate     DateTime @db.Date
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  startDate   DateTime       @db.Date
+  endDate     DateTime       @db.Date
+  status      PayCycleStatus @default(UPCOMING)
+  lockAt      DateTime?
+  totalHours  Decimal?       @db.Decimal(12, 1)
+  totalAmount Decimal?       @db.Decimal(14, 2)
+  closedAt    DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
   @@index([startDate])
   @@index([cycleNumber])
+  @@index([status])
+}
+
+/// Singleton org-wide pay cycle / OT / PTO policy (id = "default").
+model PayCycleSettings {
+  id                     String   @id @default("default")
+  dailyOtThresholdHrs    Decimal  @default(8) @db.Decimal(6, 1)
+  weeklyOtThresholdHrs   Decimal  @default(40) @db.Decimal(6, 1)
+  otMultiplier           Decimal  @default(1.5) @db.Decimal(4, 2)
+  doubleTimeAfterHrs     Decimal  @default(12) @db.Decimal(6, 1)
+  minBillableBlock       String   @default("15 MIN")
+  roundTo                String   @default("15 MIN")
+  annualPtoDays          Decimal  @default(20) @db.Decimal(6, 1)
+  accrualRatePerPeriod   Decimal  @default(0.77) @db.Decimal(6, 2)
+  annualSickDays         Decimal  @default(10) @db.Decimal(6, 1)
+  carryoverCapDays       Decimal  @default(5) @db.Decimal(6, 1)
+  noticeRequiredDays     Int      @default(14)
+  blackout               String   @default("NONE")
+  cadence                String   @default("BI-WEEKLY")
+  cycleLengthDays        Int      @default(14)
+  lockTime               String   @default("11:59 PM CT")
+  autoApproveRules       String   @default("NO EXCEPTIONS, AFTER 48H")
+  gracePeriodDays        Int      @default(2)
+  notes                  String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+model ObservedHoliday {
+  id             String   @id @default(uuid())
+  year           Int
+  observedOn     DateTime @db.Date
+  name           String
+  hoursCredited  Decimal  @default(8) @db.Decimal(6, 1)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([year, observedOn])
+  @@index([year, sortOrder])
 }
 
 // ─── Saved views (generalized per list scope) ────────────────────────────────
@@ -1217,6 +1295,8 @@ model Employee {
   supervisor              Employee?      @relation("EmployeeSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
   reports                 Employee[]     @relation("EmployeeSupervisor")
   timeEntryRecords        TimeEntry[]
+  timeEditRequests        TimeEditRequest[]
+  timeOffRequests         TimeOffRequest[]
   userId                  String?        @unique
   user                    User?          @relation("EmployeeUser", fields: [userId], references: [id], onDelete: SetNull)
   createdAt               DateTime       @default(now())
@@ -1295,4 +1375,89 @@ model TimeEntry {
   @@index([locked])
   @@index([archivedAt])
   @@index([missingDocs])
+}
+
+// ─── HR Time Edit Requests ───────────────────────────────────────────────────
+
+model TimeEditRequest {
+  id                 String                 @id @default(uuid())
+  employeeId         String
+  employee           Employee               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  timeEntryId        String?
+  workDate           DateTime               @db.Date
+  dateLabel          String
+  cycleLabel         String
+  workOrderCode      String?
+  customerName       String?
+  type               TimeEditRequestType
+  status             TimeEditRequestStatus  @default(PENDING)
+  deltaHours         Decimal                @default(0) @db.Decimal(10, 1)
+  deltaLabel         String
+  differenceKind     String                 @default("REGULAR TIME")
+  relativeTime       String?
+  originalClockIn    String?
+  originalClockOut   String?
+  originalHours      Decimal?               @db.Decimal(10, 1)
+  requestedClockIn   String?
+  requestedClockOut  String?
+  requestedHours     Decimal?               @db.Decimal(10, 1)
+  technicianReason   String?
+  gpsContext         String?
+  adminNote          String?
+  needsClarification Boolean                @default(false)
+  lockedCycle        Boolean                @default(false)
+  payrollCycleLabel  String?
+  cycleClosedLabel   String?
+  dollarDelta        Decimal?               @db.Decimal(10, 2)
+  dollarDeltaLabel   String?
+  auditWarning       String?
+  offCycleRunLabel   String?
+  overrideByName     String?
+  overrideAt         DateTime?
+  resolvedAt         DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([workDate])
+  @@index([type])
+  @@index([cycleLabel])
+  @@index([lockedCycle])
+}
+
+// ─── HR Time Off Requests ────────────────────────────────────────────────────
+
+model TimeOffRequest {
+  id              String        @id @default(uuid())
+  employeeId      String
+  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type            TimeOffType   @default(PTO)
+  status          TimeOffStatus @default(PENDING)
+  startDate       DateTime      @db.Date
+  endDate         DateTime      @db.Date
+  startLabel      String
+  endLabel        String
+  dayCount        Int           @default(1)
+  hoursRequested  Decimal       @default(0) @db.Decimal(10, 1)
+  balanceAfter    Decimal?      @db.Decimal(10, 1)
+  coverage        String        @default("COVERED")
+  requestedAt     DateTime      @default(now())
+  requestedLabel  String
+  reason          String?
+  adminNote       String?
+  crossesPayCycle Boolean       @default(false)
+  onCallDates     Json?
+  assignedJobs    Json?
+  archivedAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([type])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([coverage])
+  @@index([archivedAt])
 }

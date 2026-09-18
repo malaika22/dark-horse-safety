@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DashboardBadge,
+  DashboardMenuPopover,
   DashboardStatCell,
   DashboardStatGrid,
   DashboardStatRow,
@@ -35,6 +36,34 @@ function LightningIcon() {
   );
 }
 
+function PersonIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="8" r="3.25" stroke="currentColor" strokeWidth="1.75" />
+      <path
+        d="M5.5 19.25c1.6-3.1 3.9-4.5 6.5-4.5s4.9 1.4 6.5 4.5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M6 9l6 6 6-6"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function SectionPanel({
   icon,
   title,
@@ -51,12 +80,12 @@ function SectionPanel({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl border border-divider bg-panel",
+        "overflow-hidden rounded-xl bg-panel",
         className,
       )}
     >
-      <div className="flex items-center justify-between gap-3 px-4 pb-1 pt-3 sm:px-5">
-        <div className="flex min-w-0 items-center gap-2">
+      <div className="flex items-center justify-between gap-3 px-4 pb-1 pt-3.5 sm:px-5">
+        <div className="flex min-w-0 items-center gap-2.5">
           {icon ? (
             <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-[#2A2A2A] text-[#FDFDFF]">
               {icon}
@@ -81,21 +110,23 @@ function Field({
   label,
   value,
   type = "text",
+  className,
 }: {
   label: string;
   value: string;
   type?: string;
+  className?: string;
 }) {
   return (
-    <label className="block min-w-0">
-      <span className="mb-1 block font-sans text-[10px] uppercase tracking-[-0.01em] text-[#959597]">
+    <label className={cn("block min-w-0", className)}>
+      <span className="mb-1.5 block font-sans text-[10px] uppercase tracking-[-0.01em] text-[#959597]">
         {label}
       </span>
       <input
         type={type}
         value={value}
         readOnly
-        className="h-9 w-full rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none opacity-90"
+        className="h-10 w-full rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none"
       />
     </label>
   );
@@ -105,27 +136,34 @@ function SelectField({
   label,
   value,
   options,
+  className,
 }: {
   label: string;
   value: string;
   options: string[];
+  className?: string;
 }) {
   return (
-    <label className="block min-w-0">
-      <span className="mb-1 block font-sans text-[10px] uppercase tracking-[-0.01em] text-[#959597]">
+    <label className={cn("block min-w-0", className)}>
+      <span className="mb-1.5 block font-sans text-[10px] uppercase tracking-[-0.01em] text-[#959597]">
         {label}
       </span>
-      <select
-        value={value}
-        disabled
-        className="h-9 w-full appearance-none rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none disabled:opacity-90"
-      >
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
+      <div className="relative">
+        <select
+          value={value}
+          disabled
+          className="h-10 w-full appearance-none rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3 pr-8 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none disabled:opacity-100"
+        >
+          {options.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+        <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-[#959597]">
+          <ChevronDownIcon />
+        </span>
+      </div>
     </label>
   );
 }
@@ -138,7 +176,7 @@ function Toggle({ checked }: { checked: boolean }) {
       aria-checked={checked}
       disabled
       className={cn(
-        "relative h-6 w-11 rounded-full transition-colors disabled:opacity-60",
+        "relative h-6 w-11 rounded-full transition-colors disabled:opacity-100",
         checked ? "bg-[#22C55E]" : "bg-[#3E3E3E]",
       )}
     >
@@ -159,27 +197,67 @@ function statusBadgeVariant(status: string) {
   return "offline" as const;
 }
 
-function entryTone(status: string) {
-  const s = status.toUpperCase();
-  if (s === "APPROVED") return "border-[#22C55E]/50 text-[#22C55E]";
-  if (s === "DUE" || s === "PENDING") return "border-[#E8C47C]/50 text-[#E8C47C]";
-  return "border-[#FF6B6B]/50 text-[#FF6B6B]";
+function StatusPill({ status }: { status: string }) {
+  const s = status.toUpperCase().replaceAll("_", " ");
+  const tone =
+    s.includes("APPROVED") || s === "SUBMITTED"
+      ? "bg-[#203B2C] text-[#ACEBCE]"
+      : s.includes("DUE")
+        ? "bg-[#C9A227] text-[#111111]"
+        : s.includes("CHECKED OUT") || s.includes("PENDING")
+          ? "bg-[#352E1B] text-[#CAC897]"
+          : s.includes("MISSING") || s.includes("OPEN") || s.includes("REJECT")
+            ? "bg-[#3A1515] text-[#FF6B6B]"
+            : "bg-[#2A2A2A] text-[#959597]";
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 rounded-full px-2.5 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.01em]",
+        tone,
+      )}
+    >
+      {s}
+    </span>
+  );
 }
 
 function EmptyBlock({ label }: { label: string }) {
   return (
-    <p className="py-3 text-center font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+    <p className="py-5 text-center font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
       {label}
     </p>
   );
 }
 
 function formatDateLabel(iso: string) {
-  const d = new Date(`${iso}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return iso;
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return iso.toUpperCase();
   return d
     .toLocaleDateString("en-US", { month: "short", day: "numeric" })
     .toUpperCase();
+}
+
+function formatExpiryLabel(iso: string) {
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return iso.toUpperCase();
+  return d
+    .toLocaleDateString("en-US", { month: "short", year: "numeric" })
+    .toUpperCase();
+}
+
+function relativeWhen(when: string) {
+  const raw = when.trim();
+  if (/ago|today|yesterday/i.test(raw)) return raw.toUpperCase();
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw.toUpperCase();
+  const diffMs = Date.now() - d.getTime();
+  const days = Math.floor(diffMs / 86400000);
+  if (days < 1) return "TODAY";
+  if (days < 7) return `${days}D AGO`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}W AGO`;
+  const months = Math.floor(days / 30);
+  return `${Math.max(1, months)}MO AGO`;
 }
 
 const EMPTY_LEAVE = {
@@ -200,6 +278,8 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
   const [neighborIds, setNeighborIds] = React.useState<string[]>([]);
   const [offboardOpen, setOffboardOpen] = React.useState(false);
   const [terminateOpen, setTerminateOpen] = React.useState(false);
+  const [headerMenuOpen, setHeaderMenuOpen] = React.useState(false);
+  const headerMenuRef = React.useRef<HTMLButtonElement>(null);
   const [reloadKey, setReloadKey] = React.useState(0);
   const printTriggeredRef = React.useRef(false);
 
@@ -299,14 +379,14 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
           variant="primary"
           onClick={() => router.push(`/hr/employees/${employeeId}/edit`)}
         >
-          Edit Profile
+          Edit Employee
         </DashboardToolbarButton>
         <DashboardToolbarButton onClick={printProfile}>
           Print Profile
         </DashboardToolbarButton>
       </div>
     ) : null,
-    [detail?.id, employeeId, printProfile],
+    [detail?.id, employeeId, printProfile, askPrompt],
   );
 
   const d = detail;
@@ -329,32 +409,101 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
         onRetry={() => setReloadKey((k) => k + 1)}
       >
         {d ? (
-          <div className="space-y-4 bg-shell p-3 sm:p-5" data-print-root>
-            <div className="flex flex-col gap-3 rounded-xl border border-divider bg-panel px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="font-sans text-[16px] font-[590] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                    {d.name}
-                  </h1>
-                  <DashboardBadge variant={statusBadgeVariant(d.status)}>
-                    {d.status.replace("_", " ")}
-                  </DashboardBadge>
+          <div className="space-y-4 bg-shell p-3 sm:space-y-5 sm:p-5" data-print-root>
+            {/* Identity header */}
+            <div className="flex flex-col gap-3 rounded-xl bg-panel px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-[#2A2A2A] text-[#FDFDFF]">
+                  <PersonIcon />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h1 className="font-sans text-[16px] font-[590] uppercase tracking-[-0.02em] text-[#FDFDFF] sm:text-[18px]">
+                      {d.name}
+                    </h1>
+                    <DashboardBadge variant={statusBadgeVariant(d.status)} pill>
+                      {d.status.replaceAll("_", " ")}
+                    </DashboardBadge>
+                  </div>
+                  <p className="mt-1.5 truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+                    {[d.roleTitle, d.email, d.phone].filter(Boolean).join(" · ")}
+                  </p>
                 </div>
-                <p className="mt-1 truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
-                  {[d.roleTitle, d.email, d.phone].filter(Boolean).join(" · ")}
-                </p>
               </div>
               <div
-                className="flex shrink-0 items-center gap-2"
+                className="flex shrink-0 flex-wrap items-center gap-2"
                 data-print-hide
               >
+                <div className="relative">
+                  <button
+                    ref={headerMenuRef}
+                    type="button"
+                    aria-label="Employee actions"
+                    onClick={() => setHeaderMenuOpen((o) => !o)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] text-[#FDFDFF]"
+                  >
+                    <ChevronDownIcon />
+                  </button>
+                  <DashboardMenuPopover
+                    open={headerMenuOpen}
+                    onClose={() => setHeaderMenuOpen(false)}
+                    anchorRef={headerMenuRef}
+                    align="right"
+                    className="min-w-[180px]"
+                    items={[
+                      {
+                        id: "edit",
+                        label: "Edit Employee",
+                        onSelect: () =>
+                          router.push(`/hr/employees/${employeeId}/edit`),
+                      },
+                      {
+                        id: "note",
+                        label: "Add Note",
+                        onSelect: () => {
+                          void (async () => {
+                            const text = await askPrompt({
+                              title: "Add Note",
+                              label: "Note",
+                              placeholder: "Enter note…",
+                              confirmLabel: "Add",
+                            });
+                            if (text == null || !text.trim()) return;
+                            try {
+                              const res = await hrApi.addEmployeeNote(
+                                employeeId,
+                                text.trim(),
+                              );
+                              setDetail(res.data);
+                              toastSuccess("Note added");
+                            } catch (err) {
+                              toastApiError(err);
+                            }
+                          })();
+                        },
+                      },
+                      {
+                        id: "print",
+                        label: "Print Profile",
+                        onSelect: () => printProfile(),
+                      },
+                      {
+                        id: "offboard",
+                        label: d.offboardingStartedAt
+                          ? "Open Offboarding"
+                          : "Start Offboarding",
+                        onSelect: () => setOffboardOpen(true),
+                      },
+                    ]}
+                  />
+                </div>
                 <DashboardToolbarButton
                   disabled={!prevId}
                   onClick={() => prevId && router.push(`/hr/employees/${prevId}`)}
                 >
                   Previous
                 </DashboardToolbarButton>
-                <span className="font-sans text-[10px] uppercase text-[#959597]">
+                <span className="px-1 font-sans text-[10px] uppercase text-[#959597]">
                   {neighborIndex >= 0
                     ? `${neighborIndex + 1} of ${neighborIds.length}`
                     : "—"}
@@ -368,6 +517,7 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
               </div>
             </div>
 
+            {/* Leave KPIs */}
             <DashboardStatGrid>
               <DashboardStatRow>
                 <DashboardStatCell
@@ -391,29 +541,34 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
               </DashboardStatRow>
             </DashboardStatGrid>
 
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+              {/* Left column */}
               <div className="space-y-4">
                 <SectionPanel icon={<LightningIcon />} title="Profile Details">
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3 sm:grid-cols-3">
                     <Field label="First Name" value={dash(d.firstName)} />
                     <Field label="Last Name" value={dash(d.lastName)} />
                     <Field
-                      label="Display Name"
+                      label="Display"
                       value={dash(d.displayName || d.name)}
                     />
                     <Field label="Phone" value={dash(d.phone)} />
                     <Field label="Email" value={dash(d.email)} />
                     <Field label="Home Address" value={dash(d.homeAddress)} />
                   </div>
+                </SectionPanel>
 
-                  <p className="mb-2 mt-5 font-sans text-[10px] uppercase tracking-[-0.01em] text-[#959597]">
-                    Employment Lifecycle
-                  </p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Role" value={dash(d.roleTitle)} />
-                    <Field
+                <SectionPanel icon={<LightningIcon />} title="Employment Lifecycle">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <SelectField
+                      label="Role"
+                      value={d.roleTitle || "—"}
+                      options={[d.roleTitle || "—"]}
+                    />
+                    <SelectField
                       label="Supervisor"
-                      value={dash(d.supervisor?.name)}
+                      value={d.supervisor?.name || "—"}
+                      options={[d.supervisor?.name || "—"]}
                     />
                     <Field
                       label="Hire Date"
@@ -435,28 +590,29 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
                       value={d.payType ?? "HOURLY"}
                       options={["HOURLY", "SALARY"]}
                     />
-                  </div>
-
-                  <p className="mb-2 mt-5 font-sans text-[10px] uppercase tracking-[-0.01em] text-[#959597]">
-                    Organizational Info
-                  </p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Crew" value={dash(d.crew)} />
+                    <SelectField
+                      label="Crew"
+                      value={d.crew || "—"}
+                      options={[d.crew || "—"]}
+                      className="sm:col-span-2"
+                    />
                     <Field
                       label="Direct Reports"
                       value={String(d.directReportsCount ?? 0)}
                     />
                   </div>
+                </SectionPanel>
 
-                  <p className="mb-2 mt-5 font-sans text-[10px] uppercase tracking-[-0.01em] text-[#959597]">
-                    Permissions & Metrics
-                  </p>
-                  <div className="mb-3 flex items-center justify-between gap-3 rounded-lg bg-[#1A1A1A] px-3 py-2.5">
+                <SectionPanel icon={<LightningIcon />} title="Permissions">
+                  <div className="flex items-center justify-between gap-3 rounded-lg bg-[#1A1A1A] px-3 py-3">
                     <span className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
                       Max Clock-In Radius
                     </span>
                     <Toggle checked={Boolean(d.maxClockInRadiusEnabled)} />
                   </div>
+                </SectionPanel>
+
+                <SectionPanel icon={<LightningIcon />} title="Metrics">
                   <div className="grid gap-3 sm:grid-cols-3">
                     <Field
                       label="Max Clock-in Radius"
@@ -476,31 +632,27 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
                 <SectionPanel
                   icon={<LightningIcon />}
                   title="Time"
-                  meta={`${timeEntries.length} Entries`}
+                  meta={`${timeEntries.length} Entries This Cycle`}
                 >
                   {timeEntries.length === 0 ? (
                     <EmptyBlock label="No time entries yet." />
                   ) : (
-                    <div className="space-y-1">
+                    <ul className="divide-y divide-[#2A2A2A]">
                       {timeEntries.map((te) => (
-                        <div
+                        <li
                           key={te.id}
-                          className="flex items-center gap-3 py-1.5"
+                          className="flex items-center gap-3 py-3 first:pt-1 last:pb-1"
                         >
-                          <span className="min-w-0 flex-1 truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
-                            {formatDateLabel(te.date)} — {te.client} — {te.hours}H
+                          <span className="min-w-0 flex-1 truncate font-sans text-[12px] uppercase tracking-[-0.02em] text-[#C8C8C8]">
+                            {formatDateLabel(te.date)} — {te.client}
                           </span>
-                          <span
-                            className={cn(
-                              "rounded-full border px-2 py-0.5 font-sans text-[10px] uppercase",
-                              entryTone(te.status),
-                            )}
-                          >
-                            {te.status}
+                          <span className="shrink-0 font-sans text-[12px] uppercase tabular-nums text-[#FDFDFF]">
+                            {Number(te.hours).toFixed(1)}H
                           </span>
-                        </div>
+                          <StatusPill status={te.status} />
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   )}
                 </SectionPanel>
 
@@ -509,7 +661,7 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
                   title="Time Off"
                   meta="0 Requests"
                 >
-                  <EmptyBlock label="No time off requests yet." />
+                  <EmptyBlock label="No time off requests submitted." />
                 </SectionPanel>
 
                 <SectionPanel
@@ -520,29 +672,22 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
                   {trainingCerts.length === 0 ? (
                     <EmptyBlock label="No training records yet." />
                   ) : (
-                    <div className="space-y-1">
+                    <ul className="divide-y divide-[#2A2A2A]">
                       {trainingCerts.map((tr) => (
-                        <div
+                        <li
                           key={tr.id}
-                          className="flex items-center gap-3 py-1.5"
+                          className="flex items-center gap-3 py-3 first:pt-1 last:pb-1"
                         >
-                          <span className="min-w-0 flex-1 truncate font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+                          <span className="min-w-0 flex-1 truncate font-sans text-[12px] uppercase tracking-[-0.02em] text-[#C8C8C8]">
                             {tr.name}
                             {tr.expiresAt
-                              ? ` — Exp ${formatDateLabel(tr.expiresAt)}`
+                              ? ` · Expires ${formatExpiryLabel(tr.expiresAt)}`
                               : ""}
                           </span>
-                          <span
-                            className={cn(
-                              "rounded-full border px-2 py-0.5 font-sans text-[10px] uppercase",
-                              entryTone(tr.status),
-                            )}
-                          >
-                            {tr.status}
-                          </span>
-                        </div>
+                          <StatusPill status={tr.status} />
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   )}
                 </SectionPanel>
 
@@ -551,7 +696,7 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
                   title="SSE"
                   meta="0 Observations"
                 >
-                  <EmptyBlock label="No SSE observations yet." />
+                  <EmptyBlock label="No SSE observations logged." />
                 </SectionPanel>
 
                 <SectionPanel
@@ -562,41 +707,30 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
                   {equipment.length === 0 ? (
                     <EmptyBlock label="No equipment assigned." />
                   ) : (
-                    <div className="space-y-1">
+                    <ul className="divide-y divide-[#2A2A2A]">
                       {equipment.map((eq) => (
-                        <div
+                        <li
                           key={eq.id}
-                          className="flex flex-wrap items-center gap-2 py-1.5"
+                          className="flex flex-wrap items-center gap-2 py-3 first:pt-1 last:pb-1"
                         >
-                          <span className="min-w-0 flex-1 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+                          <span className="min-w-0 flex-1 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#C8C8C8]">
                             {eq.label}
-                            {eq.value ? ` — ${eq.value}` : ""}
+                            {eq.value ? ` · ${eq.value}` : ""}
                           </span>
-                          {eq.badge ? (
-                            <span
-                              className={cn(
-                                "rounded-full border px-2 py-0.5 font-sans text-[10px] uppercase",
-                                eq.badgeTone === "error"
-                                  ? "border-[#FF6B6B]/50 text-[#FF6B6B]"
-                                  : eq.badgeTone === "warning"
-                                    ? "border-[#E8C47C]/50 text-[#E8C47C]"
-                                    : "border-[#5A5A5A] text-[#959597]",
-                              )}
-                            >
-                              {eq.badge}
-                            </span>
-                          ) : null}
                           {eq.action && eq.href ? (
                             <Link
                               href={eq.href}
-                              className="font-sans text-[10px] uppercase tracking-[-0.01em] text-[#60A5FA] hover:underline"
+                              className="inline-flex items-center rounded-full bg-[#2563EB]/20 px-2.5 py-1 font-sans text-[10px] font-[510] uppercase tracking-[-0.01em] text-[#60A5FA]"
                             >
-                              {eq.action}
+                              {eq.action} →
                             </Link>
                           ) : null}
-                        </div>
+                          {eq.badge ? (
+                            <StatusPill status={eq.badge} />
+                          ) : null}
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   )}
                 </SectionPanel>
 
@@ -612,16 +746,16 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
                   <SectionPanel
                     icon={<LightningIcon />}
                     title="Expenses"
-                    meta="0 Items"
+                    meta="0 Submitted"
                   >
-                    <EmptyBlock label="No expenses yet." />
+                    <EmptyBlock label="No expenses submitted." />
                   </SectionPanel>
                   <SectionPanel
                     icon={<LightningIcon />}
                     title="Documents"
-                    meta="0 Files"
+                    meta="0 Uploaded"
                   >
-                    <EmptyBlock label="No documents yet." />
+                    <EmptyBlock label="No documents uploaded." />
                   </SectionPanel>
                 </div>
 
@@ -655,9 +789,10 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
                 </div>
               </div>
 
+              {/* Right column */}
               <div className="space-y-4">
-                <SectionPanel title="Cycle Totals">
-                  <div className="space-y-2">
+                <SectionPanel icon={<LightningIcon />} title="Cycle Totals">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0">
                     {(
                       [
                         ["RT", cycleTotals.rt],
@@ -665,65 +800,78 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
                         ["PTO", cycleTotals.pto],
                         ["Total", cycleTotals.total],
                       ] as const
-                    ).map(([label, value]) => (
+                    ).map(([label, value], idx) => (
                       <div
                         key={label}
-                        className="flex items-center justify-between gap-3"
+                        className={cn(
+                          "min-w-0 py-3",
+                          idx < 2 ? "border-b border-[#2A2A2A]" : "",
+                        )}
                       >
-                        <span className="font-sans text-[11px] uppercase text-[#959597]">
+                        <p className="font-sans text-[10px] uppercase text-[#959597]">
                           {label}
-                        </span>
-                        <span className="font-sans text-[12px] font-[510] uppercase text-[#FDFDFF]">
+                        </p>
+                        <p className="mt-1 font-sans text-[16px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
                           {Number(value ?? 0).toFixed(1)}H
-                        </span>
+                        </p>
                       </div>
                     ))}
                   </div>
                 </SectionPanel>
 
-                <SectionPanel title="Training Status">
+                <SectionPanel icon={<LightningIcon />} title="Training Status">
                   {trainingCerts.length === 0 ? (
                     <EmptyBlock label="No training." />
                   ) : (
-                    <div className="space-y-2">
-                      {trainingCerts.map((tr) => (
-                        <div
-                          key={tr.id}
-                          className="flex items-center justify-between gap-2"
-                        >
-                          <span className="min-w-0 truncate font-sans text-[11px] uppercase text-[#959597]">
-                            {tr.name}
-                          </span>
-                          <span
-                            className={cn(
-                              "shrink-0 rounded-full border px-2 py-0.5 font-sans text-[9px] uppercase",
-                              entryTone(tr.status),
-                            )}
+                    <ul className="divide-y divide-[#2A2A2A]">
+                      {trainingCerts.map((tr) => {
+                        const subtitle =
+                          tr.subtitle ||
+                          (tr.expiresAt
+                            ? `Expires ${formatExpiryLabel(tr.expiresAt)}`
+                            : "—");
+                        return (
+                          <li
+                            key={tr.id}
+                            className="flex items-start justify-between gap-3 py-3 first:pt-1 last:pb-1"
                           >
-                            {tr.status}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                            <div className="min-w-0">
+                              <p className="truncate font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                                {tr.name}
+                              </p>
+                              <p className="mt-0.5 font-sans text-[10px] uppercase text-[#959597]">
+                                {subtitle}
+                              </p>
+                            </div>
+                            <StatusPill status={tr.status} />
+                          </li>
+                        );
+                      })}
+                    </ul>
                   )}
                 </SectionPanel>
 
-                <SectionPanel title="Audit History">
+                <SectionPanel icon={<LightningIcon />} title="Audit History">
                   {auditHistory.length === 0 ? (
-                    <EmptyBlock label="No history yet." />
+                    <EmptyBlock label="No activity yet." />
                   ) : (
-                    <div className="space-y-3">
+                    <ul className="divide-y divide-[#2A2A2A]">
                       {auditHistory.map((a) => (
-                        <div key={a.id}>
+                        <li key={a.id} className="py-3 first:pt-1 last:pb-1">
                           <p className="font-sans text-[10px] uppercase tracking-[-0.01em] text-[#959597]">
-                            {a.when}
+                            {relativeWhen(a.when)}
                           </p>
-                          <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                          <p className="mt-1 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
                             {a.label}
                           </p>
-                        </div>
+                          {a.detail ? (
+                            <p className="mt-1 font-sans text-[10px] uppercase tracking-[-0.01em] text-[#6B6B6B]">
+                              {a.detail}
+                            </p>
+                          ) : null}
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   )}
                 </SectionPanel>
               </div>

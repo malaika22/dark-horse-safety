@@ -477,13 +477,11 @@ export function EmployeesPage() {
         if (crew == null) return;
         await hrApi.bulkAssignEmployees({ ids, crew: crew.trim() });
       } else if (kind === "supervisor") {
-        const pick = options?.supervisors.find((s) => s.value);
         const supervisorId = await askPrompt({
           title: "Assign Supervisor",
           label: "Supervisor ID",
-          placeholder: pick?.value || "",
+          placeholder: "Enter supervisor ID",
           confirmLabel: "Assign",
-          defaultValue: pick?.value || "",
         });
         if (supervisorId == null) return;
         await hrApi.bulkAssignEmployees({
@@ -1086,7 +1084,6 @@ export function EmployeesPage() {
                         title: "Assign Truck",
                         label: "Truck ID",
                         placeholder: "TRK-14",
-                        defaultValue: rowMenu.assignedTruck ?? "",
                         confirmLabel: "Assign",
                       });
                       if (truck == null) return;

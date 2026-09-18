@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+﻿import { TimeOffPage } from "@/features/hr/time-off-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Time Off" />;
+  return <TimeOffPage />;
 }

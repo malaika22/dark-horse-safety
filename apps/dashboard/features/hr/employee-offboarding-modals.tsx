@@ -78,7 +78,7 @@ export function OffboardingChecklistModal({
         }
         if (cancelled) return;
         setData(res.data);
-        setLastDay(res.data.lastDay);
+        setLastDay("");
       } catch (err) {
         toastApiError(err);
         onClose();

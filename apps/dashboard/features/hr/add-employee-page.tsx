@@ -355,15 +355,24 @@ function SectionCard({
   title,
   children,
   editAction,
+  review,
 }: {
   title: string;
   children: React.ReactNode;
   editAction?: () => void;
+  review?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-[#2D2D30] bg-[#161616] p-4 sm:p-5">
+    <div
+      className={cn(
+        "rounded-xl p-4 sm:p-5",
+        review
+          ? "bg-[#141414]"
+          : "border border-[#2D2D30] bg-[#161616]",
+      )}
+    >
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+        <h2 className="font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
           {title}
         </h2>
         {editAction ? (
@@ -387,11 +396,20 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
       <p className="font-sans text-[10px] uppercase tracking-[-0.01em] text-[#959597]">
         {label}
       </p>
-      <p className="mt-0.5 truncate font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+      <p className="mt-1 font-sans text-[13px] font-[510] uppercase leading-snug tracking-[-0.02em] text-[#FDFDFF]">
         {value || "—"}
       </p>
     </div>
   );
+}
+
+function formatPayRate(rate: string) {
+  const raw = rate.trim();
+  if (!raw) return "$00.00 / HR";
+  if (raw.includes("$") || /hr/i.test(raw)) return raw.toUpperCase();
+  const n = Number(raw);
+  if (Number.isFinite(n)) return `$${n.toFixed(2)} / HR`;
+  return raw;
 }
 
 function displayOrDash(v: string) {
@@ -525,11 +543,22 @@ export function AddEmployeePage() {
 
   return (
     <div className="bg-shell p-3 sm:p-5">
-      <Stepper
-        step={step}
-        maxReached={maxReached}
-        onJump={(i) => setStep(i)}
-      />
+      {step < STEPS.length - 1 ? (
+        <Stepper
+          step={step}
+          maxReached={maxReached}
+          onJump={(i) => setStep(i)}
+        />
+      ) : (
+        <div className="mb-6">
+          <h1 className="font-sans text-[22px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF] sm:text-[28px]">
+            Review & Create
+          </h1>
+          <p className="mt-2 max-w-2xl font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
+            Confirm the details below before creating this employee record.
+          </p>
+        </div>
+      )}
 
       {step === 0 ? (
         <SectionCard title="Personal">
@@ -891,9 +920,9 @@ export function AddEmployeePage() {
       ) : null}
 
       {step === 6 ? (
-        <div className="space-y-4">
-          <SectionCard title="Personal" editAction={() => setStep(0)}>
-            <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-3 sm:space-y-4">
+          <SectionCard review title="Personal" editAction={() => setStep(0)}>
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-3">
               <ReviewRow label="First Name" value={form.firstName} />
               <ReviewRow label="Last Name" value={form.lastName} />
               <ReviewRow label="Preferred Name" value={form.displayName} />
@@ -905,33 +934,46 @@ export function AddEmployeePage() {
               />
             </div>
           </SectionCard>
-          <SectionCard title="Role & Pay" editAction={() => setStep(1)}>
-            <div className="grid gap-3 sm:grid-cols-3">
+          <SectionCard review title="Role & Pay" editAction={() => setStep(1)}>
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-3">
               <ReviewRow
                 label="Job Title"
-                value={displayOrDash(form.jobTitle)}
+                value={displayOrDash(form.jobTitle || form.roleTitle)}
               />
-              <ReviewRow label="Role" value={form.roleTitle} />
+              <ReviewRow
+                label="Role"
+                value={displayOrDash(form.roleTitle || form.jobTitle)}
+              />
               <ReviewRow label="Crew" value={displayOrDash(form.crew)} />
               <ReviewRow label="Supervisor" value={supervisorName} />
               <ReviewRow
                 label="Hire Date"
                 value={displayOrDash(form.hireDate)}
               />
-              <ReviewRow label="Employment Type" value={form.employmentType} />
+              <ReviewRow
+                label="Employment Type"
+                value={displayOrDash(form.employmentType)}
+              />
               <ReviewRow
                 label="Pay Rate"
-                value={form.payRate ? form.payRate : "$00.00 / HR"}
+                value={formatPayRate(form.payRate)}
               />
-              <ReviewRow label="Pay Type" value={form.payType} />
+              <ReviewRow
+                label="Pay Type"
+                value={displayOrDash(form.payType)}
+              />
               <ReviewRow
                 label="Overtime Eligible"
                 value={form.overtimeEligible ? "Enabled" : "Disabled"}
               />
             </div>
           </SectionCard>
-          <SectionCard title="Certifications" editAction={() => setStep(2)}>
-            <div className="grid gap-3 sm:grid-cols-3">
+          <SectionCard
+            review
+            title="Certifications"
+            editAction={() => setStep(2)}
+          >
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-3">
               <ReviewRow
                 label="Certification"
                 value={displayOrDash(form.certificationHeld)}
@@ -946,11 +988,11 @@ export function AddEmployeePage() {
               />
             </div>
           </SectionCard>
-          <SectionCard title="Equipment" editAction={() => setStep(3)}>
-            <div className="grid gap-3 sm:grid-cols-3">
+          <SectionCard review title="Equipment" editAction={() => setStep(3)}>
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-3">
               <ReviewRow
                 label="Assign Truck"
-                value={form.assignedTruck || "Not selected"}
+                value={form.assignedTruck || "Not Selected"}
               />
               <ReviewRow
                 label="Assign Equipment"
@@ -966,9 +1008,16 @@ export function AddEmployeePage() {
               />
             </div>
           </SectionCard>
-          <SectionCard title="System Access" editAction={() => setStep(4)}>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <ReviewRow label="Role Template" value={form.roleTemplate} />
+          <SectionCard
+            review
+            title="System Access"
+            editAction={() => setStep(4)}
+          >
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-3">
+              <ReviewRow
+                label="Role Template"
+                value={displayOrDash(form.roleTemplate)}
+              />
               <ReviewRow
                 label="Mobile App Access"
                 value={form.mobileAppAccess ? "Enabled" : "Disabled"}
@@ -979,19 +1028,20 @@ export function AddEmployeePage() {
               />
             </div>
           </SectionCard>
-          <SectionCard title="SSE" editAction={() => setStep(5)}>
-            <div className="grid gap-3 sm:grid-cols-3">
+          <SectionCard review title="SSE" editAction={() => setStep(5)}>
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-3">
               <ReviewRow
                 label="Short-Service Employee"
                 value={form.sseEnabled ? "Enabled" : "Disabled"}
               />
-              <ReviewRow label="Assign Mentor" value={mentorName} />
+              <ReviewRow
+                label="Assign Mentor"
+                value={form.sseMentorId ? mentorName : "Not Selected"}
+              />
               <ReviewRow
                 label="SSE Period Length"
                 value={
-                  form.ssePeriodDays
-                    ? `${form.ssePeriodDays} Days`
-                    : "—"
+                  form.ssePeriodDays ? `${form.ssePeriodDays} Days` : "—"
                 }
               />
             </div>
@@ -999,7 +1049,7 @@ export function AddEmployeePage() {
         </div>
       ) : null}
 
-      <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+      <div className="mt-8 flex flex-wrap items-center justify-end gap-2">
         {step > 0 ? (
           <DashboardToolbarButton onClick={goBack} disabled={busy}>
             Back

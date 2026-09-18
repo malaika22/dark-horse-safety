@@ -637,8 +637,8 @@ export class EmployeesService {
         this.prisma.employee.count({
           where: { archivedAt: null, hasOpenTimeEdit: true },
         }),
-        this.prisma.employee.count({
-          where: { archivedAt: null, onLeave: true },
+        this.prisma.timeOffRequest.count({
+          where: { archivedAt: null, status: 'PENDING' },
         }),
         this.prisma.employee.count({
           where: { archivedAt: null, missingBbs: true },

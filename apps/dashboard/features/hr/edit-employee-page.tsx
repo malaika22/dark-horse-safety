@@ -915,7 +915,7 @@ export function EditEmployeePage({ employeeId }: { employeeId: string }) {
               </div>
             </Section>
 
-            <div className="sticky bottom-0 z-10 -mx-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#2D2D30] bg-shell/95 px-3 py-3 backdrop-blur sm:-mx-5 sm:px-5">
+            <div className="sticky bottom-0 z-10 -mx-3 flex flex-wrap items-center justify-end gap-2 border-t border-[#2D2D30] bg-shell/95 px-3 py-3 backdrop-blur sm:-mx-5 sm:px-5">
               <button
                 type="button"
                 disabled={busy}
@@ -924,21 +924,19 @@ export function EditEmployeePage({ employeeId }: { employeeId: string }) {
               >
                 Terminate Employee
               </button>
-              <div className="flex flex-wrap gap-2">
-                <DashboardToolbarButton
-                  disabled={busy}
-                  onClick={() => router.push(`/hr/employees/${employeeId}`)}
-                >
-                  Cancel
-                </DashboardToolbarButton>
-                <DashboardToolbarButton
-                  variant="primary"
-                  disabled={busy}
-                  onClick={() => void save()}
-                >
-                  Save
-                </DashboardToolbarButton>
-              </div>
+              <DashboardToolbarButton
+                disabled={busy}
+                onClick={() => router.push(`/hr/employees/${employeeId}`)}
+              >
+                Cancel
+              </DashboardToolbarButton>
+              <DashboardToolbarButton
+                variant="primary"
+                disabled={busy}
+                onClick={() => void save()}
+              >
+                Save
+              </DashboardToolbarButton>
             </div>
           </div>
         ) : null}

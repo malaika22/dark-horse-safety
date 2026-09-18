@@ -351,16 +351,12 @@ export function TimeEntriesPage() {
       </DashboardToolbarButton>
       <DashboardToolbarButton
         variant="primary"
-        onClick={() =>
-          toastSuccess(
-            `${kpi.editRequests} time edit request${kpi.editRequests === 1 ? "" : "s"} open`,
-          )
-        }
+        onClick={() => router.push("/hr/time-edit-requests")}
       >
         Time Edit Requests ({kpi.editRequests})
       </DashboardToolbarButton>
     </div>,
-    [busy, kpi.editRequests],
+    [busy, kpi.editRequests, router],
   );
 
   function toggleSelect(id: string) {

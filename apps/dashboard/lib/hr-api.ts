@@ -104,6 +104,7 @@ export type HrEmployeeDetail = HrEmployee & {
     id: string;
     name: string;
     expiresAt?: string | null;
+    subtitle?: string | null;
     status: string;
   }>;
   equipment: Array<{
@@ -115,7 +116,12 @@ export type HrEmployeeDetail = HrEmployee & {
     badge?: string;
     badgeTone?: string;
   }>;
-  auditHistory: Array<{ id: string; when: string; label: string }>;
+  auditHistory: Array<{
+    id: string;
+    when: string;
+    label: string;
+    detail?: string | null;
+  }>;
   notes: Array<{ id: string; text: string; createdAt: string }>;
 };
 
@@ -279,6 +285,201 @@ export type HrTimeEntryFilterOptions = {
   billable: Array<{ value: string; label: string }>;
   locked: Array<{ value: string; label: string }>;
   technicians: Array<{ value: string; label: string }>;
+};
+
+export type HrTimeEditRequest = {
+  id: string;
+  employeeId: string;
+  technician: { id: string; code: string; name: string };
+  timeEntryId?: string | null;
+  workDate: string;
+  dateLabel: string;
+  cycleLabel: string;
+  workOrderCode?: string | null;
+  customerName?: string | null;
+  type: string;
+  typeLabel: string;
+  status: string;
+  deltaHours: number;
+  deltaLabel: string;
+  differenceKind: string;
+  relativeTime?: string | null;
+  originalClockIn?: string | null;
+  originalClockOut?: string | null;
+  originalHours?: number | null;
+  requestedClockIn?: string | null;
+  requestedClockOut?: string | null;
+  requestedHours?: number | null;
+  technicianReason?: string | null;
+  gpsContext?: string | null;
+  adminNote?: string | null;
+  needsClarification: boolean;
+  lockedCycle?: boolean;
+  payrollCycleLabel?: string | null;
+  cycleClosedLabel?: string | null;
+  dollarDelta?: number | null;
+  dollarDeltaLabel?: string | null;
+  auditWarning?: string | null;
+  offCycleRunLabel?: string | null;
+  overrideByName?: string | null;
+  overrideAt?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type HrTimeEditRequestKpi = {
+  pending: number;
+  needsClarification: number;
+  approvedCycle: number;
+  avgTurnaroundHours: number;
+  rejectedCycle: number;
+  lockedCycle: boolean;
+  cycleLabel: string;
+};
+
+export type HrTimeOffRequest = {
+  id: string;
+  employeeId: string;
+  employee: { id: string; code: string; name: string; crew?: string | null };
+  type: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  startLabel: string;
+  endLabel: string;
+  dayCount: number;
+  hoursRequested: number;
+  balanceAfter?: number | null;
+  coverage: string;
+  requestedAt: string;
+  requestedLabel: string;
+  reason?: string | null;
+  adminNote?: string | null;
+  crossesPayCycle: boolean;
+  onCallDates?: string[];
+  assignedJobs?: Array<{ code: string; date: string; label?: string }>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type HrTimeOffCoverageCheck = {
+  id: string;
+  kind: "OVERLAP" | "CONFLICT";
+  label: string;
+  detail: string;
+  tone: "warning" | "danger";
+};
+
+export type HrTimeOffReview = {
+  request: HrTimeOffRequest;
+  summary: string;
+  conflictCount: number;
+  coverageChecks: HrTimeOffCoverageCheck[];
+  balance: {
+    current: number;
+    requested: number;
+    after: number;
+    status: "SUFFICIENT" | "INSUFFICIENT";
+  };
+};
+
+export type HrTimeOffCalendarEvent = {
+  id: string;
+  employeeName: string;
+  type: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  startLabel: string;
+  endLabel: string;
+  coverage: string;
+};
+
+export type HrTimeOffCalendar = {
+  year: number;
+  month: number;
+  monthLabel: string;
+  events: HrTimeOffCalendarEvent[];
+};
+
+export type HrTimeOffKpi = {
+  pending: number;
+  pendingMeta: string;
+  approved: number;
+  approvedMeta: string;
+  denied: number;
+  deniedMeta: string;
+  upcoming: number;
+  upcomingMeta: string;
+  coverageNeeded: number;
+  coverageNeededMeta: string;
+};
+
+export type HrPayCycleRow = {
+  id: string;
+  code: string;
+  cycleLabel: string;
+  dateRange: string;
+  startDate: string;
+  endDate: string;
+  lockTime: string;
+  status: "CLOSED" | "OPEN" | "UPCOMING" | string;
+  hours: number | null;
+  amount: number | null;
+  isCurrent: boolean;
+};
+
+export type HrPayCycleHoliday = {
+  id: string;
+  dateLabel: string;
+  observedOn: string;
+  name: string;
+  hoursCredited: number;
+};
+
+export type HrPayCycleOverview = {
+  year: number;
+  cycleCount: number;
+  headerSubtitle: string;
+  cycles: HrPayCycleRow[];
+  overtime: {
+    dailyOtThresholdHrs: number;
+    weeklyOtThresholdHrs: number;
+    otMultiplier: number;
+    doubleTimeAfterHrs: number;
+    minBillableBlock: string;
+    roundTo: string;
+  };
+  holidays: HrPayCycleHoliday[];
+  holidaysMeta: string;
+  currentCycle: {
+    id: string;
+    code: string;
+    dateRange: string;
+    status: string;
+    activeEmployees: number;
+    daysRemaining: number;
+    totalHours: number;
+    pendingEdits: number;
+    lockedEntries: number;
+  } | null;
+  ptoRules: {
+    annualPtoDays: number;
+    accrualRatePerPeriod: number;
+    annualSickDays: number;
+    carryoverCapDays: number;
+    noticeRequiredDays: number;
+    blackout: string;
+  };
+  cadence: {
+    cadence: string;
+    cycleLengthDays: number;
+    lockTime: string;
+    autoApproveRules: string;
+    gracePeriodDays: number;
+  };
+  notes?: string | null;
 };
 
 export type CreateEmployeeBody = {
@@ -463,6 +664,120 @@ export const hrApi = {
       nonBillableContext?: string;
     },
   ) => api.patch<ApiData<HrTimeEntry>>(`/hr/time-entries/${id}`, body),
+
+  timeEditRequestsKpi: () =>
+    api.get<ApiData<HrTimeEditRequestKpi>>("/hr/time-edit-requests/kpi"),
+  listTimeEditRequests: (params?: HrListParams) =>
+    api.get<ApiList<HrTimeEditRequest>>(
+      `/hr/time-edit-requests${q(params)}`,
+    ),
+  getTimeEditRequest: (id: string) =>
+    api.get<ApiData<HrTimeEditRequest>>(`/hr/time-edit-requests/${id}`),
+  approveTimeEditRequest: (id: string, adminNote?: string) =>
+    api.post<ApiData<HrTimeEditRequest>>(
+      `/hr/time-edit-requests/${id}/approve`,
+      { adminNote },
+    ),
+  adminOverrideTimeEditRequest: (
+    id: string,
+    body?: { adminNote?: string; overrideByName?: string },
+  ) =>
+    api.post<ApiData<HrTimeEditRequest>>(
+      `/hr/time-edit-requests/${id}/admin-override`,
+      body ?? {},
+    ),
+  rejectTimeEditRequest: (id: string, reason?: string) =>
+    api.post<ApiData<HrTimeEditRequest>>(
+      `/hr/time-edit-requests/${id}/reject`,
+      { reason },
+    ),
+  clarifyTimeEditRequest: (id: string, message?: string) =>
+    api.post<ApiData<HrTimeEditRequest>>(
+      `/hr/time-edit-requests/${id}/clarify`,
+      { message },
+    ),
+  saveTimeEditAdminNote: (id: string, adminNote: string) =>
+    api.post<ApiData<HrTimeEditRequest>>(
+      `/hr/time-edit-requests/${id}/admin-note`,
+      { adminNote },
+    ),
+  addTimeEditNote: (text: string, requestId?: string) =>
+    api.post<ApiData<HrTimeEditRequest>>(`/hr/time-edit-requests/add-note`, {
+      text,
+      requestId,
+    }),
+  exportTimeEditRequests: () =>
+    api.get<ApiData<{ csv: string; filename: string }>>(
+      "/hr/time-edit-requests/export",
+    ),
+
+  timeOffKpi: () => api.get<ApiData<HrTimeOffKpi>>("/hr/time-off/kpi"),
+  listTimeOff: (params?: HrListParams) =>
+    api.get<ApiList<HrTimeOffRequest>>(`/hr/time-off${q(params)}`),
+  getTimeOff: (id: string) =>
+    api.get<ApiData<HrTimeOffRequest>>(`/hr/time-off/${id}`),
+  reviewTimeOff: (id: string) =>
+    api.get<ApiData<HrTimeOffReview>>(`/hr/time-off/${id}/review`),
+  timeOffCalendar: (params?: {
+    year?: number;
+    month?: number;
+    status?: string;
+    type?: string;
+    q?: string;
+  }) =>
+    api.get<ApiData<HrTimeOffCalendar>>(
+      `/hr/time-off/calendar${q(params)}`,
+    ),
+  createTimeOff: (body: {
+    employeeId: string;
+    type: string;
+    startDate: string;
+    endDate: string;
+    reason?: string;
+  }) => api.post<ApiData<HrTimeOffRequest>>("/hr/time-off", body),
+  approveTimeOff: (id: string, adminNote?: string) =>
+    api.post<ApiData<HrTimeOffRequest>>(`/hr/time-off/${id}/approve`, {
+      adminNote,
+    }),
+  denyTimeOff: (id: string, reason?: string) =>
+    api.post<ApiData<HrTimeOffRequest>>(`/hr/time-off/${id}/deny`, {
+      reason,
+    }),
+  exportTimeOff: (params?: HrListParams) =>
+    api.get<ApiData<{ csv: string; filename: string }>>(
+      `/hr/time-off/export${q(params)}`,
+    ),
+
+  payCycleSettings: (year?: number) =>
+    api.get<ApiData<HrPayCycleOverview>>(
+      `/hr/pay-cycle${q(year ? { year } : undefined)}`,
+    ),
+  closePayCycle: (id: string) =>
+    api.post<ApiData<{ id: string; status: string }>>(
+      `/hr/pay-cycle/${id}/close`,
+    ),
+  resyncPayCycle: (id: string) =>
+    api.post<ApiData<{ id: string; hours: number; amount: number }>>(
+      `/hr/pay-cycle/${id}/resync`,
+    ),
+  updatePayCycleOvertime: (body: Partial<HrPayCycleOverview["overtime"]>) =>
+    api.patch<ApiData<unknown>>(`/hr/pay-cycle/settings/overtime`, body),
+  updatePayCyclePto: (body: Partial<HrPayCycleOverview["ptoRules"]>) =>
+    api.patch<ApiData<unknown>>(`/hr/pay-cycle/settings/pto`, body),
+  updatePayCycleCadence: (body: Partial<HrPayCycleOverview["cadence"]>) =>
+    api.patch<ApiData<unknown>>(`/hr/pay-cycle/settings/cadence`, body),
+  updatePayCycleHoliday: (
+    id: string,
+    body: { name?: string; hoursCredited?: number; observedOn?: string },
+  ) =>
+    api.patch<ApiData<HrPayCycleHoliday>>(
+      `/hr/pay-cycle/holidays/${id}`,
+      body,
+    ),
+  addPayCycleNote: (text: string) =>
+    api.post<ApiData<{ notes: string | null }>>(`/hr/pay-cycle/notes`, {
+      text,
+    }),
 };
 
 export function downloadCsv(content: string, filename: string) {
