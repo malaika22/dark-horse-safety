@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+﻿import { SupervisorRoutingPage } from "@/features/hr/supervisor-routing-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Supervisor Routing" />;
+  return <SupervisorRoutingPage />;
 }

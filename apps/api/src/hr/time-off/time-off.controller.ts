@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../../auth/guards/auth.guards';
 import {
   CreateTimeOffDto,
   DecideTimeOffDto,
+  PreviewTimeOffDto,
   TimeOffCalendarQueryDto,
   TimeOffQueryDto,
 } from './dto/time-off.dto';
@@ -46,6 +47,12 @@ export class TimeOffController {
   @ApiOperation({ summary: 'List time off requests' })
   list(@Query() query: TimeOffQueryDto) {
     return this.service.list(query);
+  }
+
+  @Post('preview')
+  @ApiOperation({ summary: 'Preview balance and coverage for a time-off request' })
+  preview(@Body() dto: PreviewTimeOffDto) {
+    return this.service.preview(dto);
   }
 
   @Post()

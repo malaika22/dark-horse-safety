@@ -345,7 +345,7 @@ export function AppPageToolbar({
       {actions ? (
         <div
           className={cn(
-            "flex min-w-0 flex-nowrap items-center gap-2",
+            "flex min-w-0 flex-wrap items-center gap-2 overflow-visible",
             pageTitle
               ? "justify-start sm:justify-end"
               : "ml-auto w-full justify-end sm:w-auto",

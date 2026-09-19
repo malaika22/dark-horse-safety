@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+﻿import { TrainingPage } from "@/features/hr/training-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Training / SSE" />;
+  return <TrainingPage />;
 }

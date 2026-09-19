@@ -10,6 +10,7 @@ import {
   paginate,
   parsePage,
 } from '../../common/utils/pagination.util';
+import { AuthService } from '../../auth/auth.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   AddNoteDto,
@@ -265,7 +266,10 @@ function defaultOutstanding(employee: {
 
 @Injectable()
 export class EmployeesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auth: AuthService,
+  ) {}
 
   private displayName(firstName: string, lastName: string, displayName?: string | null) {
     if (displayName?.trim()) return displayName.trim().toUpperCase();
@@ -1178,18 +1182,24 @@ export class EmployeesService {
   async resetPassword(id: string) {
     const row = await this.prisma.employee.findFirst({
       where: { id, archivedAt: null },
-      include: { user: { select: { id: true, email: true } } },
+      include: { user: { select: { id: true, email: true, passwordHash: true } } },
     });
     if (!row) throw new NotFoundException('Employee not found');
-    const email = row.user?.email || row.email;
+    const email = (row.user?.email || row.email || '').trim().toLowerCase();
     if (!email) {
       throw new BadRequestException(
         'No email on file for this employee. Link a user account first.',
       );
     }
+    if (!row.user?.id || !row.user.passwordHash) {
+      throw new BadRequestException(
+        'Employee has no linked login account that can reset a password.',
+      );
+    }
+    await this.auth.forgotPassword({ email });
     return {
       data: {
-        message: `Password reset link queued for ${email}`,
+        message: `Password reset link sent to ${email}`,
         email,
       },
     };
@@ -1532,22 +1542,14 @@ export class EmployeesService {
             'RADIO',
           ],
           ppeOptions: ['HARD HAT', 'FR COVERALLS', 'STEEL TOES', 'GLOVES'],
-          trucks: [
-            'TRK-03',
-            'TRK-05',
-            'TRK-07',
-            'TRK-09',
-            'TRK-11',
-            'TRK-14',
-            'TRK-18',
-            'TRK-22',
-          ],
-          crews: [
-            'PERMIAN NORTH CREW',
-            'ALPHA',
-            'BRAVO',
-            'CHARLIE',
-          ],
+          trucks: trucks
+            .map((t) => t.assignedTruck)
+            .filter((v): v is string => Boolean(v))
+            .map((v) => v.toUpperCase()),
+          crews: crews
+            .map((c) => c.crew)
+            .filter((v): v is string => Boolean(v))
+            .map((v) => v.toUpperCase()),
           ssePeriods: [
             { value: '30', label: '30 DAYS' },
             { value: '60', label: '60 DAYS' },

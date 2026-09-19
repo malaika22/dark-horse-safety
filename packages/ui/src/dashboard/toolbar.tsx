@@ -124,7 +124,7 @@ export const DashboardToolbarButton = React.forwardRef<
       ref={ref}
       type="button"
       className={cn(
-        "btn-base inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap font-sans font-[510] uppercase leading-none tracking-[-0.02em]",
+        "btn-base inline-flex h-8 shrink-0 flex-row flex-nowrap items-center justify-center gap-1.5 overflow-visible whitespace-nowrap font-sans text-[12px] font-[510] uppercase leading-none tracking-[-0.02em]",
         variant === "glass" && "btn-glass-surface text-white",
         variant === "muted" &&
           "border border-[#3E3E3E] bg-[#353535] text-foreground-muted hover:bg-[#3D3D3D] hover:text-foreground-muted",
@@ -134,17 +134,19 @@ export const DashboardToolbarButton = React.forwardRef<
       {...props}
     >
       {leftIcon ? (
-        <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center [&_svg]:block">
+        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center overflow-visible [&_img]:h-3.5 [&_img]:w-3.5 [&_img]:max-w-none [&_img]:object-contain [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:max-w-none [&_svg]:shrink-0">
           {leftIcon}
         </span>
       ) : null}
-      <span className="leading-none">{children}</span>
+      <span className="inline-flex items-center leading-none">{children}</span>
       {rightIcon ? (
-        <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center [&_svg]:block">
+        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center overflow-visible [&_img]:h-3.5 [&_img]:w-3.5 [&_img]:max-w-none [&_img]:object-contain [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:max-w-none [&_svg]:shrink-0">
           {rightIcon}
         </span>
       ) : null}
-      {showChevron ? <ChevronDownIcon className="shrink-0" /> : null}
+      {showChevron ? (
+        <ChevronDownIcon className="h-3 w-3 shrink-0" />
+      ) : null}
     </button>
   );
 });

@@ -89,8 +89,8 @@ export function ChevronDownIcon({ className }: { className?: string }) {
 export function SyncIcon({ className }: { className?: string }) {
   return (
     <svg
-      width="16"
-      height="16"
+      width="14"
+      height="14"
       viewBox="0 0 24 24"
       fill="none"
       aria-hidden

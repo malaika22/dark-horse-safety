@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+﻿import { PayrollReviewPage } from "@/features/hr/payroll-review-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Payroll Review" />;
+  return <PayrollReviewPage />;
 }

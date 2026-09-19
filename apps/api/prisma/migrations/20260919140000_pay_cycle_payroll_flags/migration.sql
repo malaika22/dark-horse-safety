@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "PayCycle" ADD COLUMN IF NOT EXISTS "payrollApprovedAt" TIMESTAMP(3);
+ALTER TABLE "PayCycle" ADD COLUMN IF NOT EXISTS "payrollReportAt" TIMESTAMP(3);

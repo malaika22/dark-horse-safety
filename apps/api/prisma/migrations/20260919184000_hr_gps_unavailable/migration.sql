@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "HrGpsFlagType" ADD VALUE 'GPS_UNAVAILABLE';

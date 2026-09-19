@@ -409,7 +409,7 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
         onRetry={() => setReloadKey((k) => k + 1)}
       >
         {d ? (
-          <div className="space-y-4 bg-shell p-3 sm:space-y-5 sm:p-5" data-print-root>
+          <div className="space-y-4 bg-shell p-3 sm:space-y-5 sm:p-6" data-print-root>
             {/* Identity header */}
             <div className="flex flex-col gap-3 rounded-xl bg-panel px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div className="flex min-w-0 items-start gap-3">

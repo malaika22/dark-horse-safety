@@ -3,7 +3,7 @@
 import * as React from "react";
 import { usePathname } from "next/navigation";
 import { cn, useScrollLock } from "@dark-horse-safety/ui";
-import { APP_NAV } from "./nav";
+import { APP_NAV, isNavGroup } from "./nav";
 import { AppHeader, AppPageToolbar } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
 import { CRM_LIST_HEADER_ACTIONS } from "./crm-header-actions";
@@ -144,7 +144,27 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
   {
     path: "/hr/training",
     breadcrumb: "Employees & HR",
-    pageTitle: "Training / SSE",
+    pageTitle: "Training",
+  },
+  {
+    path: "/hr/training/new",
+    breadcrumb: "Employees & HR / Training",
+    pageTitle: "New Training Record",
+  },
+  {
+    path: "/hr/sse-programme",
+    breadcrumb: "Employees & HR",
+    pageTitle: "SSE Programme",
+  },
+  {
+    path: "/hr/on-call-rotation",
+    breadcrumb: "Employees & HR",
+    pageTitle: "On-Call Rotation",
+  },
+  {
+    path: "/hr/gps-flag-review",
+    breadcrumb: "Employees & HR",
+    pageTitle: "GPS Flag Review",
   },
   {
     path: "/hr/time-edit-requests",
@@ -155,6 +175,11 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
     path: "/hr/time-entries",
     breadcrumb: "Employees & HR",
     pageTitle: "Time Entries",
+  },
+  {
+    path: "/hr/time-off/request",
+    breadcrumb: "Employees & HR / Time Off / Request Time Off",
+    pageTitle: "Request Time Off",
   },
   { path: "/hr/time-off", breadcrumb: "Employees & HR / Time Off", pageTitle: "Time Off" },
   { path: "/hr/employees", breadcrumb: "Employees & HR", pageTitle: "Employees" },
@@ -360,11 +385,14 @@ function headerMetaForPath(pathname: string): HeaderMeta {
       return { breadcrumb: item.label, pageTitle: item.label };
     }
     for (const child of item.children ?? []) {
-      if (pathname === child.href || pathname.startsWith(`${child.href}/`)) {
-        const section = item.label.includes(" / ")
-          ? item.label.split(" / ")[0]!
-          : item.label;
-        return { breadcrumb: `${section}`, pageTitle: child.label };
+      const links = isNavGroup(child) ? child.children : [child];
+      for (const link of links) {
+        if (pathname === link.href || pathname.startsWith(`${link.href}/`)) {
+          const section = item.label.includes(" / ")
+            ? item.label.split(" / ")[0]!
+            : item.label;
+          return { breadcrumb: `${section}`, pageTitle: link.label };
+        }
       }
     }
   }

@@ -542,7 +542,7 @@ export function AddEmployeePage() {
     "Not selected";
 
   return (
-    <div className="bg-shell p-3 sm:p-5">
+    <div className="bg-shell p-3 sm:p-6">
       {step < STEPS.length - 1 ? (
         <Stepper
           step={step}

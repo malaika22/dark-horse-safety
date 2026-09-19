@@ -160,7 +160,8 @@ input:disabled {
   border-radius: 8px;
   align-items: center;
   justify-content: center;
-  gap: 0;
+  gap: 6px;
+  overflow: visible;
   font-size: 12px;
   line-height: 1;
   vertical-align: middle;

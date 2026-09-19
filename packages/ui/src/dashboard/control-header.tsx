@@ -21,8 +21,8 @@ export interface DashboardControlHeaderProps {
 function PlusIcon({ className }: { className?: string }) {
   return (
     <svg
-      width="16"
-      height="16"
+      width="14"
+      height="14"
       viewBox="0 0 24 24"
       fill="none"
       aria-hidden
@@ -120,21 +120,25 @@ export function DashboardControlHeader({
           <button
             type="button"
             onClick={onRunSync}
-            className="btn-base btn-glass-surface inline-flex min-w-0 flex-1 justify-center gap-1 whitespace-nowrap sm:flex-none sm:w-auto"
+            className="btn-base btn-glass-surface inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-visible whitespace-nowrap sm:flex-none sm:w-auto"
           >
-            <SyncIcon className="shrink-0" />
-            <span className="truncate">Run sync</span>
+            <SyncIcon className="h-3.5 w-3.5 shrink-0" />
+            <span className="leading-none">Run sync</span>
           </button>
           {showPrimary ? (
             <button
               type="button"
               onClick={actionHandler}
-              className="btn-base btn-primary-surface inline-flex min-w-0 flex-1 justify-center gap-1 whitespace-nowrap sm:flex-none sm:w-auto"
+              className="btn-base btn-primary-surface inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-visible whitespace-nowrap sm:flex-none sm:w-auto"
             >
-              {actionIcon}
-              <span className="truncate">{actionLabel}</span>
+              {actionIcon ? (
+                <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center overflow-visible [&_svg]:h-3.5 [&_svg]:w-3.5">
+                  {actionIcon}
+                </span>
+              ) : null}
+              <span className="leading-none">{actionLabel}</span>
               {showPrimaryChevron ? (
-                <ChevronDownIcon className="shrink-0" />
+                <ChevronDownIcon className="h-3 w-3 shrink-0" />
               ) : null}
             </button>
           ) : null}

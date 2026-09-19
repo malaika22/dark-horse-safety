@@ -200,7 +200,7 @@ export function TimeEditRequestsPage() {
 
   if (error) {
     return (
-      <div className="space-y-3 bg-shell p-5">
+      <div className="space-y-3 bg-shell p-3 sm:p-6">
         <p className="font-sans text-[12px] uppercase text-[#FF6B6B]">{error}</p>
         <DashboardToolbarButton onClick={() => setReloadKey((k) => k + 1)}>
           Retry
@@ -211,7 +211,7 @@ export function TimeEditRequestsPage() {
 
   return (
     <>
-      <div className="space-y-4 bg-shell p-3 sm:p-5">
+      <div className="space-y-4 bg-shell p-3 sm:p-6">
         <DashboardStatGrid>
           <DashboardStatRow>
             <DashboardStatCell

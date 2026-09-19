@@ -648,7 +648,7 @@ export function TimeEntriesPage() {
   const rowMenu = rows.find((r) => r.id === rowMenuId) ?? null;
 
   return (
-    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
+    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-6">
       <div className="rounded-xl border border-divider bg-panel px-4 py-3 sm:px-5">
         <p className="font-sans text-[11px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
           Clock-in categories:{" "}

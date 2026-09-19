@@ -1,229 +1,338 @@
-"use client";
-
-import * as React from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { cn } from "@dark-horse-safety/ui";
-import { APP_NAV } from "./nav";
-import { ChevronIcon, NavIcon } from "./icons";
-
-function isActivePath(pathname: string, href?: string) {
-  if (!href) return false;
-  if (href === "/dashboard") return pathname === "/dashboard";
-
-  const matches = (h: string) =>
-    pathname === h || pathname.startsWith(`${h}/`);
-
-  if (!matches(href)) return false;
-
-  // Across the whole nav, only the longest matching href is active —
-  // so /crm does not stay active on /crm/accounts, etc.
-  let best = href;
-  for (const item of APP_NAV) {
-    const hrefs =
-      item.children?.map((c) => c.href) ??
-      (item.href ? [item.href] : []);
-    for (const h of hrefs) {
-      if (matches(h) && h.length > best.length) best = h;
-    }
-  }
-  return best === href;
-}
-
-function sectionOpen(pathname: string, item: (typeof APP_NAV)[number]) {
-  if (item.href && isActivePath(pathname, item.href)) return true;
-  return item.children?.some((child) => isActivePath(pathname, child.href)) ?? false;
-}
-
-function SidebarBrand({ onClose }: { onClose?: () => void }) {
-  return (
-    <div className="flex items-center justify-between gap-2 px-4 py-4 lg:py-5">
-      <div className="flex min-w-0 items-center gap-2.5">
-        <Image
-          src="/brand/logo.png"
-          alt="Dark Horse Display"
-          width={28}
-          height={28}
-          className="h-7 w-7 shrink-0 object-contain"
-          priority
-        />
-        <p className="truncate text-[11px] font-bold uppercase tracking-[0.12em] text-foreground">
-          Dark Horse Display
-        </p>
-      </div>
-      {onClose ? (
-        <button
-          type="button"
-          aria-label="Close menu"
-          onClick={onClose}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border text-foreground transition-colors hover:bg-white/[0.05] lg:hidden"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M6 6l12 12M18 6L6 18"
-              stroke="currentColor"
-              strokeWidth="1.75"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function SidebarNav({ onClose }: { onClose?: () => void }) {
-  const pathname = usePathname();
-  const routeOpenIds = React.useMemo(() => {
-    const next: Record<string, boolean> = {};
-    for (const item of APP_NAV) {
-      if (item.children?.length) {
-        next[item.id] = sectionOpen(pathname, item);
-      }
-    }
-    return next;
-  }, [pathname]);
-
-  const [toggleOverrides, setToggleOverrides] = React.useState<
-    Record<string, boolean>
-  >({});
-  const [overridePath, setOverridePath] = React.useState(pathname);
-
-  if (overridePath !== pathname) {
-    setOverridePath(pathname);
-    setToggleOverrides({});
-  }
-
-  const openIds = React.useMemo(
-    () => ({ ...routeOpenIds, ...toggleOverrides }),
-    [routeOpenIds, toggleOverrides],
-  );
-
-  const toggle = (id: string) => {
-    setToggleOverrides((prev) => ({
-      ...prev,
-      [id]: !(prev[id] ?? routeOpenIds[id] ?? false),
-    }));
-  };
-
-  return (
-    <nav className="flex-1 overflow-y-auto overscroll-contain px-3 pb-6 scrollbar-hidden">
-      <ul className="flex flex-col gap-1">
-        {APP_NAV.map((item) => {
-          const hasChildren = Boolean(item.children?.length);
-          const open = openIds[item.id] ?? false;
-          const activeTop = !hasChildren && isActivePath(pathname, item.href);
-
-          return (
-            <li key={item.id}>
-              {hasChildren ? (
-                <button
-                  type="button"
-                  onClick={() => toggle(item.id)}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left font-sans text-[14px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors md:text-[15px]",
-                    open || sectionOpen(pathname, item)
-                      ? "text-[#FDFDFF]"
-                      : "text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]",
-                  )}
-                >
-                  <NavIcon name={item.icon} className="shrink-0 opacity-90" />
-                  <span className="min-w-0 flex-1 truncate whitespace-nowrap">
-                    {item.label}
-                  </span>
-                  <ChevronIcon open={open} className="shrink-0 opacity-70" />
-                </button>
-              ) : (
-                <Link
-                  href={item.href ?? "/dashboard"}
-                  onClick={onClose}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 font-sans text-[14px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors md:text-[15px]",
-                    activeTop
-                      ? "bg-[#27272A] text-[#FDFDFF]"
-                      : "text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]",
-                  )}
-                >
-                  <NavIcon name={item.icon} className="shrink-0 opacity-90" />
-                  <span className="min-w-0 truncate whitespace-nowrap">
-                    {item.label}
-                  </span>
-                </Link>
-              )}
-
-              {hasChildren && open ? (
-                <ul className="mt-0.5 space-y-0.5 pl-[42px]">
-                  {item.children!.map((child) => {
-                    const active = isActivePath(pathname, child.href);
-                    return (
-                      <li key={child.id}>
-                        <Link
-                          href={child.href}
-                          onClick={onClose}
-                          className={cn(
-                            "flex min-w-0 items-center rounded-md px-3 py-2 font-sans text-[13px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors md:text-[14px]",
-                            active
-                              ? "bg-gradient-to-r from-[#2f2f2f] to-[#1c1c1c] text-[#FDFDFF]"
-                              : "text-[#959597] hover:text-[#FDFDFF]",
-                          )}
-                        >
-                          <span className="truncate whitespace-nowrap">
-                            {child.label}
-                          </span>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
-  );
-}
-
-export function AppSidebar({
-  mobileOpen,
-  onClose,
-}: {
-  mobileOpen?: boolean;
-  onClose?: () => void;
-}) {
-  return (
-    <>
-      {mobileOpen ? (
-        <button
-          type="button"
-          aria-label="Close menu"
-          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
-          onClick={onClose}
-        />
-      ) : null}
-
-      {/* Mobile drawer — must stay fixed overlay (divider-edge-right uses position:relative) */}
-      <aside
-        data-app-sidebar
-        className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[280px] max-w-[85vw] flex-col border-r border-divider bg-black transition-transform duration-200 ease-out lg:hidden print:hidden",
-          mobileOpen ? "translate-x-0" : "-translate-x-full pointer-events-none",
-        )}
-        aria-hidden={!mobileOpen}
-      >
-        <SidebarBrand onClose={onClose} />
-        <SidebarNav onClose={onClose} />
-      </aside>
-
-      {/* Desktop sidebar — in layout flow only from lg+ */}
-      <aside
-        data-app-sidebar
-        className="divider-edge-right hidden h-full w-[260px] shrink-0 flex-col bg-black lg:flex print:hidden"
-      >
-        <SidebarBrand />
-        <SidebarNav />
-      </aside>
-    </>
-  );
-}
+"use client";
+
+import * as React from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@dark-horse-safety/ui";
+import {
+  APP_NAV,
+  collectNavHrefs,
+  isNavGroup,
+  type NavChild,
+  type NavItem,
+  type NavLink,
+} from "./nav";
+import { ChevronIcon, NavIcon } from "./icons";
+
+function isActivePath(pathname: string, href?: string) {
+  if (!href) return false;
+  if (href === "/dashboard") return pathname === "/dashboard";
+
+  const matches = (h: string) =>
+    pathname === h || pathname.startsWith(`${h}/`);
+
+  if (!matches(href)) return false;
+
+  // Across the whole nav, only the longest matching href is active —
+  // so /crm does not stay active on /crm/accounts, etc.
+  let best = href;
+  for (const item of APP_NAV) {
+    for (const h of collectNavHrefs(item)) {
+      if (matches(h) && h.length > best.length) best = h;
+    }
+  }
+  return best === href;
+}
+
+function groupHasActive(pathname: string, links: NavLink[]) {
+  return links.some((child) => isActivePath(pathname, child.href));
+}
+
+function sectionOpen(pathname: string, item: NavItem) {
+  if (item.href && isActivePath(pathname, item.href)) return true;
+  for (const child of item.children ?? []) {
+    if (isNavGroup(child)) {
+      if (groupHasActive(pathname, child.children)) return true;
+    } else if (isActivePath(pathname, child.href)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function SidebarBrand({ onClose }: { onClose?: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2 px-4 py-4 lg:py-5">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <Image
+          src="/brand/logo.png"
+          alt="Dark Horse Display"
+          width={28}
+          height={28}
+          className="h-7 w-7 shrink-0 object-contain"
+          priority
+        />
+        <p className="truncate text-[11px] font-bold uppercase tracking-[0.12em] text-foreground">
+          Dark Horse Display
+        </p>
+      </div>
+      {onClose ? (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={onClose}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border text-foreground transition-colors hover:bg-white/[0.05] lg:hidden"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path
+              d="M6 6l12 12M18 6L6 18"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function LeafLink({
+  child,
+  active,
+  onClose,
+  className,
+}: {
+  child: NavLink;
+  active: boolean;
+  onClose?: () => void;
+  className?: string;
+}) {
+  return (
+    <Link
+      href={child.href}
+      onClick={onClose}
+      className={cn(
+        "flex min-w-0 items-center rounded-md px-3 py-2 font-sans text-[13px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors md:text-[14px]",
+        active
+          ? "bg-gradient-to-r from-[#2f2f2f] to-[#1c1c1c] text-[#FDFDFF]"
+          : "text-[#959597] hover:text-[#FDFDFF]",
+        className,
+      )}
+    >
+      <span className="truncate whitespace-nowrap">{child.label}</span>
+    </Link>
+  );
+}
+
+function NestedGroup({
+  group,
+  open,
+  onToggle,
+  pathname,
+  onClose,
+}: {
+  group: { id: string; label: string; children: NavLink[] };
+  open: boolean;
+  onToggle: () => void;
+  pathname: string;
+  onClose?: () => void;
+}) {
+  const routeActive = groupHasActive(pathname, group.children);
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={cn(
+          "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left font-sans text-[13px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors md:text-[14px]",
+          open || routeActive
+            ? "text-[#FDFDFF]"
+            : "text-[#959597] hover:text-[#FDFDFF]",
+        )}
+      >
+        <span className="min-w-0 flex-1 truncate whitespace-nowrap">
+          {group.label}
+        </span>
+        <ChevronIcon open={open} className="shrink-0 opacity-70" />
+      </button>
+      {open ? (
+        <ul className="mt-0.5 space-y-0.5 pl-3">
+          {group.children.map((leaf) => (
+            <li key={leaf.id}>
+              <LeafLink
+                child={leaf}
+                active={isActivePath(pathname, leaf.href)}
+                onClose={onClose}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
+function renderChild(
+  child: NavChild,
+  pathname: string,
+  openIds: Record<string, boolean>,
+  toggle: (id: string) => void,
+  onClose?: () => void,
+) {
+  if (isNavGroup(child)) {
+    return (
+      <NestedGroup
+        key={child.id}
+        group={child}
+        open={openIds[child.id] ?? false}
+        onToggle={() => toggle(child.id)}
+        pathname={pathname}
+        onClose={onClose}
+      />
+    );
+  }
+  return (
+    <li key={child.id}>
+      <LeafLink
+        child={child}
+        active={isActivePath(pathname, child.href)}
+        onClose={onClose}
+      />
+    </li>
+  );
+}
+
+function SidebarNav({ onClose }: { onClose?: () => void }) {
+  const pathname = usePathname();
+  const routeOpenIds = React.useMemo(() => {
+    const next: Record<string, boolean> = {};
+    for (const item of APP_NAV) {
+      if (item.children?.length) {
+        next[item.id] = sectionOpen(pathname, item);
+        for (const child of item.children) {
+          if (isNavGroup(child)) {
+            next[child.id] = groupHasActive(pathname, child.children);
+          }
+        }
+      }
+    }
+    return next;
+  }, [pathname]);
+
+  const [toggleOverrides, setToggleOverrides] = React.useState<
+    Record<string, boolean>
+  >({});
+  const [overridePath, setOverridePath] = React.useState(pathname);
+
+  if (overridePath !== pathname) {
+    setOverridePath(pathname);
+    setToggleOverrides({});
+  }
+
+  const openIds = React.useMemo(
+    () => ({ ...routeOpenIds, ...toggleOverrides }),
+    [routeOpenIds, toggleOverrides],
+  );
+
+  const toggle = (id: string) => {
+    setToggleOverrides((prev) => ({
+      ...prev,
+      [id]: !(prev[id] ?? routeOpenIds[id] ?? false),
+    }));
+  };
+
+  return (
+    <nav className="flex-1 overflow-y-auto overscroll-contain px-3 pb-6 scrollbar-hidden">
+      <ul className="flex flex-col gap-1">
+        {APP_NAV.map((item) => {
+          const hasChildren = Boolean(item.children?.length);
+          const open = openIds[item.id] ?? false;
+          const activeTop = !hasChildren && isActivePath(pathname, item.href);
+
+          return (
+            <li key={item.id}>
+              {hasChildren ? (
+                <button
+                  type="button"
+                  onClick={() => toggle(item.id)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left font-sans text-[14px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors md:text-[15px]",
+                    open || sectionOpen(pathname, item)
+                      ? "text-[#FDFDFF]"
+                      : "text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]",
+                  )}
+                >
+                  <NavIcon name={item.icon} className="shrink-0 opacity-90" />
+                  <span className="min-w-0 flex-1 truncate whitespace-nowrap">
+                    {item.label}
+                  </span>
+                  <ChevronIcon open={open} className="shrink-0 opacity-70" />
+                </button>
+              ) : (
+                <Link
+                  href={item.href ?? "/dashboard"}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 font-sans text-[14px] font-[510] uppercase leading-none tracking-[-0.02em] transition-colors md:text-[15px]",
+                    activeTop
+                      ? "bg-[#27272A] text-[#FDFDFF]"
+                      : "text-[#959597] hover:bg-white/5 hover:text-[#FDFDFF]",
+                  )}
+                >
+                  <NavIcon name={item.icon} className="shrink-0 opacity-90" />
+                  <span className="min-w-0 truncate whitespace-nowrap">
+                    {item.label}
+                  </span>
+                </Link>
+              )}
+
+              {hasChildren && open ? (
+                <ul className="mt-0.5 space-y-0.5 pl-[42px]">
+                  {item.children!.map((child) =>
+                    renderChild(child, pathname, openIds, toggle, onClose),
+                  )}
+                </ul>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
+export function AppSidebar({
+  mobileOpen,
+  onClose,
+}: {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+}) {
+  return (
+    <>
+      {mobileOpen ? (
+        <button
+          type="button"
+          aria-label="Close menu"
+          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+          onClick={onClose}
+        />
+      ) : null}
+
+      {/* Mobile drawer — must stay fixed overlay (divider-edge-right uses position:relative) */}
+      <aside
+        data-app-sidebar
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex w-[280px] max-w-[85vw] flex-col border-r border-divider bg-black transition-transform duration-200 ease-out lg:hidden print:hidden",
+          mobileOpen ? "translate-x-0" : "-translate-x-full pointer-events-none",
+        )}
+        aria-hidden={!mobileOpen}
+      >
+        <SidebarBrand onClose={onClose} />
+        <SidebarNav onClose={onClose} />
+      </aside>
+
+      {/* Desktop sidebar — in layout flow only from lg+ */}
+      <aside
+        data-app-sidebar
+        className="divider-edge-right hidden h-full w-[260px] shrink-0 flex-col bg-black lg:flex print:hidden"
+      >
+        <SidebarBrand />
+        <SidebarNav />
+      </aside>
+    </>
+  );
+}
+

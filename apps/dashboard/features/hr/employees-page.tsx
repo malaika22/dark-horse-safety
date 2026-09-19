@@ -161,7 +161,7 @@ function DocIcon() {
 
 function PlusPersonIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"
         stroke="currentColor"
@@ -689,7 +689,7 @@ export function EmployeesPage() {
   const rowMenu = rows.find((r) => r.id === rowMenuId) ?? null;
 
   return (
-    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
+    <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-6">
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
           <DashboardStatCell

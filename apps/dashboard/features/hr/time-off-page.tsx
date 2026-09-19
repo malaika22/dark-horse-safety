@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   DashboardBadge,
   DashboardDataTable,
@@ -325,6 +326,7 @@ function RequestTimeOffModal({
 }
 
 export function TimeOffPage() {
+  const router = useRouter();
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -342,7 +344,6 @@ export function TimeOffPage() {
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
   const [sortOpen, setSortOpen] = React.useState(false);
   const [view, setView] = React.useState<ViewMode>("list");
-  const [requestOpen, setRequestOpen] = React.useState(false);
   const [employees, setEmployees] = React.useState<HrEmployee[]>([]);
   const [reloadKey, setReloadKey] = React.useState(0);
   const [exportOpen, setExportOpen] = React.useState(false);
@@ -429,11 +430,11 @@ export function TimeOffPage() {
       variant="primary"
       leftIcon={<ClipboardPlusIcon />}
       className="h-8 shrink-0"
-      onClick={() => setRequestOpen(true)}
+      onClick={() => router.push("/hr/time-off/request")}
     >
       Request Time Off
     </DashboardToolbarButton>,
-    [],
+    [router],
   );
 
   const columns = React.useMemo<DashboardDataTableColumn<HrTimeOffRequest>[]>(
@@ -588,7 +589,7 @@ export function TimeOffPage() {
 
   if (error && rows.length === 0) {
     return (
-      <div className="space-y-3 bg-shell p-5">
+      <div className="space-y-3 bg-shell p-3 sm:p-6">
         <p className="font-sans text-[12px] uppercase text-[#FF6B6B]">{error}</p>
         <DashboardToolbarButton onClick={() => setReloadKey((k) => k + 1)}>
           Retry
@@ -599,7 +600,7 @@ export function TimeOffPage() {
 
   return (
     <>
-      <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-5">
+      <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-6">
         <DashboardStatGrid>
           <DashboardStatRow columns={5}>
             <DashboardStatCell
@@ -904,14 +905,6 @@ export function TimeOffPage() {
           ))}
         </div>
       </DashboardDrawer>
-
-      <RequestTimeOffModal
-        open={requestOpen}
-        employees={employees}
-        busy={busy}
-        onClose={() => setRequestOpen(false)}
-        onCreated={() => setReloadKey((k) => k + 1)}
-      />
 
       <ApproveTimeOffModal
         open={Boolean(approveId)}

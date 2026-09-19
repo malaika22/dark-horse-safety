@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+﻿import { HrDashboardPage } from "@/features/hr/hr-dashboard-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="HR Dashboard" />;
+  return <HrDashboardPage />;
 }

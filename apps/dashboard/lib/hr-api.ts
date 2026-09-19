@@ -352,6 +352,15 @@ export type HrTimeOffRequest = {
   hoursRequested: number;
   balanceAfter?: number | null;
   coverage: string;
+  durationMode?: string;
+  partialHours?: number | null;
+  coveragePersonId?: string | null;
+  coveragePersonName?: string | null;
+  allowOverride?: boolean;
+  overrideRoles?: string[];
+  requireOverrideReason?: boolean;
+  notifySupervisor?: boolean;
+  attachments?: Array<{ name: string; size?: string }>;
   requestedAt: string;
   requestedLabel: string;
   reason?: string | null;
@@ -361,6 +370,24 @@ export type HrTimeOffRequest = {
   assignedJobs?: Array<{ code: string; date: string; label?: string }>;
   createdAt: string;
   updatedAt: string;
+};
+
+export type HrTimeOffPreview = {
+  dayCount: number;
+  hoursRequested: number;
+  durationMode: string;
+  balanceBefore: number;
+  balanceAfter: number;
+  shortfall: number;
+  insufficient: boolean;
+  balanceBeforeLabel: string;
+  balanceAfterLabel: string;
+  insufficientMessage: string | null;
+  coverageConflict: {
+    message: string;
+    personName: string;
+    rangeLabel: string;
+  } | null;
 };
 
 export type HrTimeOffCoverageCheck = {
@@ -480,6 +507,57 @@ export type HrPayCycleOverview = {
     gracePeriodDays: number;
   };
   notes?: string | null;
+};
+
+export type HrPayrollException = {
+  id: string;
+  label: string;
+  tone: "warn" | "danger" | "info";
+  kind?:
+    | "clock-out"
+    | "edit"
+    | "gps"
+    | "docs"
+    | "form"
+    | "locked"
+    | string;
+  targetId?: string;
+  href?: string;
+};
+
+export type HrPayrollReviewRow = {
+  id: string;
+  employeeId: string;
+  name: string;
+  code: string;
+  rtHours: number;
+  otHours: number;
+  holidayHours: number;
+  sickHours: number;
+  vacationHours: number;
+  totalHours: number;
+  gross: number;
+  exceptions: HrPayrollException[];
+  status: "READY" | "REVIEW" | "BLOCK" | string;
+};
+
+export type HrPayrollReviewKpi = {
+  cycleId: string;
+  cycleCode: string;
+  cycleLabel: string;
+  dateRange: string;
+  payrollApprovedAt: string | null;
+  banner: string;
+  regularTimeTotal: string;
+  regularTimeMeta: string;
+  overTimeTotal: string;
+  overTimeMeta: string;
+  leaveTotal: string;
+  leaveMeta: string;
+  totalGross: string;
+  totalGrossMeta: string;
+  exceptions: number;
+  exceptionsMeta: string;
 };
 
 export type CreateEmployeeBody = {
@@ -736,7 +814,26 @@ export const hrApi = {
     startDate: string;
     endDate: string;
     reason?: string;
+    durationMode?: string;
+    partialHours?: number;
+    coveragePersonId?: string;
+    coveragePersonName?: string;
+    allowOverride?: boolean;
+    overrideRoles?: string[];
+    requireOverrideReason?: boolean;
+    notifySupervisor?: boolean;
+    attachments?: Array<{ name: string; size?: string }>;
   }) => api.post<ApiData<HrTimeOffRequest>>("/hr/time-off", body),
+  previewTimeOff: (body: {
+    employeeId: string;
+    type: string;
+    startDate: string;
+    endDate: string;
+    durationMode?: string;
+    partialHours?: number;
+    coveragePersonId?: string;
+    coveragePersonName?: string;
+  }) => api.post<ApiData<HrTimeOffPreview>>("/hr/time-off/preview", body),
   approveTimeOff: (id: string, adminNote?: string) =>
     api.post<ApiData<HrTimeOffRequest>>(`/hr/time-off/${id}/approve`, {
       adminNote,
@@ -757,6 +854,10 @@ export const hrApi = {
   closePayCycle: (id: string) =>
     api.post<ApiData<{ id: string; status: string }>>(
       `/hr/pay-cycle/${id}/close`,
+    ),
+  reopenPayCycle: (id: string) =>
+    api.post<ApiData<{ id: string; status: string }>>(
+      `/hr/pay-cycle/${id}/reopen`,
     ),
   resyncPayCycle: (id: string) =>
     api.post<ApiData<{ id: string; hours: number; amount: number }>>(
@@ -780,6 +881,624 @@ export const hrApi = {
     api.post<ApiData<{ notes: string | null }>>(`/hr/pay-cycle/notes`, {
       text,
     }),
+
+  payrollReviewKpi: (cycleId?: string) =>
+    api.get<ApiData<HrPayrollReviewKpi>>(
+      `/hr/payroll-review/kpi${q(cycleId ? { cycleId } : undefined)}`,
+    ),
+  listPayrollReview: (params?: HrListParams) =>
+    api.get<ApiList<HrPayrollReviewRow>>(
+      `/hr/payroll-review${q(params)}`,
+    ),
+  approvePayrollReview: (cycleId?: string) =>
+    api.post<ApiData<{ id: string; payrollApprovedAt: string | null; message: string }>>(
+      `/hr/payroll-review/approve${q(cycleId ? { cycleId } : undefined)}`,
+      {},
+    ),
+  generatePayrollReport: (cycleId?: string) =>
+    api.get<ApiData<{ csv: string; filename: string; cycleId: string; cycleCode: string }>>(
+      `/hr/payroll-review/report${q(cycleId ? { cycleId } : undefined)}`,
+    ),
+  exportPayrollReview: (params?: HrListParams) =>
+    api.get<ApiData<{ csv: string; filename: string }>>(
+      `/hr/payroll-review/export${q(params)}`,
+    ),
+
+  payrollResolveContext: (kind: string, targetId: string) =>
+    api.get<ApiData<Record<string, unknown>>>(
+      `/hr/payroll-review/resolve/${encodeURIComponent(kind)}/${encodeURIComponent(targetId)}`,
+    ),
+  payrollResolveClockOut: (id: string, clockOut: string) =>
+    api.post<ApiData<{ id: string; clockOut: string | null; message: string }>>(
+      `/hr/payroll-review/resolve/clock-out/${id}`,
+      { clockOut },
+    ),
+  payrollAskEmployee: (id: string, message?: string) =>
+    api.post<ApiData<{ message: string }>>(
+      `/hr/payroll-review/resolve/ask/${id}`,
+      { message },
+    ),
+  payrollResolveDocs: (employeeId: string) =>
+    api.post<ApiData<{ message: string }>>(
+      `/hr/payroll-review/resolve/docs/${employeeId}`,
+      {},
+    ),
+  payrollResolveForm: (id: string) =>
+    api.post<ApiData<{ message: string }>>(
+      `/hr/payroll-review/resolve/form/${id}`,
+      {},
+    ),
+  payrollResolveGps: (id: string, action: "confirm" | "error") =>
+    api.post<ApiData<{ message: string }>>(
+      `/hr/payroll-review/resolve/gps/${id}`,
+      { action },
+    ),
+  payrollLockPreview: (cycleId?: string) =>
+    api.get<
+      ApiData<{
+        cycleId: string;
+        cycle: string;
+        dateRange: string;
+        employees: string;
+        totalHours: string;
+        grossTotal: string;
+        unresolved: Array<{
+          id: string;
+          label: string;
+          count: number;
+          tone: string;
+        }>;
+        warning: string;
+      }>
+    >(`/hr/payroll-review/lock-preview${q(cycleId ? { cycleId } : undefined)}`),
+  payrollLockCycle: (cycleId?: string) =>
+    api.post<ApiData<{ id: string; status: string; message: string }>>(
+      `/hr/payroll-review/lock${q(cycleId ? { cycleId } : undefined)}`,
+      {},
+    ),
+  payrollUnlockPreview: (cycleId?: string) =>
+    api.get<
+      ApiData<{
+        cycleId: string;
+        metaLine: string;
+        exportedBadge: string;
+        entry: {
+          lockedOn: string;
+          lockedBy: string;
+          payrollExported: string;
+        };
+      }>
+    >(
+      `/hr/payroll-review/unlock-preview${q(cycleId ? { cycleId } : undefined)}`,
+    ),
+  payrollUnlockRequest: (reason: string, cycleId?: string) =>
+    api.post<ApiData<{ message: string; cycleId: string }>>(
+      `/hr/payroll-review/unlock-request${q(cycleId ? { cycleId } : undefined)}`,
+      { reason },
+    ),
+  offCycleKpi: () =>
+    api.get<
+      ApiData<{
+        entriesReopened: number;
+        totalDeltaHours: string;
+        totalDeltaDollars: string;
+        approvedBy: string;
+        runStatus: string;
+        pendingCount: number;
+        processedCount: number;
+      }>
+    >(`/hr/payroll-review/off-cycle/kpi`),
+  listOffCycle: (params?: HrListParams) =>
+    api.get<
+      ApiList<{
+        id: string;
+        employeeId: string;
+        name: string;
+        code: string;
+        originalCycle: string;
+        reason: string;
+        original: string;
+        updated: string;
+        delta: string;
+        dollarImpact: string;
+        status: string;
+      }>
+    >(`/hr/payroll-review/off-cycle${q(params)}`),
+  processOffCycleRun: () =>
+    api.post<
+      ApiData<{ processed: number; runLabel: string; message: string }>
+    >(`/hr/payroll-review/off-cycle/process`, {}),
+
+  adpExportKpi: (cycleId?: string) =>
+    api.get<
+      ApiData<{
+        cycleId: string;
+        cycleCode: string;
+        ready: number;
+        readyMeta: string;
+        exported: number;
+        exportedMeta: string;
+        holds: number;
+        holdsMeta: string;
+        errors: number;
+        errorsMeta: string;
+        gross: string;
+        grossMeta: string;
+      }>
+    >(`/hr/payroll-export/kpi${q(cycleId ? { cycleId } : undefined)}`),
+  listAdpExport: (params?: HrListParams) =>
+    api.get<
+      ApiList<{
+        id: string;
+        employeeId: string;
+        name: string;
+        code: string;
+        exportCode: string;
+        cycleCode: string;
+        rtHours: number;
+        otHours: number;
+        ptoHours: number;
+        ptoDays: number;
+        gross: number;
+        adpCode: string;
+        batchCode: string;
+        reviewerName: string;
+        status: string;
+      }>
+    >(`/hr/payroll-export${q(params)}`),
+  adpExportConfirm: (cycleId?: string) =>
+    api.get<
+      ApiData<{
+        cycleId: string;
+        payCycle: string;
+        employeeCount: string;
+        totalHours: string;
+        grossTotal: string;
+        fileFormat: string;
+        destination: string;
+        exceptionsRemaining: number;
+        cycleLocked: boolean;
+        warning: string | null;
+      }>
+    >(`/hr/payroll-export/confirm${q(cycleId ? { cycleId } : undefined)}`),
+  adpExportNow: (cycleId?: string) =>
+    api.post<
+      ApiData<
+        | {
+            ok: false;
+            errorReason: string;
+            missingCount: number;
+            log: string;
+          }
+        | {
+            ok: true;
+            csv: string;
+            filename: string;
+            file: string;
+            payCycle: string;
+            employees: number;
+            grossTotal: string;
+            timestamp: string;
+            cycleLocked: boolean;
+            cycleId: string;
+            warning: string | null;
+          }
+      >
+    >(`/hr/payroll-export/export${q(cycleId ? { cycleId } : undefined)}`, {}),
+
+  supervisorRoutingKpi: () =>
+    api.get<
+      ApiData<{
+        supervisors: number;
+        supervisorsMeta: string;
+        crews: number;
+        crewsMeta: string;
+        members: number;
+        membersMeta: string;
+        regions: number;
+        regionsMeta: string;
+        unrouted: number;
+        unroutedMeta: string;
+      }>
+    >(`/hr/supervisor-routing/kpi`),
+  supervisorRoutingOverview: (params?: HrListParams) =>
+    api.get<
+      ApiData<{
+        managerTier: string;
+        routes: {
+          items: HrSupervisorRoute[];
+          page: number;
+          pageSize: number;
+          total: number;
+        };
+        structureDrives: Array<{
+          id: string;
+          label: string;
+          description: string;
+        }>;
+      }>
+    >(`/hr/supervisor-routing${q(params)}`),
+  createSupervisorRoute: (body: {
+    name: string;
+    code?: string;
+    status?: string;
+    managerTier?: string;
+    region?: string;
+    crew?: string;
+    escalatesTo?: string;
+    escalateDelay?: string;
+    backupName?: string;
+    coverageWindow?: string;
+    onCall?: boolean;
+    approvesTimeEdit?: boolean;
+    approvesTimeOff?: boolean;
+    memberCount?: number;
+    supervisorEmployeeId?: string;
+  }) =>
+    api.post<ApiData<HrSupervisorRoute>>(`/hr/supervisor-routing`, body),
+
+  trainingDashboard: () =>
+    api.get<ApiData<HrTrainingDashboard>>(`/hr/training/dashboard`),
+  listTrainingRecords: (params?: HrListParams) =>
+    api.get<ApiList<HrTrainingRecord>>(`/hr/training/records${q(params)}`),
+  listTrainingCourses: () =>
+    api.get<
+      ApiData<
+        Array<{
+          id: string;
+          name: string;
+          kind: string;
+          code?: string | null;
+          issuingBody?: string | null;
+        }>
+      >
+    >(`/hr/training/courses`),
+  createTrainingRecord: (body: {
+    employeeId: string;
+    courseId?: string;
+    topic?: string;
+    issuingBody?: string;
+    instructor?: string;
+    completedAt?: string;
+    expiryAt?: string;
+    score?: string;
+    cost?: string;
+    certificateName?: string;
+    certificateSize?: string;
+    reminderLead?: string;
+    notes?: string;
+    kind?: string;
+  }) =>
+    api.post<ApiData<HrTrainingRecord>>(`/hr/training/records`, body),
+  assignTraining: (body: {
+    courseId?: string;
+    courseName?: string;
+    employeeIds: string[];
+    dueDate?: string;
+    reason?: string;
+    notify?: boolean;
+    linkedSource?: string;
+  }) =>
+    api.post<ApiData<{ count: number }>>(`/hr/training/assign`, body),
+  createTrainingCertificate: (body: {
+    employeeId: string;
+    label: string;
+    expiryAt?: string;
+    verification?: string;
+    issuingBody?: string;
+    fileName?: string;
+    fileSize?: string;
+    renewalReminder?: boolean;
+  }) => api.post<ApiData<{ id: string }>>(`/hr/training/certificates`, body),
+  sseDashboard: () => api.get<ApiData<HrSseDashboard>>(`/hr/training/sse`),
+  createSsePairing: (body: { mentorId: string; menteeId: string }) =>
+    api.post<ApiData<{ id: string }>>(`/hr/training/sse`, body),
+
+  onCallMonth: (params?: { year?: number; month?: number }) =>
+    api.get<ApiData<HrOnCallMonth>>(`/hr/on-call${q(params)}`),
+  onCallPool: () =>
+    api.get<
+      ApiData<{
+        technicians: Array<{ id: string; name: string }>;
+        certifications: string[];
+      }>
+    >(`/hr/on-call/pool`),
+  getOnCallAssignment: (id: string) =>
+    api.get<ApiData<HrOnCallAssignment>>(`/hr/on-call/${id}`),
+  updateOnCallAssignment: (
+    id: string,
+    body: {
+      employeeId?: string | null;
+      backupId?: string | null;
+      zone?: string | null;
+      status?: string;
+      notes?: string | null;
+    },
+  ) => api.patch<ApiData<HrOnCallAssignment>>(`/hr/on-call/${id}`, body),
+  createOnCallSwap: (body: {
+    assignmentId: string;
+    toEmployeeId?: string;
+    swapType?: string;
+    reason?: string;
+  }) => api.post<ApiData<{ id: string }>>(`/hr/on-call/swaps`, body),
+  previewOnCallGenerate: (body: HrOnCallGenerateBody) =>
+    api.post<
+      ApiData<{
+        assignments: Array<{
+          date: string;
+          dateLabel: string;
+          name: string | null;
+          zone: string | null;
+          status: "OK" | "CONFLICT";
+        }>;
+        summary: { generated: number; conflicts: number; label: string };
+      }>
+    >(`/hr/on-call/generate/preview`, body),
+  generateOnCall: (body: HrOnCallGenerateBody) =>
+    api.post<
+      ApiData<{
+        created: number;
+        conflicts: number;
+        pattern: string;
+        notify: boolean;
+      }>
+    >(`/hr/on-call/generate`, body),
+  publishOnCall: (params?: { year?: number; month?: number }) =>
+    api.post<ApiData<{ published: number }>>(
+      `/hr/on-call/publish${q(params)}`,
+      {},
+    ),
+
+  gpsFlagsOverview: () =>
+    api.get<ApiData<HrGpsFlagsOverview>>(`/hr/gps-flags`),
+  getGpsFlag: (id: string) =>
+    api.get<ApiData<HrGpsFlagDetail>>(`/hr/gps-flags/${id}`),
+  decideGpsFlag: (
+    id: string,
+    body: {
+      decision: string;
+      rejectReason?: string;
+      notifyVia?: string;
+      notes?: string;
+    },
+  ) => api.post<ApiData<HrGpsFlagDetail>>(`/hr/gps-flags/${id}/decision`, body),
+};
+
+export type HrGpsFlagListItem = {
+  id: string;
+  employee: string;
+  eventAtLabel: string;
+  ageLabel: string;
+  distanceLabel: string;
+  distanceMi: number;
+  type: string;
+  typeLabel: string;
+  decision: string;
+};
+
+export type HrGpsFlagDetail = HrGpsFlagListItem & {
+  title: string;
+  alertBanner: string;
+  timeOfEvent: string;
+  workOrder?: string | null;
+  customer?: string | null;
+  flagAge: string;
+  explanation?: string | null;
+  photoLabel?: string | null;
+  photoMeta?: string | null;
+  map: {
+    jobLat?: number | null;
+    jobLng?: number | null;
+    clockLat?: number | null;
+    clockLng?: number | null;
+  };
+  decisionNotes?: string | null;
+  rejectReason?: string | null;
+};
+
+export type HrGpsFlagsOverview = {
+  kpis: {
+    openFlags: number;
+    openMeta: string;
+    avgDistance: string;
+    avgMeta: string;
+    oldestFlag: string;
+    oldestMeta: string;
+  };
+  flags: HrGpsFlagListItem[];
+};
+
+export type HrOnCallAssignment = {
+  id: string;
+  date: string;
+  dateLabel: string;
+  employeeId?: string | null;
+  employeeName?: string | null;
+  backupId?: string | null;
+  backupName?: string | null;
+  zone?: string | null;
+  status: string;
+  notes?: string | null;
+  published: boolean;
+  unassigned: boolean;
+};
+
+export type HrOnCallMonth = {
+  year: number;
+  month: number;
+  monthLabel: string;
+  kpis: {
+    onCallToday: string;
+    onCallTodayMeta: string;
+    unassignedDays: number;
+    unassignedMeta: string;
+    swapRequests: number;
+    swapMeta: string;
+  };
+  calendar: {
+    weekdays: string[];
+    cells: Array<{
+      day: number;
+      inMonth: boolean;
+      iso: string | null;
+      assignment: HrOnCallAssignment | null;
+    }>;
+  };
+  techCounts: Array<{
+    id: string;
+    name: string;
+    days: number;
+    pct: number;
+    barTone: "orange" | "blue" | "gray";
+  }>;
+};
+
+export type HrOnCallGenerateBody = {
+  fromDate: string;
+  toDate: string;
+  coverage?: string;
+  technicianIds: string[];
+  certifications?: string[];
+  pattern?: string;
+  maxConsecutive?: number;
+  minGap?: number;
+  respectTimeOff?: boolean;
+  respectDispatch?: boolean;
+  notify?: boolean;
+};
+
+export type HrTrainingRecord = {
+  id: string;
+  employee: string;
+  employeeId: string;
+  user: string;
+  topic: string;
+  topicCode?: string | null;
+  date?: string | null;
+  dateRaw?: string | null;
+  mentor?: string | null;
+  score?: string | null;
+  verification: string;
+  status: string;
+  kind: string;
+};
+
+export type HrTrainingDashboard = {
+  kpis: {
+    activeEmployees: number;
+    enrolledLabel: string;
+    recordsOnFile: number;
+    topicsLabel: string;
+    expiringSoon: number;
+    dueLabel: string;
+  };
+  records: HrTrainingRecord[];
+  widgets: {
+    completion: Array<{
+      id: string;
+      title: string;
+      subtitle?: string | null;
+      action: string;
+    }>;
+    assignments: {
+      completed: number;
+      total: number;
+      summaryLabel: string;
+      overdueLabel: string;
+      rows: Array<{ id: string; name: string; status: string }>;
+    };
+    certificates: Array<{
+      id: string;
+      label: string;
+      subtitle?: string | null;
+      verification: string;
+      verificationLabel?: string;
+    }>;
+    expiry: Array<{
+      id: string;
+      title: string;
+      subtitle?: string | null;
+      action: string;
+    }>;
+    quizzes: Array<{
+      id: string;
+      title: string;
+      subtitle?: string | null;
+      action: string;
+    }>;
+  };
+};
+
+export type HrSseDashboard = {
+  kpis: {
+    activePairings: number;
+    pairingsLabel: string;
+    evaluationsThisWeek: string;
+    missingLabel: string;
+    sseEvaluations: number;
+    cycleLabel: string;
+  };
+  widgets: {
+    pairings: Array<{
+      id: string;
+      label: string;
+      status: string;
+      action: string;
+    }>;
+    evaluationsDue: {
+      completed: number;
+      total: number;
+      summaryLabel: string;
+      pendingLabel: string;
+      rows: Array<{ id: string; label: string; status: string }>;
+    };
+    mentorScorecard: Array<{
+      id: string;
+      label: string;
+      status: string;
+      action: string;
+    }>;
+    graduation: Array<{
+      id: string;
+      name: string;
+      label: string;
+      action: string;
+    }>;
+    decisions: Array<{
+      id: string;
+      label: string;
+      detail?: string | null;
+      action: string;
+    }>;
+    feedback: Array<{
+      id: string;
+      label: string;
+      status: string;
+      action: string;
+    }>;
+  };
+};
+
+export type HrSupervisorRoute = {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
+  managerTier: string;
+  region?: string | null;
+  crew?: string | null;
+  locationLabel: string;
+  escalatesTo: string;
+  escalateDelay: string;
+  escalateLabel: string;
+  backupName?: string | null;
+  coverageWindow: string;
+  onCall: boolean;
+  approvesTimeEdit: boolean;
+  approvesTimeOff: boolean;
+  memberCount: number;
+  crewSummary: string;
+  supervisorEmployeeId?: string | null;
 };
 
 export function downloadCsv(content: string, filename: string) {

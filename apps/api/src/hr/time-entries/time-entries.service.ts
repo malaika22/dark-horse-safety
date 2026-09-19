@@ -481,11 +481,22 @@ export class TimeEntriesService {
   }
 
   async importGoCanvas() {
+    const pending = await this.prisma.timeEntry.count({
+      where: {
+        status: {
+          in: [TimeEntryStatus.PENDING, TimeEntryStatus.MISSING_CO],
+        },
+        correctionRequested: false,
+      },
+    });
     return {
       data: {
         imported: 0,
+        pendingReview: pending,
         message:
-          'GoCanvas import queued — no new sheets in the last sync window',
+          pending > 0
+            ? `No new GoCanvas sheets found. ${pending} entries still pending review.`
+            : 'No new GoCanvas sheets found in the last sync window.',
       },
     };
   }

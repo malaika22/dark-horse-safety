@@ -300,6 +300,48 @@ export class PayCycleService {
     return { data: { id: updated.id, status: PayCycleStatus.CLOSED } };
   }
 
+  async reopenCycle(id: string) {
+    const row = await this.prisma.payCycle.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException('Pay cycle not found');
+
+    const status = this.resolveStatus(
+      row.startDate,
+      row.endDate,
+      row.status,
+      row.closedAt,
+    );
+
+    // Already open — treat as success (UI shows both actions on current cycle)
+    if (status === PayCycleStatus.OPEN && !row.closedAt) {
+      return { data: { id: row.id, status: PayCycleStatus.OPEN } };
+    }
+
+    // Only one OPEN cycle at a time — close any other currently open cycle
+    const others = await this.prisma.payCycle.findMany({
+      where: {
+        id: { not: id },
+        closedAt: null,
+        status: PayCycleStatus.OPEN,
+      },
+    });
+    if (others.length > 0) {
+      await this.prisma.payCycle.updateMany({
+        where: { id: { in: others.map((o) => o.id) } },
+        data: { status: PayCycleStatus.CLOSED, closedAt: new Date() },
+      });
+    }
+
+    const updated = await this.prisma.payCycle.update({
+      where: { id },
+      data: {
+        status: PayCycleStatus.OPEN,
+        closedAt: null,
+      },
+    });
+
+    return { data: { id: updated.id, status: PayCycleStatus.OPEN } };
+  }
+
   async resyncCycle(id: string) {
     const row = await this.prisma.payCycle.findUnique({ where: { id } });
     if (!row) throw new NotFoundException('Pay cycle not found');

@@ -71,6 +71,12 @@ export class PayCycleController {
     return this.service.closeCycle(id);
   }
 
+  @Post(':id/reopen')
+  @ApiOperation({ summary: 'Reopen a closed pay cycle' })
+  reopen(@Param('id') id: string) {
+    return this.service.reopenCycle(id);
+  }
+
   @Post(':id/resync')
   @ApiOperation({ summary: 'Resync hours/amount for a pay cycle from time entries' })
   resync(@Param('id') id: string) {

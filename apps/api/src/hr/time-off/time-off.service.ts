@@ -13,6 +13,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateTimeOffDto,
   DecideTimeOffDto,
+  PreviewTimeOffDto,
   TimeOffCalendarQueryDto,
   TimeOffQueryDto,
 } from './dto/time-off.dto';
@@ -108,6 +109,53 @@ function isoDay(d: Date) {
 export class TimeOffService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private resolveType(raw: string): TimeOffType {
+    const upper = (raw || '').trim().toUpperCase();
+    if (upper === 'VACATION') return TimeOffType.PTO;
+    if (Object.values(TimeOffType).includes(upper as TimeOffType)) {
+      return upper as TimeOffType;
+    }
+    throw new BadRequestException('Invalid leave type');
+  }
+
+  private calcHours(
+    start: Date,
+    end: Date,
+    durationMode?: string,
+    partialHours?: number,
+  ) {
+    const dayCount = daysBetween(start, end);
+    const mode = (durationMode || 'ALL_DAY').toUpperCase();
+    if (mode === 'PARTIAL') {
+      const hrs = Number(partialHours ?? 0);
+      if (!Number.isFinite(hrs) || hrs <= 0) {
+        throw new BadRequestException('Enter hours for a partial day request');
+      }
+      return {
+        dayCount,
+        hoursRequested: hrs,
+        durationMode: 'PARTIAL' as const,
+      };
+    }
+    return {
+      dayCount,
+      hoursRequested: dayCount * 8,
+      durationMode: 'ALL_DAY' as const,
+    };
+  }
+
+  private balanceFor(
+    employee: {
+      ptoBalance: Prisma.Decimal | number;
+      sickBalance: Prisma.Decimal | number;
+    },
+    type: TimeOffType,
+  ) {
+    return type === TimeOffType.SICK
+      ? Number(employee.sickBalance)
+      : Number(employee.ptoBalance);
+  }
+
   private mapRow(row: Row) {
     return {
       id: row.id,
@@ -128,6 +176,18 @@ export class TimeOffService {
       hoursRequested: dec(row.hoursRequested),
       balanceAfter: row.balanceAfter != null ? dec(row.balanceAfter) : null,
       coverage: row.coverage,
+      durationMode: row.durationMode,
+      partialHours:
+        row.partialHours != null ? dec(row.partialHours) : null,
+      coveragePersonId: row.coveragePersonId,
+      coveragePersonName: row.coveragePersonName,
+      allowOverride: row.allowOverride,
+      overrideRoles: asStringArray(row.overrideRoles),
+      requireOverrideReason: row.requireOverrideReason,
+      notifySupervisor: row.notifySupervisor,
+      attachments: Array.isArray(row.attachments)
+        ? (row.attachments as Array<{ name: string; size?: string }>)
+        : [],
       requestedAt: row.requestedAt.toISOString(),
       requestedLabel: row.requestedLabel,
       reason: row.reason,
@@ -461,6 +521,120 @@ export class TimeOffService {
     };
   }
 
+  async preview(dto: PreviewTimeOffDto) {
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: dto.employeeId, archivedAt: null },
+    });
+    if (!employee) throw new NotFoundException('Employee not found');
+
+    const start = new Date(`${dto.startDate}T12:00:00.000Z`);
+    const end = new Date(`${dto.endDate}T12:00:00.000Z`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      throw new BadRequestException('Invalid dates');
+    }
+    if (end < start) {
+      throw new BadRequestException('End date must be on or after start date');
+    }
+
+    const type = this.resolveType(dto.type);
+    const { dayCount, hoursRequested, durationMode } = this.calcHours(
+      start,
+      end,
+      dto.durationMode,
+      dto.partialHours,
+    );
+    const balanceBefore = this.balanceFor(employee, type);
+    const balanceAfter = Number((balanceBefore - hoursRequested).toFixed(1));
+    const shortfall = Math.max(0, Number((hoursRequested - balanceBefore).toFixed(1)));
+    const insufficient = balanceAfter < 0;
+
+    let coverageConflict: {
+      message: string;
+      personName: string;
+      rangeLabel: string;
+    } | null = null;
+
+    const coverageId = dto.coveragePersonId?.trim();
+    const coverageName = dto.coveragePersonName?.trim();
+    if (coverageId || coverageName) {
+      const covering = await this.prisma.timeOffRequest.findMany({
+        where: {
+          archivedAt: null,
+          status: { in: [TimeOffStatus.APPROVED, TimeOffStatus.PENDING] },
+          startDate: { lte: end },
+          endDate: { gte: start },
+          OR: [
+            ...(coverageId ? [{ coveragePersonId: coverageId }] : []),
+            ...(coverageName
+              ? [
+                  {
+                    coveragePersonName: {
+                      equals: coverageName,
+                      mode: 'insensitive' as const,
+                    },
+                  },
+                ]
+              : []),
+          ],
+        },
+        orderBy: { startDate: 'asc' },
+        take: 5,
+      });
+
+      if (covering.length > 0) {
+        const hit = covering[0];
+        const person =
+          coverageName ||
+          hit.coveragePersonName ||
+          'Selected coverage person';
+        const rangeLabel = `${hit.startLabel}–${hit.endLabel}`;
+        coverageConflict = {
+          personName: person,
+          rangeLabel,
+          message: `Conflict detected — ${person} is already covering another shift ${rangeLabel}. Choose a different coverage person or confirm they can still cover both.`,
+        };
+      } else if (coverageId) {
+        // Also flag if coverage person themselves is off during the window
+        const selfOff = await this.prisma.timeOffRequest.findFirst({
+          where: {
+            archivedAt: null,
+            employeeId: coverageId,
+            status: { in: [TimeOffStatus.APPROVED, TimeOffStatus.PENDING] },
+            startDate: { lte: end },
+            endDate: { gte: start },
+          },
+        });
+        if (selfOff) {
+          const person = coverageName || 'Selected coverage person';
+          const rangeLabel = `${selfOff.startLabel}–${selfOff.endLabel}`;
+          coverageConflict = {
+            personName: person,
+            rangeLabel,
+            message: `Conflict detected — ${person} is already covering another shift ${rangeLabel}. Choose a different coverage person or confirm they can still cover both.`,
+          };
+        }
+      }
+    }
+
+    return {
+      data: {
+        dayCount,
+        hoursRequested,
+        durationMode,
+        balanceBefore,
+        balanceAfter,
+        shortfall,
+        insufficient,
+        balanceBeforeLabel: `${balanceBefore.toFixed(1)} HRS`,
+        balanceAfterLabel: `${balanceAfter.toFixed(1)} HRS`,
+        insufficientMessage: insufficient
+          ? `Insufficient balance — this request exceeds available ${type === TimeOffType.SICK ? 'sick' : 'vacation'} time by ${shortfall.toFixed(1)} hours. Submitting requires an approved override from an eligible role below.`
+          : null,
+        coverageConflict,
+      },
+    };
+  }
+
   async create(dto: CreateTimeOffDto) {
     const employee = await this.prisma.employee.findFirst({
       where: { id: dto.employeeId, archivedAt: null },
@@ -476,19 +650,34 @@ export class TimeOffService {
       throw new BadRequestException('End date must be on or after start date');
     }
 
-    const type = (dto.type.toUpperCase() as TimeOffType) || TimeOffType.PTO;
-    if (!Object.values(TimeOffType).includes(type)) {
-      throw new BadRequestException('Invalid leave type');
-    }
-
-    const dayCount = daysBetween(start, end);
-    const hoursRequested = dayCount * 8;
-    const bal =
-      type === TimeOffType.SICK
-        ? Number(employee.sickBalance)
-        : Number(employee.ptoBalance);
-    const balanceAfter = Math.max(0, bal - hoursRequested);
+    const type = this.resolveType(dto.type);
+    const { dayCount, hoursRequested, durationMode } = this.calcHours(
+      start,
+      end,
+      dto.durationMode,
+      dto.partialHours,
+    );
+    const bal = this.balanceFor(employee, type);
+    const balanceAfter = Number((bal - hoursRequested).toFixed(1));
     const now = new Date();
+
+    let coveragePersonId = dto.coveragePersonId?.trim() || null;
+    let coveragePersonName = dto.coveragePersonName?.trim() || null;
+    if (coveragePersonId && !coveragePersonName) {
+      const cover = await this.prisma.employee.findFirst({
+        where: { id: coveragePersonId, archivedAt: null },
+        select: {
+          displayName: true,
+          firstName: true,
+          lastName: true,
+        },
+      });
+      if (cover) {
+        coveragePersonName =
+          cover.displayName ||
+          `${cover.firstName} ${cover.lastName}`.trim();
+      }
+    }
 
     const created = await this.prisma.timeOffRequest.create({
       data: {
@@ -502,7 +691,24 @@ export class TimeOffService {
         dayCount,
         hoursRequested,
         balanceAfter,
-        coverage: 'NEEDED',
+        coverage: coveragePersonId || coveragePersonName ? 'COVERED' : 'NEEDED',
+        durationMode,
+        partialHours:
+          durationMode === 'PARTIAL' ? hoursRequested : null,
+        coveragePersonId,
+        coveragePersonName,
+        allowOverride: Boolean(dto.allowOverride),
+        overrideRoles: (dto.overrideRoles?.length
+          ? dto.overrideRoles
+          : []) as Prisma.InputJsonValue,
+        requireOverrideReason: Boolean(dto.requireOverrideReason),
+        notifySupervisor: dto.notifySupervisor !== false,
+        attachments: (dto.attachments?.length
+          ? dto.attachments.map((a) => ({
+              name: a.name,
+              ...(a.size ? { size: a.size } : {}),
+            }))
+          : []) as Prisma.InputJsonValue,
         requestedAt: now,
         requestedLabel: dateLabel(now),
         reason: dto.reason?.trim() || null,
@@ -510,7 +716,7 @@ export class TimeOffService {
       include: employeeInclude,
     });
 
-    return { data: this.mapRow(created) };
+    return { data: this.mapRow(created as Row) };
   }
 
   async approve(id: string, dto: DecideTimeOffDto) {

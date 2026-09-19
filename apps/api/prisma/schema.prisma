@@ -1148,6 +1148,8 @@ model PayCycle {
   totalHours  Decimal?       @db.Decimal(12, 1)
   totalAmount Decimal?       @db.Decimal(14, 2)
   closedAt    DateTime?
+  payrollApprovedAt DateTime?
+  payrollReportAt   DateTime?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
@@ -1297,6 +1299,18 @@ model Employee {
   timeEntryRecords        TimeEntry[]
   timeEditRequests        TimeEditRequest[]
   timeOffRequests         TimeOffRequest[]
+  supervisorRoutes        SupervisorRoute[] @relation("RouteSupervisor")
+  trainingRecords         TrainingRecord[]  @relation("TrainingEmployee")
+  trainingAsMentor        TrainingRecord[]  @relation("TrainingMentor")
+  trainingAssignments     TrainingAssignment[]
+  trainingCertificates    TrainingCertificate[]
+  sseAsMentor             SsePairing[]      @relation("SseMentor")
+  sseAsMentee             SsePairing[]      @relation("SseMentee")
+  onCallAssignments       OnCallAssignment[] @relation("OnCallPrimary")
+  onCallBackups           OnCallAssignment[] @relation("OnCallBackup")
+  onCallSwapsFrom         OnCallSwapRequest[] @relation("OnCallSwapFrom")
+  onCallSwapsTo           OnCallSwapRequest[] @relation("OnCallSwapTo")
+  hrGpsFlags              HrGpsFlag[]
   userId                  String?        @unique
   user                    User?          @relation("EmployeeUser", fields: [userId], references: [id], onDelete: SetNull)
   createdAt               DateTime       @default(now())
@@ -1307,6 +1321,43 @@ model Employee {
   @@index([assignedTruck])
   @@index([archivedAt])
   @@index([crew])
+}
+
+enum SupervisorRouteStatus {
+  ACTIVE
+  UNROUTED
+}
+
+enum ManagerTier {
+  OPS_MGR
+  HSE_MGR
+}
+
+model SupervisorRoute {
+  id                   String                @id @default(uuid())
+  code                 String                @unique
+  name                 String
+  status               SupervisorRouteStatus @default(ACTIVE)
+  managerTier          ManagerTier           @default(OPS_MGR)
+  region               String?
+  crew                 String?
+  escalatesTo          String                @default("OPS MGR")
+  escalateDelay        String                @default("2 BUSINESS DAYS")
+  backupName           String?
+  coverageWindow       String                @default("24/7")
+  onCall               Boolean               @default(false)
+  approvesTimeEdit     Boolean               @default(true)
+  approvesTimeOff      Boolean               @default(true)
+  memberCount          Int                   @default(0)
+  sortOrder            Int                   @default(0)
+  supervisorEmployeeId String?
+  supervisorEmployee   Employee?             @relation("RouteSupervisor", fields: [supervisorEmployeeId], references: [id], onDelete: SetNull)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@index([managerTier])
+  @@index([status])
+  @@index([sortOrder])
 }
 
 // ─── HR Time Entries ─────────────────────────────────────────────────────────
@@ -1429,29 +1480,38 @@ model TimeEditRequest {
 // ─── HR Time Off Requests ────────────────────────────────────────────────────
 
 model TimeOffRequest {
-  id              String        @id @default(uuid())
-  employeeId      String
-  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  type            TimeOffType   @default(PTO)
-  status          TimeOffStatus @default(PENDING)
-  startDate       DateTime      @db.Date
-  endDate         DateTime      @db.Date
-  startLabel      String
-  endLabel        String
-  dayCount        Int           @default(1)
-  hoursRequested  Decimal       @default(0) @db.Decimal(10, 1)
-  balanceAfter    Decimal?      @db.Decimal(10, 1)
-  coverage        String        @default("COVERED")
-  requestedAt     DateTime      @default(now())
-  requestedLabel  String
-  reason          String?
-  adminNote       String?
-  crossesPayCycle Boolean       @default(false)
-  onCallDates     Json?
-  assignedJobs    Json?
-  archivedAt      DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                   String        @id @default(uuid())
+  employeeId           String
+  employee             Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type                 TimeOffType   @default(PTO)
+  status               TimeOffStatus @default(PENDING)
+  startDate            DateTime      @db.Date
+  endDate              DateTime      @db.Date
+  startLabel           String
+  endLabel             String
+  dayCount             Int           @default(1)
+  hoursRequested       Decimal       @default(0) @db.Decimal(10, 1)
+  balanceAfter         Decimal?      @db.Decimal(10, 1)
+  coverage             String        @default("COVERED")
+  durationMode         String        @default("ALL_DAY")
+  partialHours         Decimal?      @db.Decimal(10, 1)
+  coveragePersonId     String?
+  coveragePersonName   String?
+  allowOverride        Boolean       @default(false)
+  overrideRoles        Json?
+  requireOverrideReason Boolean      @default(false)
+  notifySupervisor     Boolean       @default(true)
+  attachments          Json?
+  requestedAt          DateTime      @default(now())
+  requestedLabel       String
+  reason               String?
+  adminNote            String?
+  crossesPayCycle      Boolean       @default(false)
+  onCallDates          Json?
+  assignedJobs         Json?
+  archivedAt           DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
   @@index([employeeId])
   @@index([status])
@@ -1459,5 +1519,276 @@ model TimeOffRequest {
   @@index([startDate])
   @@index([endDate])
   @@index([coverage])
+  @@index([coveragePersonId])
   @@index([archivedAt])
+}
+
+enum TrainingTopicKind {
+  ALL
+  BBS
+  FIT_TEST
+  SSE
+  GENERAL
+}
+
+enum TrainingRecordStatus {
+  CURRENT
+  COMPLETE
+  PENDING
+  EXPIRED
+  NEEDS_REVIEW
+  BBS_MISSING
+}
+
+enum TrainingVerification {
+  VERIFIED
+  PENDING
+  REJECTED
+}
+
+enum TrainingAssignReason {
+  NEW_HIRE
+  RENEWAL
+  BBS_RETRAIN
+}
+
+model TrainingCourse {
+  id        String            @id @default(uuid())
+  name      String            @unique
+  kind      TrainingTopicKind @default(GENERAL)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  records      TrainingRecord[]
+  assignments  TrainingAssignment[]
+}
+
+model TrainingRecord {
+  id              String                @id @default(uuid())
+  employeeId      String
+  employee        Employee              @relation("TrainingEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  courseId        String?
+  course          TrainingCourse?       @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  topic           String
+  topicCode       String?
+  kind            TrainingTopicKind     @default(GENERAL)
+  completedAt     DateTime?             @db.Date
+  expiryAt        DateTime?             @db.Date
+  mentorId        String?
+  mentor          Employee?             @relation("TrainingMentor", fields: [mentorId], references: [id], onDelete: SetNull)
+  mentorName      String?
+  score           String?
+  cost            String?
+  issuingBody     String?
+  instructor      String?
+  verification    TrainingVerification  @default(PENDING)
+  status          TrainingRecordStatus  @default(PENDING)
+  certificateName String?
+  certificateSize String?
+  reminderLead    String?
+  notes           String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([employeeId])
+  @@index([kind])
+  @@index([status])
+  @@index([completedAt])
+}
+
+model TrainingAssignment {
+  id             String               @id @default(uuid())
+  courseId       String?
+  course         TrainingCourse?      @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  courseName     String
+  employeeId     String
+  employee       Employee             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  dueDate        DateTime?            @db.Date
+  reason         TrainingAssignReason @default(NEW_HIRE)
+  notify         Boolean              @default(true)
+  linkedSource   String?
+  status         String               @default("MISSING")
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+model TrainingCertificate {
+  id             String               @id @default(uuid())
+  employeeId     String
+  employee       Employee             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  label          String
+  expiryAt       DateTime?            @db.Date
+  verification   TrainingVerification @default(PENDING)
+  issuingBody    String?
+  fileName       String?
+  fileSize       String?
+  renewalReminder Boolean             @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([employeeId])
+  @@index([verification])
+}
+
+enum SsePairingStatus {
+  ACTIVE
+  GRADUATED
+  IN_PROGRESS
+}
+
+model SsePairing {
+  id              String           @id @default(uuid())
+  mentorId        String
+  mentor          Employee         @relation("SseMentor", fields: [mentorId], references: [id], onDelete: Cascade)
+  menteeId        String
+  mentee          Employee         @relation("SseMentee", fields: [menteeId], references: [id], onDelete: Cascade)
+  status          SsePairingStatus @default(ACTIVE)
+  progressPct     Int              @default(0)
+  graduatedAt     DateTime?
+  evalDueLabel    String?
+  evalStatus      String           @default("DUE")
+  scorecardStatus String           @default("PENDING")
+  feedbackStatus  String           @default("PENDING")
+  graduationLabel String?
+  decisionLabel   String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([mentorId])
+  @@index([menteeId])
+  @@index([status])
+}
+
+enum OnCallZone {
+  NORTH
+  SOUTH
+  CENTRAL
+}
+
+enum OnCallStatus {
+  CONFIRMED
+  PENDING_SWAP
+  UNASSIGNED
+}
+
+enum OnCallSwapType {
+  FULL_SHIFT
+  PARTIAL_SHIFT
+}
+
+enum OnCallSwapStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum OnCallCoverage {
+  WEEKENDS
+  WEEKNIGHTS
+  BOTH
+}
+
+enum OnCallPattern {
+  ROUND_ROBIN
+  WEIGHTED_SENIORITY
+  MANUAL_ORDER
+}
+
+model OnCallAssignment {
+  id           String       @id @default(uuid())
+  date         DateTime     @db.Date
+  employeeId   String?
+  employee     Employee?    @relation("OnCallPrimary", fields: [employeeId], references: [id], onDelete: SetNull)
+  backupId     String?
+  backup       Employee?    @relation("OnCallBackup", fields: [backupId], references: [id], onDelete: SetNull)
+  zone         OnCallZone?
+  status       OnCallStatus @default(UNASSIGNED)
+  notes        String?
+  published    Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  swapRequests OnCallSwapRequest[]
+
+  @@unique([date])
+  @@index([employeeId])
+  @@index([status])
+  @@index([date])
+}
+
+model OnCallSwapRequest {
+  id             String          @id @default(uuid())
+  assignmentId   String
+  assignment     OnCallAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  fromEmployeeId String?
+  fromEmployee   Employee?       @relation("OnCallSwapFrom", fields: [fromEmployeeId], references: [id], onDelete: SetNull)
+  toEmployeeId   String?
+  toEmployee     Employee?       @relation("OnCallSwapTo", fields: [toEmployeeId], references: [id], onDelete: SetNull)
+  swapType       OnCallSwapType  @default(FULL_SHIFT)
+  reason         String?
+  status         OnCallSwapStatus @default(PENDING)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([assignmentId])
+  @@index([status])
+}
+
+enum HrGpsFlagType {
+  OUTSIDE_GEOFENCE
+  LATE_CLOCK_IN
+  GPS_UNAVAILABLE
+}
+
+enum HrGpsFlagDecision {
+  PENDING
+  ACCEPTED
+  REJECTED
+  MORE_INFO
+}
+
+enum HrGpsNotifyVia {
+  PUSH
+  EMAIL
+  BOTH
+}
+
+enum HrGpsRejectReason {
+  INSUFFICIENT_EXPLANATION
+  POLICY_VIOLATION
+  OTHER
+}
+
+model HrGpsFlag {
+  id              String             @id @default(uuid())
+  employeeId      String
+  employee        Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type            HrGpsFlagType
+  eventAt         DateTime
+  distanceMi      Decimal            @db.Decimal(8, 2)
+  geofenceFt      Int                @default(500)
+  workOrder       String?
+  customer        String?
+  eventType       String             @default("CLOCK-IN")
+  explanation     String?
+  photoLabel      String?
+  photoMeta       String?
+  jobLat          Float?
+  jobLng          Float?
+  clockLat        Float?
+  clockLng        Float?
+  decision        HrGpsFlagDecision  @default(PENDING)
+  rejectReason    HrGpsRejectReason?
+  decisionNotes   String?
+  notifyVia       HrGpsNotifyVia?
+  resolvedAt      DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([employeeId])
+  @@index([decision])
+  @@index([eventAt])
+  @@index([type])
 }
