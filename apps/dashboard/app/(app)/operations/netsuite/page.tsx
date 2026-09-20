@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+import { NetsuiteHandoffPage } from "@/features/operations/netsuite-handoff-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="NetSuite Handoff" />;
+  return <NetsuiteHandoffPage />;
 }

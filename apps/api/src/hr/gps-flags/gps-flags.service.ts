@@ -2,12 +2,13 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import {
   HrGpsFlagDecision,
   HrGpsFlagType,
-  HrGpsNotifyVia,
   HrGpsRejectReason,
+  Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GpsFlagDecisionDto } from './dto/gps-flags.dto';
@@ -53,9 +54,146 @@ function ageDays(d: Date) {
   return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86_400_000));
 }
 
+const MIDLAND = { lat: 31.9973, lng: -102.0779 };
+
 @Injectable()
-export class GpsFlagsService {
+export class GpsFlagsService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
+
+  async onModuleInit() {
+    try {
+      await this.ensureDemo();
+    } catch {
+      // DB may not be ready
+    }
+  }
+
+  /** Seed open HR GPS flags from live employees when queue is empty. */
+  async ensureDemo() {
+    const count = await this.prisma.hrGpsFlag.count({
+      where: {
+        decision: {
+          in: [HrGpsFlagDecision.PENDING, HrGpsFlagDecision.MORE_INFO],
+        },
+      },
+    });
+    if (count > 0) return { created: 0 };
+
+    const employees = await this.prisma.employee.findMany({
+      where: { archivedAt: null },
+      take: 6,
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (employees.length === 0) return { created: 0 };
+
+    const workOrders = await this.prisma.workOrder.findMany({
+      where: { archivedAt: null },
+      take: 6,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: { select: { name: true } },
+        location: { select: { latitude: true, longitude: true } },
+      },
+    });
+
+    const demos: Array<{
+      type: HrGpsFlagType;
+      distanceMi: number;
+      hoursAgo: number;
+      explanation: string;
+      eventType: string;
+      photo?: boolean;
+    }> = [
+      {
+        type: HrGpsFlagType.OUTSIDE_GEOFENCE,
+        distanceMi: 2.4,
+        hoursAgo: 6,
+        explanation: 'Parked at lease road entrance; gate locked on arrival.',
+        eventType: 'CLOCK-IN',
+        photo: true,
+      },
+      {
+        type: HrGpsFlagType.OUTSIDE_GEOFENCE,
+        distanceMi: 1.1,
+        hoursAgo: 18,
+        explanation: 'Job pin outdated after pad move overnight.',
+        eventType: 'CLOCK-IN',
+        photo: true,
+      },
+      {
+        type: HrGpsFlagType.GPS_UNAVAILABLE,
+        distanceMi: 0,
+        hoursAgo: 30,
+        explanation: 'No GPS fix inside metal building; manual clock-in.',
+        eventType: 'CLOCK-IN',
+      },
+      {
+        type: HrGpsFlagType.LATE_CLOCK_IN,
+        distanceMi: 0.6,
+        hoursAgo: 48,
+        explanation: 'Traffic delay on Hwy 191; arrived 22 min late.',
+        eventType: 'CLOCK-IN',
+        photo: true,
+      },
+      {
+        type: HrGpsFlagType.OUTSIDE_GEOFENCE,
+        distanceMi: 3.8,
+        hoursAgo: 72,
+        explanation: 'Clocked in at wrong well pad (adjacent lease).',
+        eventType: 'CLOCK-IN',
+      },
+      {
+        type: HrGpsFlagType.OUTSIDE_GEOFENCE,
+        distanceMi: 0.9,
+        hoursAgo: 10,
+        explanation: 'Staging area outside 500 ft geofence while waiting HSE.',
+        eventType: 'CLOCK-OUT',
+        photo: true,
+      },
+    ];
+
+    let created = 0;
+    for (let i = 0; i < Math.min(demos.length, employees.length); i++) {
+      const emp = employees[i]!;
+      const demo = demos[i]!;
+      const wo = workOrders[i % Math.max(workOrders.length, 1)];
+      const jobLat = wo?.location?.latitude ?? MIDLAND.lat;
+      const jobLng = wo?.location?.longitude ?? MIDLAND.lng;
+      const offsetDeg = demo.distanceMi / 69;
+      const clockLat =
+        demo.type === HrGpsFlagType.GPS_UNAVAILABLE
+          ? null
+          : jobLat + offsetDeg * 0.55;
+      const clockLng =
+        demo.type === HrGpsFlagType.GPS_UNAVAILABLE
+          ? null
+          : jobLng + offsetDeg * 0.35;
+
+      await this.prisma.hrGpsFlag.create({
+        data: {
+          employeeId: emp.id,
+          type: demo.type,
+          eventAt: new Date(Date.now() - demo.hoursAgo * 3_600_000),
+          distanceMi: new Prisma.Decimal(demo.distanceMi),
+          geofenceFt: 500,
+          workOrder: wo?.code ?? `WO-GPS-${i + 1}`,
+          customer: wo?.customer?.name ?? 'PERMIAN BASIN ENERGY',
+          eventType: demo.eventType,
+          explanation: demo.explanation,
+          photoLabel: demo.photo ? 'SITE PHOTO' : null,
+          photoMeta: demo.photo ? 'ATTACHED . MOBILE' : null,
+          jobLat,
+          jobLng,
+          clockLat,
+          clockLng,
+          decision: HrGpsFlagDecision.PENDING,
+        },
+      });
+      created += 1;
+    }
+    return { created };
+  }
 
   private mapListRow(row: {
     id: string;
@@ -77,7 +215,7 @@ export class GpsFlagsService {
       employee: shortName(row.employee.firstName, row.employee.lastName),
       eventAtLabel: formatEventAt(row.eventAt),
       ageLabel: formatAge(row.eventAt),
-      distanceLabel: unavailable ? '—' : `${dist.toFixed(1)} MI`,
+      distanceLabel: unavailable ? '-' : `${dist.toFixed(1)} MI`,
       distanceMi: dist,
       type: row.type,
       typeLabel: typeLabel(row.type),
@@ -136,6 +274,7 @@ export class GpsFlagsService {
   }
 
   async overview() {
+    await this.ensureDemo();
     const open = await this.prisma.hrGpsFlag.findMany({
       where: {
         decision: {
@@ -177,6 +316,7 @@ export class GpsFlagsService {
   }
 
   async getOne(id: string) {
+    await this.ensureDemo();
     const row = await this.prisma.hrGpsFlag.findUnique({
       where: { id },
       include: {

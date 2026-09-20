@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+import { OpsDashboardPage } from "@/features/operations/ops-dashboard-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Ops Dashboard" />;
+  return <OpsDashboardPage />;
 }

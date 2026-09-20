@@ -130,9 +130,39 @@ function PendingBadge() {
   );
 }
 
-/** Dark map matching Figma: geofence, trail waypoints, clock-in. */
+/** Dark map: pin positions projected from live job/clock lat-lng. */
 function FlagMap({ flag }: { flag: HrGpsFlagDetail }) {
   const unavailable = isUnavailable(flag.type, flag.typeLabel);
+  const jobLat = flag.map?.jobLat;
+  const jobLng = flag.map?.jobLng;
+  const clockLat = flag.map?.clockLat;
+  const clockLng = flag.map?.clockLng;
+
+  const hasJob = jobLat != null && jobLng != null;
+  const hasClock = clockLat != null && clockLng != null && !unavailable;
+
+  // Project lon/lat into % of map box (relative to job site as center)
+  function project(lat: number, lng: number): { left: number; top: number } {
+    const baseLat = hasJob ? jobLat! : 31.9973;
+    const baseLng = hasJob ? jobLng! : -102.0779;
+    const dLat = (lat - baseLat) * 1200; // scale degrees → %
+    const dLng = (lng - baseLng) * 900;
+    const left = Math.min(88, Math.max(12, 28 + dLng));
+    const top = Math.min(78, Math.max(18, 38 - dLat));
+    return { left, top };
+  }
+
+  const jobPos = hasJob
+    ? project(jobLat!, jobLng!)
+    : { left: 26, top: 34 };
+  const clockPos = hasClock
+    ? project(clockLat!, clockLng!)
+    : { left: 72, top: 54 };
+
+  const pathD = hasClock
+    ? `M${(jobPos.left / 100) * 400} ${(jobPos.top / 100) * 240} C${(jobPos.left / 100) * 400 + 40} ${(jobPos.top / 100) * 240 + 20}, ${(clockPos.left / 100) * 400 - 40} ${(clockPos.top / 100) * 240 - 10}, ${(clockPos.left / 100) * 400} ${(clockPos.top / 100) * 240}`
+    : "M130 95 C170 102, 210 128, 268 152";
+
   return (
     <div className="relative overflow-hidden rounded-xl border border-[#2D2D30] bg-[#14181E]">
       <div
@@ -144,18 +174,24 @@ function FlagMap({ flag }: { flag: HrGpsFlagDetail }) {
         }}
       />
       <div className="relative h-[240px]">
-        {/* Job site geofence */}
-        <div className="absolute left-[26%] top-[34%] flex flex-col items-center">
+        <div
+          className="absolute flex flex-col items-center"
+          style={{ left: `${jobPos.left}%`, top: `${jobPos.top}%`, transform: "translate(-50%, -50%)" }}
+        >
           <div className="relative flex h-[72px] w-[72px] items-center justify-center">
             <div className="absolute inset-0 rounded-full border-2 border-dashed border-[#3B82F6]/85 bg-[#1A2744]/35" />
             <div className="relative h-2.5 w-2.5 rounded-full bg-[#3B82F6] shadow-[0_0_0_4px_rgba(59,130,246,0.28)]" />
           </div>
           <span className="mt-1.5 font-sans text-[9px] font-[510] uppercase tracking-[-0.01em] text-[#6B9EFF]">
             Job Site
+            {hasJob ? (
+              <span className="block text-center text-[8px] text-[#6F6F72]">
+                {jobLat!.toFixed(4)}, {jobLng!.toFixed(4)}
+              </span>
+            ) : null}
           </span>
         </div>
 
-        {/* GPS trail + waypoints */}
         {!unavailable ? (
           <svg
             className="absolute inset-0 h-full w-full"
@@ -164,20 +200,19 @@ function FlagMap({ flag }: { flag: HrGpsFlagDetail }) {
             aria-hidden
           >
             <path
-              d="M130 95 C170 102, 210 128, 268 152"
+              d={pathD}
               stroke="#EF4444"
               strokeWidth="2"
               strokeDasharray="5 5"
               opacity="0.9"
             />
-            <circle cx="155" cy="100" r="3" fill="#A1A1AA" />
-            <circle cx="195" cy="118" r="3" fill="#A1A1AA" />
-            <circle cx="235" cy="138" r="3" fill="#A1A1AA" />
           </svg>
         ) : null}
 
-        {/* Clock-in */}
-        <div className="absolute right-[22%] top-[54%] flex flex-col items-center">
+        <div
+          className="absolute flex flex-col items-center"
+          style={{ left: `${clockPos.left}%`, top: `${clockPos.top}%`, transform: "translate(-50%, -50%)" }}
+        >
           <div
             className={cn(
               "h-3.5 w-3.5 rounded-full shadow-[0_0_0_5px_rgba(239,68,68,0.22)]",
@@ -191,6 +226,11 @@ function FlagMap({ flag }: { flag: HrGpsFlagDetail }) {
             )}
           >
             Clock-In
+            {hasClock ? (
+              <span className="block text-center text-[8px] text-[#6F6F72]">
+                {clockLat!.toFixed(4)}, {clockLng!.toFixed(4)}
+              </span>
+            ) : null}
           </span>
         </div>
       </div>
@@ -206,6 +246,11 @@ function FlagMap({ flag }: { flag: HrGpsFlagDetail }) {
           <span className="h-0.5 w-4 border-t border-dashed border-[#A1A1AA]" />{" "}
           GPS Trail
         </span>
+        {flag.distanceLabel && flag.distanceLabel !== "-" ? (
+          <span className="ml-auto font-sans text-[9px] uppercase text-[#E8C547]">
+            {flag.distanceLabel} offset
+          </span>
+        ) : null}
       </div>
     </div>
   );

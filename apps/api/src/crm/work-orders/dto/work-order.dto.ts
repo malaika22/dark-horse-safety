@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsArray,
   IsDateString,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -28,6 +30,39 @@ export class WorkOrderListQueryDto extends ListQueryDto {
   @IsOptional()
   @IsString()
   status?: string;
+}
+
+export class HoldCancelWorkOrderDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(2000)
+  reason!: string;
+}
+
+export class ExportJobPacketDto {
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  include?: string[];
+
+  @ApiPropertyOptional({ enum: ['NONE', 'DRAFT', 'FINAL'] })
+  @IsOptional()
+  @IsIn(['NONE', 'DRAFT', 'FINAL'])
+  watermark?: 'NONE' | 'DRAFT' | 'FINAL';
+}
+
+export class RequestDocumentDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(200)
+  documentName!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string;
 }
 
 export class CreateWorkOrderDto {

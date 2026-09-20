@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { CloseoutsModule } from './closeouts/closeouts.module';
+import { HrDashboardModule } from './dashboard/hr-dashboard.module';
 import { EmployeesModule } from './employees/employees.module';
 import { GpsFlagsModule } from './gps-flags/gps-flags.module';
 import { OnCallModule } from './on-call/on-call.module';
@@ -12,6 +14,7 @@ import { TrainingModule } from './training/training.module';
 
 @Module({
   imports: [
+    HrDashboardModule,
     EmployeesModule,
     TimeEntriesModule,
     TimeEditRequestsModule,
@@ -22,6 +25,7 @@ import { TrainingModule } from './training/training.module';
     TrainingModule,
     OnCallModule,
     GpsFlagsModule,
+    CloseoutsModule,
   ],
 })
 export class HrModule {}

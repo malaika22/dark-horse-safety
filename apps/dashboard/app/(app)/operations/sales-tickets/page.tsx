@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+import { SalesTicketsPage } from "@/features/operations/sales-tickets-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Sales Ticket" />;
+  return <SalesTicketsPage />;
 }

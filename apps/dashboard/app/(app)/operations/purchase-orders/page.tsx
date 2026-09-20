@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+import { PurchaseOrdersPage } from "@/features/operations/purchase-orders-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Purchase Order" />;
+  return <PurchaseOrdersPage />;
 }

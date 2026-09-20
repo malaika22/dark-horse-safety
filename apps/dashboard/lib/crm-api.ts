@@ -971,7 +971,7 @@ export const crmApi = {
   createWorkOrder: (body: Record<string, unknown>) =>
     api.post<ApiData<CrmWorkOrder>>("/crm/work-orders", body),
   listWorkOrders: (params?: CrmListParams) =>
-    api.get<ApiList<CrmWorkOrder>>(`/crm/work-orders${q(params)}`),
+    api.get<ApiList<CrmOpsWorkOrderRow>>(`/crm/work-orders${q(params)}`),
   workOrdersKpi: () =>
     api.get<
       ApiData<{
@@ -982,10 +982,48 @@ export const crmApi = {
         startingToday: number;
       }>
     >("/crm/work-orders/kpi"),
+  workOrdersOpsKpi: () =>
+    api.get<ApiData<CrmWorkOrderOpsKpi>>("/crm/work-orders/ops-kpi"),
+  workOrderFormOptions: () =>
+    api.get<ApiData<CrmWorkOrderFormOptions>>("/crm/work-orders/form-options"),
   getWorkOrder: (id: string) =>
     api.get<ApiData<CrmWorkOrder>>(`/crm/work-orders/${id}`),
+  getWorkOrderPacket: (id: string) =>
+    api.get<ApiData<CrmJobPacket>>(`/crm/work-orders/${id}/packet`),
+  getWorkOrderHoursByPayCycle: (id: string) =>
+    api.get<ApiData<CrmHoursByPayCycle>>(
+      `/crm/work-orders/${id}/hours-by-pay-cycle`,
+    ),
   updateWorkOrder: (id: string, body: Record<string, unknown>) =>
     api.patch<ApiData<CrmWorkOrder>>(`/crm/work-orders/${id}`, body),
+  holdWorkOrder: (id: string, body: { reason: string }) =>
+    api.post<ApiData<CrmWorkOrder>>(`/crm/work-orders/${id}/hold`, body),
+  cancelWorkOrder: (id: string, body: { reason: string }) =>
+    api.post<ApiData<CrmWorkOrder & { cancelled?: boolean }>>(
+      `/crm/work-orders/${id}/cancel`,
+      body,
+    ),
+  exportJobPacket: (
+    id: string,
+    body: { include?: string[]; watermark?: "NONE" | "DRAFT" | "FINAL" },
+  ) =>
+    api.post<ApiData<CrmJobPacketExport>>(
+      `/crm/work-orders/${id}/export-packet`,
+      body,
+    ),
+  requestWorkOrderDocument: (
+    id: string,
+    body: { documentName: string; description?: string },
+  ) =>
+    api.post<
+      ApiData<{
+        id: string;
+        documentName: string;
+        description: string;
+        status: string;
+        message: string;
+      }>
+    >(`/crm/work-orders/${id}/request-document`, body),
 
   // ── Dashboard extras ─────────────────────────────────────────────────────
   dashboardSync: () =>
@@ -1886,7 +1924,8 @@ export type CrmWorkOrder = {
   lineItemsSummary?: string;
   locationLabel?: string | null;
   createdAt?: string;
-  customer?: { id: string; name: string; code?: string } | null;
+  archivedAt?: string | null;
+  customer?: { id: string; name: string; code?: string; phone?: string | null } | null;
   location?: {
     id: string;
     name: string;
@@ -1896,6 +1935,184 @@ export type CrmWorkOrder = {
   } | null;
   quote?: { id: string; quoteNumber?: string; amount?: string | number } | null;
   assignedRep?: CrmUserRef | null;
+};
+
+export type CrmWorkOrderOpsKpi = {
+  active: number;
+  activeMeta: string;
+  multiDayJobs: number;
+  multiDayMeta: string;
+  closeoutNotSubmitted: number;
+  closeoutMeta: string;
+  missingReqDocs: number;
+  missingDocsMeta: string;
+  payrollReadyWos: number;
+  payrollReadyMeta: string;
+};
+
+export type CrmOpsWorkOrderRow = {
+  id: string;
+  code: string;
+  title?: string | null;
+  status: string;
+  category?: string | null;
+  customerId: string;
+  customerName: string;
+  locationName: string;
+  locationShort: string;
+  jobType: string;
+  jobDateLabel: string;
+  jobDateMeta?: string | null;
+  assignedTech: string;
+  techStatus: string;
+  closeoutAge: string;
+  closeoutTone: string;
+  docsLabel: string;
+  docsTone: string;
+  billLabel: string;
+  billTone: string;
+  crossesCycle: boolean;
+  warning: boolean;
+  serviceDate?: string | null;
+  scheduledStart?: string | null;
+  scheduledEnd?: string | null;
+  customer?: { id: string; name: string; code?: string } | null;
+  location?: { id: string; name: string } | null;
+  assignedRep?: CrmUserRef | null;
+};
+
+export type CrmHoursByPayCycle = {
+  workOrderId: string;
+  cycles: Array<{
+    id: string;
+    label: string;
+    code: string;
+    totalHours: number;
+    days: Array<{ date: string; hours: number }>;
+  }>;
+  boundaryLabel: string;
+};
+
+export type CrmJobPacket = {
+  id: string;
+  code: string;
+  title?: string | null;
+  status: string;
+  category?: string | null;
+  serviceDate?: string | null;
+  scheduledStart?: string | null;
+  scheduledEnd?: string | null;
+  notes?: string | null;
+  amount?: number | null;
+  customer: { id: string; name: string; code?: string; phone?: string | null };
+  location?: {
+    id: string;
+    name: string;
+    city?: string | null;
+    state?: string | null;
+  } | null;
+  locationLabel?: string | null;
+  quote?: { id: string; quoteNumber?: string; amount?: number | string | null } | null;
+  assignedRep?: (CrmUserRef & { name?: string }) | null;
+  lifecycle: string[];
+  lifecycleIndex: number;
+  lifecycleCurrent: string;
+  tags: string[];
+  jobInfo: {
+    jobType: string;
+    subcategory: string;
+    start?: string | null;
+    end?: string | null;
+    contact: string;
+    phone?: string | null;
+  };
+  complianceForms: Array<{ id: string; name: string; status: string }>;
+  photos: { count: number; label: string };
+  signatures: { technician: string; customer: string; captured: boolean };
+  gpsTrail: { entered: string; arrived: string; departed: string };
+  timeSummary: {
+    total: number;
+    billable: number;
+    nonBillable: number;
+    technicians: string;
+    rows: Array<Record<string, unknown>>;
+  };
+  salesTickets: Array<{
+    id: string;
+    code: string;
+    status: string;
+    serviceItem: string;
+    hours: number;
+    value: number;
+    employee: string;
+  }>;
+  technicians: Array<{
+    id: string;
+    name: string;
+    role: string;
+    rate: number | null;
+    status: string;
+    crew?: string | null;
+  }>;
+  billing: {
+    totalHours: number;
+    billedHours: number;
+    exception: string | null;
+  };
+  hoursByPayCycle: CrmHoursByPayCycle;
+  audit: Array<{ id: string; at: string; label: string }>;
+  netsuiteStatus: string;
+  closeRule: string;
+  stillRequiredBeforeDispatch?: string[];
+  approvedBy: string;
+  generatedAt: string;
+};
+
+export type CrmJobPacketExport = {
+  workOrderId: string;
+  code: string;
+  watermark: string;
+  include: string[];
+  counts: { complianceForms: number; photos: number };
+  preview: {
+    brand: string;
+    title: string;
+    subtitle: string;
+    workOrderLabel: string;
+    workOrderCode: string;
+    locationLine: string;
+    sections: Array<{ key: string; title: string; body: string }>;
+    footerLeft: string[];
+    approvedBy: string;
+  };
+};
+
+export type CrmWorkOrderFormOptions = {
+  customers: Array<{ value: string; label: string }>;
+  locations: Array<{
+    value: string;
+    label: string;
+    customerId: string;
+    meta?: string;
+  }>;
+  quotes: Array<{
+    value: string;
+    label: string;
+    customerId: string;
+    status: string;
+    amount: number | null;
+  }>;
+  technicians: Array<{ value: string; label: string; role?: string | null }>;
+  trucks: Array<{ value: string; label: string }>;
+  jobTypes: Array<{ value: string; label: string }>;
+  subcategories: Array<{ value: string; label: string }>;
+  assetPackages: Array<{ value: string; label: string }>;
+  requiredForms: Array<{
+    id: string;
+    label: string;
+    gate: string;
+    defaultChecked: boolean;
+  }>;
 };
 
 export type CrmQuoteConvertEligibilityCheck = {

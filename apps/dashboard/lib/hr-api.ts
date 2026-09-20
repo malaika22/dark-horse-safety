@@ -602,7 +602,61 @@ export type CreateEmployeeBody = {
   sseEvaluationSchedule?: string;
 };
 
+export type HrDashboardStat = {
+  value: number | string;
+  meta: string;
+  action: string;
+  href: string;
+  icon: string;
+};
+
+export type HrDashboardReviewItem = {
+  id: string;
+  category: string;
+  categoryLabel: string;
+  title: string;
+  href: string;
+};
+
+export type HrDashboardActivityItem = {
+  id: string;
+  type: string;
+  title: string;
+  subtitle: string;
+  status: string;
+  statusVariant: string;
+  href: string;
+  at: string;
+};
+
+export type HrDashboardOverview = {
+  lastSyncAt: string;
+  lastSyncLabel: string;
+  stats: {
+    activeEmployees: HrDashboardStat;
+    onShift: HrDashboardStat;
+    pendingRequests: HrDashboardStat;
+    timeOffReqs: HrDashboardStat;
+    certExpirations: HrDashboardStat;
+    payrollReady: HrDashboardStat;
+    trainingDue: HrDashboardStat;
+    onboarding: HrDashboardStat;
+    supervisorRouting: HrDashboardStat;
+  };
+  needingReview: HrDashboardReviewItem[];
+  activity: HrDashboardActivityItem[];
+  reviewCategories: Array<{ id: string; label: string }>;
+  activityTypes: Array<{ id: string; label: string }>;
+};
+
 export const hrApi = {
+  dashboardOverview: () =>
+    api.get<ApiData<HrDashboardOverview>>("/hr/dashboard"),
+  dashboardSync: () =>
+    api.post<ApiData<{ syncedAt: string; lastSyncLabel: string }>>(
+      "/hr/dashboard/sync",
+    ),
+
   employeesKpi: () =>
     api.get<ApiData<HrEmployeeKpi>>("/hr/employees/kpi"),
   listEmployees: (params?: HrListParams) =>
@@ -1262,6 +1316,21 @@ export const hrApi = {
       notes?: string;
     },
   ) => api.post<ApiData<HrGpsFlagDetail>>(`/hr/gps-flags/${id}/decision`, body),
+
+  closeoutsOverview: () =>
+    api.get<ApiData<HrCloseoutsOverview>>(`/hr/closeouts`),
+  getCloseout: (id: string) =>
+    api.get<ApiData<HrCloseoutDetail>>(`/hr/closeouts/${id}`),
+  refreshCloseoutFlags: () =>
+    api.post<ApiData<{ updated: number; message: string }>>(
+      `/hr/closeouts/refresh-flags`,
+      {},
+    ),
+  decideCloseout: (
+    id: string,
+    body: { decision: "ACCEPT" | "RETURN" | "HOLD"; note?: string },
+  ) =>
+    api.post<ApiData<HrCloseoutDetail>>(`/hr/closeouts/${id}/decision`, body),
 };
 
 export type HrGpsFlagListItem = {
@@ -1306,6 +1375,77 @@ export type HrGpsFlagsOverview = {
     oldestMeta: string;
   };
   flags: HrGpsFlagListItem[];
+};
+
+export type HrCloseoutListItem = {
+  id: string;
+  workOrderCode: string;
+  customerShort: string;
+  customerName: string;
+  technician: string;
+  ageLabel: string;
+  flagCount: number;
+  status: string;
+  locationLabel?: string | null;
+};
+
+export type HrCloseoutDetail = {
+  id: string;
+  workOrderId: string;
+  workOrderCode: string;
+  customerId: string;
+  customerName: string;
+  locationLabel: string;
+  headerLabel: string;
+  serviceDateLabel: string;
+  submittedBy: string;
+  submittedAtLabel: string;
+  status: string;
+  flagCount: number;
+  flags: Array<{ code: string; message: string }>;
+  avgDistanceMi?: number | null;
+  timeRows: Array<{
+    technician: string;
+    clocked: number;
+    billable: number;
+    nonBillable: number;
+  }>;
+  forms: Array<{ name: string; status: "SUBMITTED" | "MISSING" | string }>;
+  photos: Array<{ label: string; locked: boolean }>;
+  salesLines: Array<{
+    item: string;
+    hours: number | null;
+    total: number;
+    totalLabel: string;
+    hoursLabel: string;
+  }>;
+  salesTotal: number;
+  salesTotalLabel: string;
+  purchaseOrders: Array<{
+    code: string;
+    label: string;
+    amount: number;
+    amountLabel: string;
+    overThreshold: boolean;
+  }>;
+  salesTicketId?: string | null;
+  decisionNote?: string | null;
+  decidedAt?: string | null;
+  decidedByName?: string | null;
+  actionedAgo?: string | null;
+};
+
+export type HrCloseoutsOverview = {
+  kpis: {
+    openFlags: number;
+    openMeta: string;
+    avgDistance: string;
+    avgMeta: string;
+    oldestFlag: string;
+    oldestMeta: string;
+  };
+  pending: HrCloseoutListItem[];
+  pendingCount: number;
 };
 
 export type HrOnCallAssignment = {

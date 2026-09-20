@@ -291,6 +291,9 @@ model Customer {
   routeRules    RouteRule[]
   quotes        Quote[]
   workOrders    WorkOrder[]
+  salesTickets  SalesTicket[]
+  recurringSeries RecurringWorkOrderSeries[]
+  closeoutReviews CloseoutReview[]
   activities    SalesActivity[]
   expenses      Expense[]
   tasks         CrmTask[]
@@ -1087,6 +1090,9 @@ model WorkOrder {
   quote          Quote?          @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   assignedRepId  String?
   assignedRep    User?           @relation("WorkOrderAssignedRep", fields: [assignedRepId], references: [id], onDelete: SetNull)
+  dispatchAssignments DispatchAssignment[]
+  salesTickets   SalesTicket[]
+  closeoutReviews CloseoutReview[]
   archivedAt     DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -1311,6 +1317,9 @@ model Employee {
   onCallSwapsFrom         OnCallSwapRequest[] @relation("OnCallSwapFrom")
   onCallSwapsTo           OnCallSwapRequest[] @relation("OnCallSwapTo")
   hrGpsFlags              HrGpsFlag[]
+  dispatchAssignments     DispatchAssignment[]
+  salesTickets            SalesTicket[]
+  closeoutReviews         CloseoutReview[]
   userId                  String?        @unique
   user                    User?          @relation("EmployeeUser", fields: [userId], references: [id], onDelete: SetNull)
   createdAt               DateTime       @default(now())
@@ -1791,4 +1800,317 @@ model HrGpsFlag {
   @@index([decision])
   @@index([eventAt])
   @@index([type])
+}
+
+// ─── Operations — Dispatch assignments ───────────────────────────────────────
+
+enum DispatchAssignmentStatus {
+  TO_DISPATCH
+  POSTED
+  ACCEPTED
+  DECLINED
+  NO_RESPONSE
+  CONFLICT
+  PTO
+  CANCELLED
+  REASSIGNED
+}
+
+enum DispatchJobType {
+  VISIT
+  CALL
+  TASK
+}
+
+enum DispatchConflictKind {
+  NONE
+  CERT
+  ASSET
+  OVERLAP
+  CUSTOMER_REQ
+  FORM
+  PTO
+}
+
+model DispatchAssignment {
+  id                String                   @id @default(uuid())
+  workOrderId       String
+  workOrder         WorkOrder                @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  employeeId        String?
+  employee          Employee?                @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  scheduledDate     DateTime                 @db.Date
+  startTime         String?
+  endTime           String?
+  jobType           DispatchJobType          @default(VISIT)
+  status            DispatchAssignmentStatus @default(TO_DISPATCH)
+  conflictKind      DispatchConflictKind     @default(NONE)
+  conflictLabel     String?
+  declineReason     String?
+  notes             String?
+  postedAt          DateTime?
+  acceptedAt        DateTime?
+  declinedAt        DateTime?
+  responseMinutes   Int?
+  overrideReason    String?
+  overrideByName    String?
+  overriddenAt      DateTime?
+  notifyTechnician  Boolean                  @default(true)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  @@index([scheduledDate])
+  @@index([employeeId])
+  @@index([workOrderId])
+  @@index([status])
+}
+
+// ─── Operations — Sales tickets ──────────────────────────────────────────────
+
+enum SalesTicketStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  RETURNED
+  ADJUSTED
+  APPROVED
+  CANCELLED
+}
+
+model SalesTicket {
+  id                 String            @id @default(uuid())
+  code               String            @unique
+  workOrderId        String?
+  workOrder          WorkOrder?        @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  customerId         String
+  customer           Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  employeeId         String?
+  employee           Employee?         @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  serviceItem        String
+  status             SalesTicketStatus @default(SUBMITTED)
+
+  submittedRate      Decimal           @db.Decimal(14, 2)
+  submittedHours     Decimal           @db.Decimal(10, 1)
+  hoursLocked        Boolean           @default(true)
+  rateSource         String            @default("CUSTOMER PRICING RULE")
+  submittedValue     Decimal           @db.Decimal(14, 2)
+
+  adjustedRate       Decimal?          @db.Decimal(14, 2)
+  adjustedValue      Decimal?          @db.Decimal(14, 2)
+  rateDifference     Decimal?          @db.Decimal(14, 2)
+  rateAdjustReason   String?
+  rateAdjustedAt     DateTime?
+  rateAdjustedByName String?
+  rateAdjustedById   String?
+
+  /// [{ field, issue, expected }]
+  corrections        Json?
+  returnNote         String?
+  dueBackBy          DateTime?
+  notifyPush         Boolean           @default(true)
+  notifyEmail        Boolean           @default(true)
+  returnedAt         DateTime?
+  returnedByName     String?
+  returnedById       String?
+
+  locationLabel      String?
+  jobDateLabel       String?
+  workedHours        Decimal?          @db.Decimal(10, 1)
+  billedHours        Decimal?          @db.Decimal(10, 1)
+  deltaHours         Decimal?          @db.Decimal(10, 1)
+  amount             Decimal?          @db.Decimal(14, 2)
+  reconciliation     String?
+  issueLabel         String?
+  approvalStatus     String?
+  netsuiteStatus     String?
+  techStatus         String?
+  techExtraCount     Int               @default(0)
+  stMissing          Boolean           @default(false)
+  billingFlag        String?
+  workflowStep       String?
+  /// Full detail packet (company, lines, variance, route, POs, netsuite, audit)
+  detailPacket       Json?
+
+  archivedAt         DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([customerId])
+  @@index([workOrderId])
+  @@index([employeeId])
+  @@index([status])
+  @@index([archivedAt])
+  @@index([approvalStatus])
+  @@index([reconciliation])
+}
+
+// ─── Operations — Recurring work order series ────────────────────────────────
+
+enum RecurringSeriesFrequency {
+  WEEKLY
+  FORTNIGHTLY
+  MONTHLY
+  QUARTERLY
+  ANNUALLY
+}
+
+enum RecurringSeriesStatus {
+  ACTIVE
+  ENDED
+}
+
+model RecurringWorkOrderSeries {
+  id                     String                   @id @default(uuid())
+  code                   String                   @unique
+  customerId             String
+  customer               Customer                 @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  jobType                String
+  frequency              RecurringSeriesFrequency @default(MONTHLY)
+  nextOccurrence         DateTime?
+  generatedCount         Int                      @default(0)
+  remainingCount         Int                      @default(0)
+  status                 RecurringSeriesStatus    @default(ACTIVE)
+  /// e.g. SAME DATE - 1ST
+  dayRule                String                   @default("SAME DATE - 1ST")
+  generateAheadDays      Int                      @default(14)
+  endsAfterOccurrences   Int                      @default(12)
+  endsOnDate             DateTime?
+  endsNever              Boolean                  @default(true)
+  crewTemplate           String?
+  estimatedDurationHours Decimal?                 @db.Decimal(8, 1)
+  requiredForms          String?
+  requiredEquipment      String?
+  notes                  String?
+  archivedAt             DateTime?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  occurrences            RecurringSeriesOccurrence[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([nextOccurrence])
+  @@index([archivedAt])
+}
+
+model RecurringSeriesOccurrence {
+  id               String                   @id @default(uuid())
+  seriesId         String
+  series           RecurringWorkOrderSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  occurrenceNumber Int
+  workOrderId      String?
+  workOrderCode    String
+  serviceDate      DateTime
+  crewLabel        String                   @default("2 TECHS")
+  status           String                   @default("CLOSED")
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  @@unique([seriesId, occurrenceNumber])
+  @@index([seriesId])
+  @@index([workOrderId])
+}
+
+// ─── HR — Closeout review ────────────────────────────────────────────────────
+
+enum CloseoutStatus {
+  PENDING
+  ACCEPTED
+  RETURNED
+  HELD
+}
+
+model CloseoutReview {
+  id              String         @id @default(uuid())
+  workOrderId     String
+  workOrder       WorkOrder      @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  customerId      String
+  customer        Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  submittedById   String?
+  submittedBy     Employee?      @relation(fields: [submittedById], references: [id], onDelete: SetNull)
+  submittedAt     DateTime       @default(now())
+  serviceDate     DateTime?      @db.Date
+  status          CloseoutStatus @default(PENDING)
+  locationLabel   String?
+  flagCount       Int            @default(0)
+  /// [{ code, message }]
+  flags           Json?
+  avgDistanceMi   Decimal?       @db.Decimal(8, 2)
+  /// [{ technician, clocked, billable, nonBillable }]
+  timeRows        Json?
+  /// [{ name, status: SUBMITTED|MISSING }]
+  forms           Json?
+  /// [{ label, locked }]
+  photos          Json?
+  /// [{ item, hours, total }]
+  salesLines      Json?
+  salesTotal      Decimal?       @db.Decimal(14, 2)
+  /// [{ code, label, amount, overThreshold }]
+  purchaseOrders  Json?
+  salesTicketId   String?
+  decisionNote    String?
+  decidedAt       DateTime?
+  decidedByName   String?
+  decidedById     String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([workOrderId])
+  @@index([customerId])
+  @@index([submittedById])
+  @@index([status])
+  @@index([submittedAt])
+}
+
+
+enum SafetyFormStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum SafetySubmissionStatus {
+  DRAFT
+  SUBMITTED
+  LOCKED
+}
+
+model SafetyForm {
+  id          String           @id @default(cuid())
+  code        String           @unique
+  title       String
+  version     String           @default("V1.0")
+  status      SafetyFormStatus @default(DRAFT)
+  /// [{ id, title, required, fields: [{ id, type, label, placeholder, required, options?, value? }] }]
+  definition  Json
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  submissions SafetyFormSubmission[]
+
+  @@index([status])
+  @@index([updatedAt])
+}
+
+model SafetyFormSubmission {
+  id            String                 @id @default(cuid())
+  code          String                 @unique
+  formId        String
+  form          SafetyForm             @relation(fields: [formId], references: [id], onDelete: Cascade)
+  workOrderId   String?
+  workOrderCode String?
+  customerName  String?
+  locationLabel String?
+  status        SafetySubmissionStatus @default(DRAFT)
+  /// Field values keyed by field id
+  values        Json
+  /// Preview/print metadata (employee, company, equipment, signature, gps)
+  meta          Json?
+  submittedById String?
+  submittedByName String?
+  submittedAt   DateTime?
+  lockedAt      DateTime?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@index([formId])
+  @@index([status])
+  @@index([submittedAt])
+  @@index([workOrderId])
 }

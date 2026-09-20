@@ -1,15 +1,27 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
+  DashboardActivityRow,
+  DashboardExceptionRow,
+  DashboardPanel,
   DashboardPanelTitle,
   DashboardStatCell,
   DashboardStatGrid,
   DashboardStatRow,
+  DashboardToolbarButton,
   cn,
+  type DashboardBadgeVariant,
+  type StatIconName,
 } from "@dark-horse-safety/ui";
-import { hrApi } from "@/lib/hr-api";
+import {
+  hrApi,
+  type HrDashboardActivityItem,
+  type HrDashboardOverview,
+  type HrDashboardReviewItem,
+  type HrDashboardStat,
+} from "@/lib/hr-api";
 import { toastApiError } from "@/lib/toast";
 import { BrandLoader } from "@/features/loading/brand-loader";
 import {
@@ -17,149 +29,163 @@ import {
   useSetHeaderBreadcrumb,
 } from "@/features/app-shell/header-actions-context";
 
-type DashState = {
-  employees: {
-    active: number;
-    pendingRequests: number;
-    trainingFlags: number;
-    hoursThisCycle: number;
-  };
-  timeEntries: {
-    pending: number;
-    missingClockOut: number;
-    gpsFlagged: number;
-    editRequests: number;
-  };
-  timeOff: {
-    pending: number;
-    upcoming: number;
-    coverageNeeded: number;
-  };
-  payroll: {
-    exceptions: number;
-    cycleLabel: string;
-    banner: string;
-  };
-  training: {
-    recordsOnFile: number;
-    expiringSoon: number;
-  };
-  gps: {
-    openFlags: number;
-    oldestFlag: string;
-  };
-  onCall: {
-    onCallToday: string;
-    unassignedDays: number;
-    swapRequests: number;
-  };
-};
+function PlusPersonIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 20a8 8 0 0116 0"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+      <path
+        d="M19 8v6M16 11h6"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
-const LINKS: Array<{ href: string; label: string; hint: string }> = [
-  { href: "/hr/employees", label: "Employees", hint: "Roster & profiles" },
-  { href: "/hr/time-entries", label: "Time Entries", hint: "Approve & edit" },
-  {
-    href: "/hr/time-edit-requests",
-    label: "Time Edit Requests",
-    hint: "Correction queue",
-  },
-  { href: "/hr/time-off", label: "Time Off", hint: "PTO & coverage" },
-  { href: "/hr/payroll-review", label: "Payroll Review", hint: "Exceptions" },
-  { href: "/hr/payroll-export", label: "Payroll Export", hint: "ADP handoff" },
-  {
-    href: "/hr/supervisor-routing",
-    label: "Supervisor Routing",
-    hint: "Approval routes",
-  },
-  { href: "/hr/training", label: "Training", hint: "Records & certs" },
-  { href: "/hr/sse-programme", label: "SSE Programme", hint: "Mentor pairs" },
-  {
-    href: "/hr/on-call-rotation",
-    label: "On-Call Rotation",
-    hint: "Coverage calendar",
-  },
-  {
-    href: "/hr/gps-flag-review",
-    label: "GPS Flag Review",
-    hint: "Geofence flags",
-  },
-  {
-    href: "/hr/pay-cycle",
-    label: "Pay Cycle Setting",
-    hint: "Cycles & OT rules",
-  },
-];
+function SegmentTabs({
+  tabs,
+  value,
+  onChange,
+}: {
+  tabs: Array<{ id: string; label: string }>;
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-nowrap items-center gap-1.5">
+      {tabs.map((tab) => {
+        const active = tab.id === value;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onChange(tab.id)}
+            className={cn(
+              "inline-flex h-7 shrink-0 items-center rounded-full px-3 font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] transition-colors md:text-[11px]",
+              active
+                ? "bg-[#FDFDFF] text-[#111111]"
+                : "bg-[#2A2A2A] text-[#959597] hover:bg-[#333333] hover:text-[#FDFDFF]",
+            )}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ViewAllButton({
+  label = "View All",
+  onClick,
+}: {
+  label?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-4 py-2.5 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] transition-colors hover:border-[#3E3E3E] hover:bg-[#222222] md:text-[12px]"
+    >
+      {label}
+      <span aria-hidden>→</span>
+    </button>
+  );
+}
+
+function toIcon(name: string): StatIconName {
+  const allowed: StatIconName[] = [
+    "time",
+    "edit",
+    "gps",
+    "wrench",
+    "document",
+    "lightning",
+    "folder",
+    "customers",
+    "hr",
+  ];
+  return (allowed.includes(name as StatIconName)
+    ? name
+    : "document") as StatIconName;
+}
+
+function StatFromApi({
+  stat,
+  title,
+  onAction,
+}: {
+  stat: HrDashboardStat;
+  title: string;
+  onAction: () => void;
+}) {
+  return (
+    <DashboardStatCell
+      title={title}
+      value={String(stat.value)}
+      meta={stat.meta}
+      icon={toIcon(stat.icon)}
+      action={stat.action}
+      onAction={onAction}
+    />
+  );
+}
+
+function activityVariant(v: string): DashboardBadgeVariant {
+  if (v === "error") return "error";
+  if (v === "success") return "success";
+  if (v === "review") return "review";
+  if (v === "gold") return "gold";
+  return "warning";
+}
 
 export function HrDashboardPage() {
+  const router = useRouter();
   const [loading, setLoading] = React.useState(true);
-  const [data, setData] = React.useState<DashState | null>(null);
+  const [data, setData] = React.useState<HrDashboardOverview | null>(null);
+  const [reviewTab, setReviewTab] = React.useState("all");
+  const [activityTab, setActivityTab] = React.useState("all");
+  const [reloadKey, setReloadKey] = React.useState(0);
 
   useSetHeaderBreadcrumb("Employees & HR / HR Dashboard");
-  useSetHeaderActions(null, []);
+  useSetHeaderActions(
+    <div className="flex flex-wrap items-center gap-2">
+      {data?.lastSyncLabel ? (
+        <span className="hidden font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597] lg:inline">
+          {data.lastSyncLabel}
+        </span>
+      ) : null}
+      <DashboardToolbarButton
+        variant="primary"
+        leftIcon={<PlusPersonIcon />}
+        showChevron
+        onClick={() => router.push("/hr/employees/new")}
+      >
+        Add Employee
+      </DashboardToolbarButton>
+    </div>,
+    [router, data?.lastSyncLabel],
+  );
 
   React.useEffect(() => {
     let cancelled = false;
     setLoading(true);
     void (async () => {
       try {
-        const [
-          employees,
-          timeEntries,
-          timeOff,
-          payroll,
-          training,
-          gps,
-          onCall,
-        ] = await Promise.all([
-          hrApi.employeesKpi(),
-          hrApi.timeEntriesKpi(),
-          hrApi.timeOffKpi(),
-          hrApi.payrollReviewKpi(),
-          hrApi.trainingDashboard(),
-          hrApi.gpsFlagsOverview(),
-          hrApi.onCallMonth(),
-        ]);
-        if (cancelled) return;
-        setData({
-          employees: {
-            active: employees.data.active,
-            pendingRequests: employees.data.pendingRequests,
-            trainingFlags: employees.data.trainingFlags,
-            hoursThisCycle: employees.data.hoursThisCycle,
-          },
-          timeEntries: {
-            pending: timeEntries.data.pending,
-            missingClockOut: timeEntries.data.missingClockOut,
-            gpsFlagged: timeEntries.data.gpsFlagged,
-            editRequests: timeEntries.data.editRequests,
-          },
-          timeOff: {
-            pending: timeOff.data.pending,
-            upcoming: timeOff.data.upcoming,
-            coverageNeeded: timeOff.data.coverageNeeded,
-          },
-          payroll: {
-            exceptions: payroll.data.exceptions,
-            cycleLabel: payroll.data.cycleLabel,
-            banner: payroll.data.banner,
-          },
-          training: {
-            recordsOnFile: training.data.kpis.recordsOnFile,
-            expiringSoon: training.data.kpis.expiringSoon,
-          },
-          gps: {
-            openFlags: gps.data.kpis.openFlags,
-            oldestFlag: gps.data.kpis.oldestFlag,
-          },
-          onCall: {
-            onCallToday: onCall.data.kpis.onCallToday,
-            unassignedDays: onCall.data.kpis.unassignedDays,
-            swapRequests: onCall.data.kpis.swapRequests,
-          },
-        });
+        const res = await hrApi.dashboardOverview();
+        if (!cancelled) setData(res.data);
       } catch (err) {
-        toastApiError(err);
-        if (!cancelled) setData(null);
+        if (!cancelled) {
+          toastApiError(err);
+          setData(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -167,12 +193,24 @@ export function HrDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
-  if (loading) {
+  const reviews = React.useMemo(() => {
+    if (!data) return [] as HrDashboardReviewItem[];
+    if (reviewTab === "all") return data.needingReview;
+    return data.needingReview.filter((r) => r.category === reviewTab);
+  }, [data, reviewTab]);
+
+  const activities = React.useMemo(() => {
+    if (!data) return [] as HrDashboardActivityItem[];
+    if (activityTab === "all") return data.activity;
+    return data.activity.filter((a) => a.type === activityTab);
+  }, [data, activityTab]);
+
+  if (loading && !data) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center bg-shell">
-        <BrandLoader />
+        <BrandLoader label="Loading HR dashboard" />
       </div>
     );
   }
@@ -180,100 +218,154 @@ export function HrDashboardPage() {
   if (!data) {
     return (
       <div className="overflow-x-hidden bg-shell p-3 sm:p-6">
-        <p className="font-sans text-[12px] uppercase text-[#959597]">
+        <p className="mb-3 font-sans text-[12px] uppercase text-[#959597]">
           Failed to load HR dashboard.
         </p>
+        <DashboardToolbarButton onClick={() => setReloadKey((k) => k + 1)}>
+          Retry
+        </DashboardToolbarButton>
       </div>
     );
   }
 
+  const s = data.stats;
+
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-6">
+      <p className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#959597] lg:hidden">
+        {data.lastSyncLabel}
+      </p>
+
       <DashboardStatGrid>
-        <DashboardStatRow columns={4}>
-          <DashboardStatCell
+        <DashboardStatRow columns={5}>
+          <StatFromApi
             title="Active Employees"
-            value={String(data.employees.active)}
-            meta={`${data.employees.hoursThisCycle.toFixed(1)}H This Cycle`}
-            icon="customers"
+            stat={s.activeEmployees}
+            onAction={() => router.push(s.activeEmployees.href)}
           />
-          <DashboardStatCell
-            title="Pending Time"
-            value={String(data.timeEntries.pending)}
-            meta={`${data.timeEntries.missingClockOut} Missing C/O`}
-            icon="time"
+          <StatFromApi
+            title="On Shift"
+            stat={s.onShift}
+            onAction={() => router.push(s.onShift.href)}
           />
-          <DashboardStatCell
-            title="Time Off Queue"
-            value={String(data.timeOff.pending)}
-            meta={`${data.timeOff.coverageNeeded} Need Coverage`}
-            icon="folder"
+          <StatFromApi
+            title="Pending Requests"
+            stat={s.pendingRequests}
+            onAction={() => router.push(s.pendingRequests.href)}
           />
-          <DashboardStatCell
-            title="Payroll Exceptions"
-            value={String(data.payroll.exceptions)}
-            meta={data.payroll.cycleLabel}
-            icon="document"
+          <StatFromApi
+            title="Time Off Reqs"
+            stat={s.timeOffReqs}
+            onAction={() => router.push(s.timeOffReqs.href)}
+          />
+          <StatFromApi
+            title="Cert Expirations"
+            stat={s.certExpirations}
+            onAction={() => router.push(s.certExpirations.href)}
           />
         </DashboardStatRow>
         <DashboardStatRow columns={4}>
-          <DashboardStatCell
-            title="Open GPS Flags"
-            value={String(data.gps.openFlags)}
-            meta={`Oldest ${data.gps.oldestFlag}`}
-            icon="lightning"
+          <StatFromApi
+            title="Payroll-Ready"
+            stat={s.payrollReady}
+            onAction={() => router.push(s.payrollReady.href)}
           />
-          <DashboardStatCell
-            title="Training Expiring"
-            value={String(data.training.expiringSoon)}
-            meta={`${data.training.recordsOnFile} Records On File`}
-            icon="document"
+          <StatFromApi
+            title="Training Due"
+            stat={s.trainingDue}
+            onAction={() => router.push(s.trainingDue.href)}
           />
-          <DashboardStatCell
-            title="On Call Today"
-            value={data.onCall.onCallToday}
-            meta={`${data.onCall.unassignedDays} Unassigned Days`}
-            icon="time"
+          <StatFromApi
+            title="Onboarding"
+            stat={s.onboarding}
+            onAction={() => router.push(s.onboarding.href)}
           />
-          <DashboardStatCell
-            title="Edit Requests"
-            value={String(data.timeEntries.editRequests)}
-            meta={`${data.employees.pendingRequests} Total Pending`}
-            icon="folder"
+          <StatFromApi
+            title="Supervisor Routing"
+            stat={s.supervisorRouting}
+            onAction={() => router.push(s.supervisorRouting.href)}
           />
         </DashboardStatRow>
       </DashboardStatGrid>
 
-      {data.payroll.banner ? (
-        <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#959597]">
-          {data.payroll.banner}
-        </p>
-      ) : null}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
+        <DashboardPanel className="flex min-h-0 flex-col p-4 sm:p-5">
+          <DashboardPanelTitle
+            icon="lightning"
+            title="Needing Review"
+            trailing={
+              <SegmentTabs
+                tabs={data.reviewCategories}
+                value={reviewTab}
+                onChange={setReviewTab}
+              />
+            }
+          />
+          <div className="mt-4 min-h-0 flex-1">
+            {reviews.length === 0 ? (
+              <p className="py-6 font-sans text-[11px] uppercase text-[#959597]">
+                Nothing needs review
+              </p>
+            ) : (
+              <ul className="list-none space-y-0">
+                {reviews.map((row) => (
+                  <DashboardExceptionRow
+                    key={row.id}
+                    tag={row.categoryLabel}
+                    tagVariant="gold"
+                    title={row.title}
+                    action="Review"
+                    onAction={() => router.push(row.href)}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+          <ViewAllButton
+            onClick={() => router.push("/hr/time-edit-requests")}
+          />
+        </DashboardPanel>
 
-      <section className="rounded-xl border border-[#2D2D30] bg-panel">
-        <div className="border-b border-[#2A2A2A] px-4 py-3">
-          <DashboardPanelTitle icon="lightning" title="HR Modules" />
-        </div>
-        <div className="grid gap-2 p-3 sm:grid-cols-2 sm:p-4 lg:grid-cols-3">
-          {LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                "flex min-w-0 flex-col gap-1 rounded-lg border border-[#2D2D30] bg-[#161616] px-3 py-3 transition-colors",
-                "hover:border-[#3E3E3E] hover:bg-[#1A1A1A]",
-              )}
-            >
-              <span className="font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-                {link.label}
-              </span>
-              <span className="font-sans text-[10px] uppercase tracking-[-0.01em] text-[#959597]">
-                {link.hint}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
+        <DashboardPanel className="flex min-h-0 flex-col p-4 sm:p-5">
+          <DashboardPanelTitle
+            icon="lightning"
+            title="Recent HR Activity"
+            trailing={
+              <SegmentTabs
+                tabs={data.activityTypes}
+                value={activityTab}
+                onChange={setActivityTab}
+              />
+            }
+          />
+          <div className="mt-4 min-h-0 flex-1">
+            {activities.length === 0 ? (
+              <p className="py-6 font-sans text-[11px] uppercase text-[#959597]">
+                No recent activity
+              </p>
+            ) : (
+              <ul className="list-none space-y-0">
+                {activities.map((row) => (
+                  <button
+                    key={row.id}
+                    type="button"
+                    className="block w-full text-left"
+                    onClick={() => router.push(row.href)}
+                  >
+                    <DashboardActivityRow
+                      title={row.title}
+                      subtitle={row.subtitle}
+                      status={row.status}
+                      statusVariant={activityVariant(row.statusVariant)}
+                    />
+                  </button>
+                ))}
+              </ul>
+            )}
+          </div>
+          <ViewAllButton onClick={() => router.push("/hr/time-entries")} />
+        </DashboardPanel>
+      </div>
     </div>
   );
 }

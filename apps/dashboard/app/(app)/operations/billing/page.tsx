@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+import { BillingReconciliationPage } from "@/features/operations/billing-reconciliation-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Billing Reconciliation" />;
+  return <BillingReconciliationPage />;
 }

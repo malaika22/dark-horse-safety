@@ -167,6 +167,11 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
     pageTitle: "GPS Flag Review",
   },
   {
+    path: "/hr/closeout-review",
+    breadcrumb: "Employees & HR",
+    pageTitle: "Closeout Review",
+  },
+  {
     path: "/hr/time-edit-requests",
     breadcrumb: "Employees & HR / Timesheets / Time Corrections",
     pageTitle: "Time Edit Requests",
@@ -224,9 +229,9 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
   {
     path: "/operations/dispatch",
     breadcrumb: "Operations",
-    pageTitle: "Dispatch Calender",
+    pageTitle: "Dispatch Calendar",
   },
-  { path: "/operations", breadcrumb: "Operations", pageTitle: "Ops Dashboard" },
+  { path: "/operations", breadcrumb: "Operations", pageTitle: "Operations Dashboard" },
   {
     path: "/safety/certifications",
     breadcrumb: "Safety & Comp.",
@@ -238,6 +243,16 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
     pageTitle: "Incidents",
   },
   { path: "/safety", breadcrumb: "Safety & Comp.", pageTitle: "Safety Hub" },
+  {
+    path: "/reports/quote-variance",
+    breadcrumb: "Report",
+    pageTitle: "Quote Variance Report",
+  },
+  {
+    path: "/reports/rate-adjustments",
+    breadcrumb: "Report",
+    pageTitle: "Rate Adjustments Report",
+  },
   {
     path: "/reports/payroll-ready",
     breadcrumb: "Report",
