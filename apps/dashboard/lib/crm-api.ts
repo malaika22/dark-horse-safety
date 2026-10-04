@@ -996,13 +996,91 @@ export const crmApi = {
     ),
   updateWorkOrder: (id: string, body: Record<string, unknown>) =>
     api.patch<ApiData<CrmWorkOrder>>(`/crm/work-orders/${id}`, body),
-  holdWorkOrder: (id: string, body: { reason: string }) =>
-    api.post<ApiData<CrmWorkOrder>>(`/crm/work-orders/${id}/hold`, body),
-  cancelWorkOrder: (id: string, body: { reason: string }) =>
-    api.post<ApiData<CrmWorkOrder & { cancelled?: boolean }>>(
-      `/crm/work-orders/${id}/cancel`,
-      body,
+  holdWorkOrder: (
+    id: string,
+    body: { reason: string; note?: string; forceFail?: boolean },
+  ) =>
+    api.post<
+      ApiData<{
+        ok: boolean;
+        id: string;
+        code: string;
+        reason: string;
+        note?: string | null;
+        status?: string;
+        message: string;
+        banner: string;
+        cancelled?: boolean;
+      }>
+    >(`/crm/work-orders/${id}/hold`, body),
+  cancelWorkOrder: (
+    id: string,
+    body: {
+      reason: string;
+      timeHandling?: "KEEP_BILLABLE" | "KEEP_NON_BILLABLE" | "VOID";
+      poActions?: Record<string, "KEEP" | "CANCEL">;
+      notifyTechnicians?: boolean;
+      note?: string;
+    },
+  ) =>
+    api.post<
+      ApiData<{
+        ok: boolean;
+        blocked?: boolean;
+        id: string;
+        code: string;
+        reason?: string;
+        cancelled?: boolean;
+        technicianCount?: number;
+        salesTicketId?: string | null;
+        salesTicketCode?: string | null;
+        message: string;
+        banner: string;
+      }>
+    >(`/crm/work-orders/${id}/cancel`, body),
+  getWorkOrderCancelPreview: (id: string) =>
+    api.get<ApiData<WorkOrderCancelPreview>>(
+      `/crm/work-orders/${id}/cancel-preview`,
     ),
+  getWorkOrderPoStatus: (id: string) =>
+    api.get<ApiData<WorkOrderPoStatus>>(`/crm/work-orders/${id}/po-status`),
+  requestWorkOrderPo: (
+    id: string,
+    body: {
+      to: string;
+      cc?: string;
+      subject: string;
+      message?: string;
+      neededBy?: string;
+    },
+  ) =>
+    api.post<
+      ApiData<{
+        ok: boolean;
+        id: string;
+        code: string;
+        to: string;
+        cc: string;
+        subject: string;
+        neededBy: string;
+        requestedLabel: string;
+        reminderLabel: string;
+        banner: string;
+        message: string;
+      }>
+    >(`/crm/work-orders/${id}/request-po`, body),
+  markWorkOrderPoReceived: (id: string) =>
+    api.post<ApiData<WorkOrderPoStatus>>(
+      `/crm/work-orders/${id}/mark-po-received`,
+      {},
+    ),
+  attachWorkOrderPo: (
+    id: string,
+    body?: { poNumber?: string; fileName?: string },
+  ) =>
+    api.post<
+      ApiData<WorkOrderPoStatus & { attached?: boolean; fileName?: string; message?: string }>
+    >(`/crm/work-orders/${id}/attach-po`, body ?? {}),
   exportJobPacket: (
     id: string,
     body: { include?: string[]; watermark?: "NONE" | "DRAFT" | "FINAL" },
@@ -1937,6 +2015,54 @@ export type CrmWorkOrder = {
   assignedRep?: CrmUserRef | null;
 };
 
+export type WorkOrderPoStatus = {
+  id: string;
+  code: string;
+  customerName: string;
+  required: boolean;
+  missing: boolean;
+  status: string;
+  statusLabel: string;
+  summaryLine: string;
+  amount: number;
+  amountLabel: string;
+  compose: {
+    to: string;
+    cc: string;
+    subject: string;
+    message: string;
+    neededBy: string;
+  };
+  requestedLabel?: string | null;
+  reminderLabel?: string | null;
+};
+
+export type WorkOrderCancelPreview = {
+  id: string;
+  code: string;
+  customerName: string;
+  subtitle: string;
+  blocked: boolean;
+  salesTicketId?: string | null;
+  salesTicketCode?: string | null;
+  blockedMessage?: string | null;
+  blockedBanner: string;
+  reasonOptions: string[];
+  hoursLogged: number;
+  hoursLabel: string;
+  hoursRowLabel: string;
+  formsLabel: string;
+  purchaseOrders: Array<{
+    code: string;
+    vendor: string;
+    amountLabel: string;
+  }>;
+  technicianCount: number;
+  notifyLabel: string;
+  warningLabel: string;
+  ruleLabel: string;
+};
+
 export type CrmWorkOrderOpsKpi = {
   active: number;
   activeMeta: string;
@@ -2102,11 +2228,24 @@ export type CrmWorkOrderFormOptions = {
     status: string;
     amount: number | null;
   }>;
-  technicians: Array<{ value: string; label: string; role?: string | null }>;
+  technicians: Array<{
+    value: string;
+    label: string;
+    role?: string | null;
+    eligible?: boolean;
+    eligibilityLabel?: string;
+  }>;
   trucks: Array<{ value: string; label: string }>;
   jobTypes: Array<{ value: string; label: string }>;
   subcategories: Array<{ value: string; label: string }>;
   assetPackages: Array<{ value: string; label: string }>;
+  assetItems?: Array<{
+    packageId: string;
+    name: string;
+    status: string;
+    tone: "success" | "warning" | "review" | string;
+  }>;
+  pricingRules?: Array<{ value: string; label: string }>;
   requiredForms: Array<{
     id: string;
     label: string;

@@ -223,6 +223,16 @@ export const APP_NAV: NavItem[] = [
         href: "/operations/work-orders",
       },
       {
+        id: "ops-additional-forms",
+        label: "Additional Form Req.",
+        href: "/operations/additional-form-requests",
+      },
+      {
+        id: "ops-form-corrections",
+        label: "Form Corrections",
+        href: "/operations/form-corrections",
+      },
+      {
         id: "ops-recurring",
         label: "Recurring Series",
         href: "/operations/recurring-series",

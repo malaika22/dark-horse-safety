@@ -23,6 +23,7 @@ import {
 import { OpsDetailStateGate } from "@/features/operations/operations-states";
 import {
   CloseRuleModal,
+  CancelWorkOrderModal,
   ExportJobPacketModal,
   JobPacketPrintPreview,
   RequestDocumentModal,
@@ -53,6 +54,7 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
   const [preview, setPreview] = React.useState<CrmJobPacketExport | null>(null);
   const [previewOpen, setPreviewOpen] = React.useState(false);
   const [closeOpen, setCloseOpen] = React.useState(false);
+  const [cancelOpen, setCancelOpen] = React.useState(false);
   const [docOpen, setDocOpen] = React.useState(false);
   const [docName, setDocName] = React.useState("BBS Stop Card");
 
@@ -447,9 +449,12 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
                 <p className="mt-3 font-sans text-[11px] uppercase leading-relaxed text-[#959597]">
                   {packet.closeRule}
                 </p>
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <DashboardToolbarButton onClick={() => setCloseOpen(true)}>
                     Hold / Cancel…
+                  </DashboardToolbarButton>
+                  <DashboardToolbarButton onClick={() => setCancelOpen(true)}>
+                    Cancel Work Order
                   </DashboardToolbarButton>
                 </div>
               </DashboardPanel>
@@ -478,6 +483,12 @@ export function WorkOrderDetailPage({ workOrderId }: { workOrderId: string }) {
         open={closeOpen}
         workOrderId={workOrderId}
         onClose={() => setCloseOpen(false)}
+        onDone={() => void reload()}
+      />
+      <CancelWorkOrderModal
+        open={cancelOpen}
+        workOrderId={workOrderId}
+        onClose={() => setCancelOpen(false)}
         onDone={() => void reload()}
       />
       <RequestDocumentModal

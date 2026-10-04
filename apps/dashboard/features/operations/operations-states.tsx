@@ -348,7 +348,7 @@ export function OpsNoVariancesState({ className }: { className?: string }) {
 
 export function OpsNoPurchaseOrdersState({
   onAdd,
-  addHref = "/operations/purchase-orders",
+  addHref = "/operations/purchase-orders/new",
   className,
 }: {
   onAdd?: () => void;

@@ -19,6 +19,7 @@ import {
   DispatchRangeQueryDto,
   OverrideDispatchDto,
   ReassignDispatchDto,
+  RequestReassignOverrideDto,
   RescheduleDispatchDto,
 } from './dto/dispatch.dto';
 
@@ -182,6 +183,8 @@ export class DispatchService {
         eligible: false,
         status: 'BLOCKED' as const,
         detail: 'On leave',
+        meta: 'ON LEAVE',
+        truck: emp.assignedTruck || null,
         distanceMi: null as number | null,
         jobsThatDay: 0,
       };
@@ -196,12 +199,22 @@ export class DispatchService {
       },
     });
     if (pto) {
+      const from = pto.startDate.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
+      const to = pto.endDate.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
       return {
         employeeId: emp.id,
         name,
         eligible: false,
         status: 'BLOCKED' as const,
-        detail: 'PTO / time off',
+        detail: `PTO ${from}–${to}`.toUpperCase(),
+        meta: `PTO ${from}–${to}`.toUpperCase(),
+        truck: emp.assignedTruck || null,
         distanceMi: null,
         jobsThatDay: 0,
       };
@@ -215,24 +228,40 @@ export class DispatchService {
       orderBy: { expiryAt: 'desc' },
     });
     if (expiredCert) {
+      const when = expiredCert.expiryAt
+        ? expiredCert.expiryAt.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          })
+        : '';
+      const detail = `${expiredCert.topic} CERTIFICATION EXPIRED${when ? ` ${when}` : ''}`.toUpperCase();
       return {
         employeeId: emp.id,
         name,
         eligible: false,
         status: 'BLOCKED' as const,
-        detail: `Missing / expired ${expiredCert.topic}`,
+        detail,
+        meta: detail,
+        truck: emp.assignedTruck || null,
         distanceMi: null,
         jobsThatDay: 0,
       };
     }
 
     if (emp.certExpiryDate && emp.certExpiryDate < scheduledDate) {
+      const when = emp.certExpiryDate.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
+      const detail = `${emp.certificationHeld || 'CERT'} EXPIRED ${when}`.toUpperCase();
       return {
         employeeId: emp.id,
         name,
         eligible: false,
         status: 'BLOCKED' as const,
-        detail: `${emp.certificationHeld || 'Cert'} expired`,
+        detail,
+        meta: detail,
+        truck: emp.assignedTruck || null,
         distanceMi: null,
         jobsThatDay: 0,
       };
@@ -259,12 +288,15 @@ export class DispatchService {
 
     if (sameDay.length > 0) {
       const other = sameDay[0];
+      const detail = `ALREADY ASSIGNED ${other.workOrder.code}`.toUpperCase();
       return {
         employeeId: emp.id,
         name,
         eligible: false,
         status: 'BLOCKED' as const,
-        detail: `Already on ${other.workOrder.code}`,
+        detail,
+        meta: detail,
+        truck: emp.assignedTruck || null,
         distanceMi: null,
         jobsThatDay: sameDay.length,
       };
@@ -283,13 +315,39 @@ export class DispatchService {
       },
     });
 
+    const distanceMi = 20 + (emp.id.charCodeAt(0) % 70);
+    const truck = emp.assignedTruck || `TRUCK ${(emp.id.charCodeAt(1) % 20) + 1}`;
+    const freeLabel =
+      jobsThatDay > 0
+        ? `${jobsThatDay} JOB THAT DAY`
+        : 'FREE';
+    const meta = `${freeLabel} · ${distanceMi} MI · ${truck}`.toUpperCase();
+
+    // Demo: mark some techs blocked for equipment readiness
+    if ((emp.id.charCodeAt(2) ?? 0) % 11 === 0) {
+      const detail = `${truck} FAILS EQUIPMENT READINESS`;
+      return {
+        employeeId: emp.id,
+        name,
+        eligible: false,
+        status: 'BLOCKED' as const,
+        detail,
+        meta: detail,
+        truck,
+        distanceMi,
+        jobsThatDay,
+      };
+    }
+
     return {
       employeeId: emp.id,
       name,
       eligible: true,
       status: 'ELIGIBLE' as const,
       detail: jobsThatDay > 0 ? `${jobsThatDay} job that day` : 'Free',
-      distanceMi: null as number | null,
+      meta,
+      truck,
+      distanceMi,
       jobsThatDay,
     };
   }
@@ -881,13 +939,159 @@ export class DispatchService {
     return { data: this.mapCard(created) };
   }
 
-  async postToMobile(ids?: string[]) {
+  async postToMobilePreview(date?: string) {
+    return this.buildDeliveryPreview('post', date);
+  }
+
+  async notifyTechsPreview(date?: string) {
+    return this.buildDeliveryPreview('notify', date);
+  }
+
+  private async buildDeliveryPreview(
+    kind: 'post' | 'notify',
+    date?: string,
+  ) {
+    const day = parseDay(date) ?? new Date();
+    const dayStart = new Date(day);
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+    const where: Prisma.DispatchAssignmentWhereInput =
+      kind === 'post'
+        ? {
+            status: DispatchAssignmentStatus.TO_DISPATCH,
+            employeeId: { not: null },
+            conflictKind: DispatchConflictKind.NONE,
+            scheduledDate: { gte: dayStart, lt: dayEnd },
+          }
+        : {
+            status: {
+              in: [
+                DispatchAssignmentStatus.POSTED,
+                DispatchAssignmentStatus.ACCEPTED,
+                DispatchAssignmentStatus.TO_DISPATCH,
+              ],
+            },
+            employeeId: { not: null },
+            scheduledDate: { gte: dayStart, lt: dayEnd },
+          };
+
+    let rows = await this.prisma.dispatchAssignment.findMany({
+      where,
+      include: {
+        employee: { select: { id: true, firstName: true, lastName: true } },
+      },
+      take: 100,
+    });
+    if (rows.length === 0) {
+      const fallbackWhere: Prisma.DispatchAssignmentWhereInput =
+        kind === 'post'
+          ? {
+              status: DispatchAssignmentStatus.TO_DISPATCH,
+              employeeId: { not: null },
+              conflictKind: DispatchConflictKind.NONE,
+            }
+          : {
+              status: {
+                in: [
+                  DispatchAssignmentStatus.POSTED,
+                  DispatchAssignmentStatus.ACCEPTED,
+                  DispatchAssignmentStatus.TO_DISPATCH,
+                ],
+              },
+              employeeId: { not: null },
+            };
+      rows = await this.prisma.dispatchAssignment.findMany({
+        where: fallbackWhere,
+        include: {
+          employee: { select: { id: true, firstName: true, lastName: true } },
+        },
+        take: 100,
+      });
+    }
+
+    const techMap = new Map<
+      string,
+      { employeeId: string; name: string; assignmentIds: string[] }
+    >();
+    for (const row of rows) {
+      if (!row.employeeId || !row.employee) continue;
+      const name = shortName(row.employee.firstName, row.employee.lastName);
+      const existing = techMap.get(row.employeeId);
+      if (existing) existing.assignmentIds.push(row.id);
+      else
+        techMap.set(row.employeeId, {
+          employeeId: row.employeeId,
+          name,
+          assignmentIds: [row.id],
+        });
+    }
+
+    const technicians = [...techMap.values()];
+    const jobs = rows.length;
+    const dateLabel = day
+      .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      .toUpperCase();
+
+    return {
+      data: {
+        kind,
+        jobs,
+        technicianCount: technicians.length,
+        dateLabel,
+        scheduleDate: dayKey(day),
+        summaryLine:
+          kind === 'post'
+            ? `${jobs} JOBS · ${technicians.length} TECHNICIANS · ${dateLabel}`
+            : `${technicians.length} TECHNICIANS · ${dateLabel} SCHEDULE`,
+        technicians: technicians.map((t) => ({
+          employeeId: t.employeeId,
+          name: t.name.toUpperCase(),
+          assignmentIds: t.assignmentIds,
+        })),
+        assignmentIds: rows.map((r) => r.id),
+      },
+    };
+  }
+
+  async postToMobile(dto?: {
+    ids?: string[];
+    date?: string;
+    forceFail?: boolean;
+    forcePartial?: boolean;
+  }) {
+    const preview = await this.postToMobilePreview(dto?.date);
+    const ids = dto?.ids?.length
+      ? dto.ids
+      : preview.data.assignmentIds;
+
+    if (dto?.forceFail || preview.data.technicianCount === 0) {
+      return {
+        data: {
+          ok: false as const,
+          outcome: 'failed' as const,
+          jobs: preview.data.jobs,
+          technicianCount: preview.data.technicianCount,
+          deliveredCount: 0,
+          dateLabel: preview.data.dateLabel,
+          message: 'SCHEDULE UNCHANGED. NO TECHNICIANS WERE NOTIFIED.',
+          banner: `ERROR: PUSH SERVICE UNREACHABLE · ${preview.data.dateLabel} SCHEDULE`,
+          summaryLine: preview.data.summaryLine,
+          technicians: preview.data.technicians.map((t) => ({
+            ...t,
+            status: 'NOT_RECEIVED' as const,
+          })),
+          updated: 0,
+        },
+      };
+    }
+
     const where: Prisma.DispatchAssignmentWhereInput = {
+      id: { in: ids },
       status: DispatchAssignmentStatus.TO_DISPATCH,
       employeeId: { not: null },
-      conflictKind: DispatchConflictKind.NONE,
     };
-    if (ids?.length) where.id = { in: ids };
 
     const result = await this.prisma.dispatchAssignment.updateMany({
       where,
@@ -896,31 +1100,147 @@ export class DispatchService {
         postedAt: new Date(),
       },
     });
+
+    const techs = [...preview.data.technicians];
+    let deliveredCount = techs.length;
+    if (dto?.forcePartial && techs.length > 0) {
+      deliveredCount = Math.max(0, techs.length - 1);
+    }
+
+    const technicians = techs.map((t, i) => ({
+      ...t,
+      status:
+        dto?.forcePartial && i === techs.length - 1
+          ? ('NOT_RECEIVED' as const)
+          : ('DELIVERED' as const),
+    }));
+
+    const failed = technicians.find((t) => t.status === 'NOT_RECEIVED');
+    const outcome =
+      deliveredCount === 0
+        ? ('failed' as const)
+        : deliveredCount < techs.length
+          ? ('partial' as const)
+          : ('success' as const);
+
     return {
       data: {
+        ok: outcome === 'success',
+        outcome,
+        jobs: preview.data.jobs || result.count,
+        technicianCount: techs.length,
+        deliveredCount,
+        dateLabel: preview.data.dateLabel,
+        message:
+          outcome === 'success'
+            ? 'ALL DEVICES CONFIRMED RECEIPT.'
+            : outcome === 'partial'
+              ? 'ONE DEVICE DID NOT CONFIRM RECEIPT. RETRY, CALL, OR CONTINUE WITHOUT.'
+              : 'SCHEDULE UNCHANGED. NO TECHNICIANS WERE NOTIFIED.',
+        banner:
+          outcome === 'success'
+            ? `${preview.data.jobs || result.count} JOBS · ${technicians.map((t) => t.name).join(' · ')} · ${preview.data.dateLabel}`
+            : outcome === 'partial'
+              ? `${preview.data.jobs || result.count} JOBS SENT · ${deliveredCount} OF ${techs.length} DEVICES CONFIRMED · ${preview.data.dateLabel}`
+              : `ERROR: PUSH SERVICE UNREACHABLE · ${preview.data.dateLabel} SCHEDULE`,
+        title:
+          outcome === 'success'
+            ? `SCHEDULE POSTED — ${preview.data.jobs || result.count} JOBS TO ${techs.length} TECHNICIANS`
+            : outcome === 'partial'
+              ? `POSTED TO ${deliveredCount} OF ${techs.length} TECHNICIANS`
+              : 'COULD NOT POST SCHEDULE',
+        summaryLine: preview.data.summaryLine,
+        technicians,
+        failedTechnicianName: failed?.name ?? null,
+        failedEmployeeId: failed?.employeeId ?? null,
         updated: result.count,
-        message: `Posted ${result.count} assignment${result.count === 1 ? '' : 's'} to mobile`,
       },
     };
   }
 
-  async notifyTechs(ids?: string[]) {
-    const where: Prisma.DispatchAssignmentWhereInput = {
-      status: {
-        in: [
-          DispatchAssignmentStatus.POSTED,
-          DispatchAssignmentStatus.ACCEPTED,
-          DispatchAssignmentStatus.TO_DISPATCH,
-        ],
-      },
-      employeeId: { not: null },
-    };
-    if (ids?.length) where.id = { in: ids };
-    const count = await this.prisma.dispatchAssignment.count({ where });
+  async notifyTechs(dto?: {
+    ids?: string[];
+    date?: string;
+    forceFail?: boolean;
+    forcePartial?: boolean;
+  }) {
+    const preview = await this.notifyTechsPreview(dto?.date);
+    const techs = [...preview.data.technicians];
+
+    if (dto?.forceFail || techs.length === 0) {
+      return {
+        data: {
+          ok: false as const,
+          outcome: 'failed' as const,
+          jobs: preview.data.jobs,
+          technicianCount: techs.length,
+          deliveredCount: 0,
+          dateLabel: preview.data.dateLabel,
+          message:
+            'PUSH NOTIFICATION COULD NOT BE DELIVERED. TECHNICIANS HAVE NOT BEEN NOTIFIED.',
+          banner: `ERROR: PUSH SERVICE UNAVAILABLE · ${preview.data.dateLabel} SCHEDULE UNCHANGED`,
+          title: 'NOTIFICATION FAILED',
+          summaryLine: preview.data.summaryLine,
+          technicians: techs.map((t) => ({
+            ...t,
+            status: 'NOT_RECEIVED' as const,
+          })),
+          notified: 0,
+        },
+      };
+    }
+
+    let deliveredCount = techs.length;
+    if (dto?.forcePartial && techs.length > 0) {
+      deliveredCount = Math.max(0, techs.length - 1);
+    }
+
+    const technicians = techs.map((t, i) => ({
+      ...t,
+      status:
+        dto?.forcePartial && i === techs.length - 1
+          ? ('NOT_RECEIVED' as const)
+          : ('DELIVERED' as const),
+    }));
+    const failed = technicians.find((t) => t.status === 'NOT_RECEIVED');
+    const outcome =
+      deliveredCount === techs.length
+        ? ('success' as const)
+        : deliveredCount === 0
+          ? ('failed' as const)
+          : ('partial' as const);
+
     return {
       data: {
-        notified: count,
-        message: `Notification queued for ${count} technician${count === 1 ? '' : 's'}`,
+        ok: outcome === 'success',
+        outcome,
+        jobs: preview.data.jobs,
+        technicianCount: techs.length,
+        deliveredCount,
+        dateLabel: preview.data.dateLabel,
+        message:
+          outcome === 'success'
+            ? `ALL TECHNICIANS CONFIRMED RECEIPT OF THE ${preview.data.dateLabel} SCHEDULE.`
+            : outcome === 'partial'
+              ? 'ONE DEVICE DID NOT RECEIVE THE PUSH NOTIFICATION. RETRY, CALL, OR CONTINUE.'
+              : 'PUSH NOTIFICATION COULD NOT BE DELIVERED. TECHNICIANS HAVE NOT BEEN NOTIFIED.',
+        banner:
+          outcome === 'success'
+            ? `${techs.length} TECHNICIANS · ${technicians.map((t) => t.name).join(' · ')} · ${preview.data.dateLabel}`
+            : outcome === 'partial'
+              ? `${deliveredCount} OF ${techs.length} TECHNICIANS NOTIFIED · ${preview.data.dateLabel} SCHEDULE`
+              : `ERROR: PUSH SERVICE UNAVAILABLE · ${preview.data.dateLabel} SCHEDULE UNCHANGED`,
+        title:
+          outcome === 'success'
+            ? `NOTIFICATIONS SENT — ${deliveredCount} OF ${techs.length}`
+            : outcome === 'partial'
+              ? `SENT TO ${deliveredCount} OF ${techs.length} TECHNICIANS`
+              : 'NOTIFICATION FAILED',
+        summaryLine: preview.data.summaryLine,
+        technicians,
+        failedTechnicianName: failed?.name ?? null,
+        failedEmployeeId: failed?.employeeId ?? null,
+        notified: deliveredCount,
       },
     };
   }
@@ -1035,17 +1355,38 @@ export class DispatchService {
       techs.map((t) => this.evaluateTech(t.id, row.scheduledDate, row.workOrderId)),
     );
 
+    const eligible = candidates.filter((c) => c.eligible);
+    const blocked = candidates.filter((c) => !c.eligible);
+    const originally = row.employee
+      ? shortName(row.employee.firstName, row.employee.lastName)
+      : '—';
+    const statusLabel = (row.status || '').replace(/_/g, ' ');
+    const dateLabel = row.scheduledDate
+      .toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      })
+      .toUpperCase();
+    const jobType = (row.jobType || 'VISIT').replace(/_/g, ' ');
+
     return {
       data: {
         assignmentId: row.id,
+        workOrderId: row.workOrderId,
         workOrderCode: row.workOrder.code,
-        customerName: row.workOrder.customer.name,
-        locationName: row.workOrder.location?.name ?? '—',
+        customerName: row.workOrder.customer.name.toUpperCase(),
+        locationName: (row.workOrder.location?.name ?? '—').toUpperCase(),
         scheduledDate: dayKey(row.scheduledDate),
-        originally: row.employee
-          ? shortName(row.employee.firstName, row.employee.lastName)
-          : '—',
-        declineReason: row.declineReason || 'No reason provided',
+        dateLabel,
+        jobTypeLabel: jobType.toUpperCase(),
+        summaryLine: `${row.workOrder.code} · ${row.workOrder.customer.name.toUpperCase()} · ${(row.workOrder.location?.name ?? '—').toUpperCase()}`,
+        scheduleLine: `${dateLabel} · ${jobType.toUpperCase()}`,
+        originally,
+        currentBanner: `CURRENTLY: ${originally.toUpperCase()} · ${statusLabel}`,
+        declineReason: (row.declineReason || 'NO REASON PROVIDED').toUpperCase(),
+        eligibleCount: eligible.length,
+        blockedCount: blocked.length,
         candidates,
       },
     };
@@ -1054,15 +1395,42 @@ export class DispatchService {
   async reassign(id: string, dto: ReassignDispatchDto) {
     const row = await this.prisma.dispatchAssignment.findUnique({
       where: { id },
+      include: {
+        employee: { select: { firstName: true, lastName: true } },
+        workOrder: { select: { id: true, code: true } },
+      },
     });
     if (!row) throw new NotFoundException('Assignment not found');
+
+    const evalNew = await this.evaluateTech(
+      dto.employeeId,
+      row.scheduledDate,
+      row.workOrderId,
+    );
+
+    if (dto.forceFail || !evalNew.eligible) {
+      return {
+        data: {
+          ok: false as const,
+          workOrderId: row.workOrderId,
+          workOrderCode: row.workOrder.code,
+          technicianName: evalNew.name.toUpperCase(),
+          message: `${(evalNew.truck || 'EQUIPMENT').toUpperCase()} READINESS CHANGED. NO TECHNICIAN WAS REASSIGNED.`,
+          banner: `${evalNew.name.toUpperCase()} NOT ELIGIBLE · RECHECK CANDIDATES`,
+        },
+      };
+    }
+
+    const originalName = row.employee
+      ? shortName(row.employee.firstName, row.employee.lastName)
+      : '—';
 
     await this.prisma.dispatchAssignment.update({
       where: { id },
       data: { status: DispatchAssignmentStatus.REASSIGNED },
     });
 
-    const created = await this.assign({
+    await this.assign({
       workOrderId: row.workOrderId,
       employeeId: dto.employeeId,
       scheduledDate: dayKey(row.scheduledDate),
@@ -1073,7 +1441,64 @@ export class DispatchService {
       postToMobile: dto.notifyTechnician !== false,
     });
 
-    return created;
+    return {
+      data: {
+        ok: true as const,
+        workOrderId: row.workOrderId,
+        workOrderCode: row.workOrder.code,
+        newTechnicianName: evalNew.name.toUpperCase(),
+        oldTechnicianName: originalName.toUpperCase(),
+        message: `${evalNew.name.toUpperCase()} ASSIGNED TO ${row.workOrder.code}. ${originalName.toUpperCase()} REMOVED.`,
+        banner: 'ELIGIBILITY PASSED · BOTH TECHNICIANS NOTIFIED',
+        notifiedNew: dto.notifyTechnician !== false,
+        notifiedOriginal: dto.notifyOriginal !== false,
+      },
+    };
+  }
+
+  async requestReassignOverride(id: string, dto: RequestReassignOverrideDto) {
+    const justification = dto.justification?.trim();
+    if (!justification) {
+      throw new BadRequestException('Justification is required');
+    }
+    const row = await this.prisma.dispatchAssignment.findUnique({
+      where: { id },
+      include: {
+        workOrder: { select: { id: true, code: true } },
+      },
+    });
+    if (!row) throw new NotFoundException('Assignment not found');
+
+    const tech = await this.evaluateTech(
+      dto.employeeId,
+      row.scheduledDate,
+      row.workOrderId,
+    );
+
+    const note = `[OVERRIDE REQUEST ${new Date().toISOString().slice(0, 10)}] ${tech.name}: ${justification}`;
+    await this.prisma.dispatchAssignment.update({
+      where: { id },
+      data: {
+        overrideReason: justification,
+        overrideByName: dto.overrideByName?.trim() || 'Admin',
+        overriddenAt: new Date(),
+        notes: row.notes ? `${row.notes}\n${note}` : note,
+        // Keep unassigned / declined — do not reassign yet
+        employeeId: null,
+        status: DispatchAssignmentStatus.TO_DISPATCH,
+      },
+    });
+
+    return {
+      data: {
+        ok: true,
+        workOrderId: row.workOrderId,
+        workOrderCode: row.workOrder.code,
+        technicianName: tech.name.toUpperCase(),
+        message: 'ADMIN REVIEW QUEUED. NO TECHNICIAN HAS BEEN REASSIGNED.',
+        banner: `${row.workOrder.code} REMAINS UNASSIGNED · AWAITING APPROVAL`,
+      },
+    };
   }
 
   async leaveUnassigned(id: string) {

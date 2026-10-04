@@ -1093,6 +1093,8 @@ model WorkOrder {
   dispatchAssignments DispatchAssignment[]
   salesTickets   SalesTicket[]
   closeoutReviews CloseoutReview[]
+  formCorrectionRequests FormCorrectionRequest[]
+  additionalFormRequests AdditionalFormRequest[]
   archivedAt     DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -2113,4 +2115,81 @@ model SafetyFormSubmission {
   @@index([status])
   @@index([submittedAt])
   @@index([workOrderId])
+}
+
+enum FormCorrectionStatus {
+  OPEN
+  RESUBMITTED
+  APPROVED
+  REJECTED
+  NEEDS_INFO
+}
+
+enum AdditionalFormStatus {
+  PENDING
+  APPROVED
+  DENIED
+  NEEDS_INFO
+  FORM_ADDED
+}
+
+enum AdditionalFormUrgency {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model FormCorrectionRequest {
+  id                    String               @id @default(uuid())
+  code                  String               @unique
+  formLabel             String
+  formTitle             String
+  workOrderId           String?
+  workOrder             WorkOrder?           @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  customerName          String
+  locationLabel         String?
+  reasonShort           String
+  requestedBy           String
+  requestedByStatus     String?
+  status                FormCorrectionStatus @default(OPEN)
+  originalStatus        String               @default("LOCKED")
+  version               String               @default("V1")
+  issueFlagged          String
+  correctionInstruction String
+  /// { version, resubmittedBy, submitted, status }
+  resubmission          Json?
+  rule                  String
+  submittedBy           String
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  @@index([workOrderId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AdditionalFormRequest {
+  id             String                @id @default(uuid())
+  code           String                @unique
+  workOrderId    String?
+  workOrder      WorkOrder?            @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  customerName   String
+  locationLabel  String
+  technicianName String
+  formRequested  String
+  reasonShort    String
+  reason         String
+  urgency        AdditionalFormUrgency @default(MEDIUM)
+  status         AdditionalFormStatus  @default(PENDING)
+  reviewer       String                @default("UNASSIGNED")
+  /// [{ when, text }]
+  history        Json
+  rule           String
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@index([workOrderId])
+  @@index([status])
+  @@index([urgency])
+  @@index([createdAt])
 }

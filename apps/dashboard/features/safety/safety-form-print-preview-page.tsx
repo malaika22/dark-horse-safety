@@ -8,9 +8,7 @@ import {
   useSetHeaderActions,
   useSetHeaderBreadcrumb,
 } from "@/features/app-shell/header-actions-context";
-import {
-  OpsDetailStateGate,
-} from "@/features/operations/operations-states";
+import { OpsDetailStateGate } from "@/features/operations/operations-states";
 
 function MetaCell({ label, value }: { label: string; value: string }) {
   return (
@@ -36,7 +34,7 @@ function InfoBlock({
   const right = rows.filter((_, i) => i % 2 === 1);
   return (
     <div className="rounded-xl border border-[#2A2A2A] bg-[#1F1F1F] p-4">
-      <p className="mb-3 font-sans text-[11px] font-medium uppercase tracking-[-0.02em] text-[#FDFDFF]">
+      <p className="mb-3 font-sans text-[11px] font-medium uppercase tracking-[-0.02em] text-[#959597]">
         {title}
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -62,37 +60,11 @@ export function SafetyFormPrintPreviewPage({ formId }: { formId: string }) {
 
   useSetHeaderBreadcrumb(
     preview?.printTitle
-      ? `Safety & Compliance / Forms / ${preview.printTitle}`
-      : "Safety & Compliance / Forms / Print Preview",
+      ? `Safety & Comp. / Forms / ${preview.printTitle}`
+      : "Safety & Comp. / Forms / Print Preview",
   );
 
-  useSetHeaderActions(
-    <div className="flex items-center gap-1">
-      <button
-        type="button"
-        onClick={() => window.print()}
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-[#959597] hover:bg-[#2A2A2A] hover:text-[#FDFDFF]"
-        aria-label="Print"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-          <path
-            d="M6 9V3h12v6M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-          <path d="M6 14h12v7H6v-7z" stroke="currentColor" strokeWidth="1.5" />
-        </svg>
-      </button>
-      <Link
-        href={`/safety/forms/${formId}`}
-        className="rounded-lg border border-[#3E3E3E] px-3 py-2 font-sans text-[11px] uppercase tracking-[-0.02em] text-[#FDFDFF] hover:bg-[#2A2A2A]"
-      >
-        ✕ Close
-      </Link>
-    </div>,
-    [formId],
-  );
+  useSetHeaderActions(null, [formId]);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -115,6 +87,19 @@ export function SafetyFormPrintPreviewPage({ formId }: { formId: string }) {
   const locked =
     preview?.submission.status === "LOCKED" || meta?.footer?.locked;
 
+  function downloadJson() {
+    if (!preview) return;
+    const blob = new Blob([JSON.stringify(preview, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${preview.submission.code || "form-preview"}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <OpsDetailStateGate
       loading={loading}
@@ -123,8 +108,66 @@ export function SafetyFormPrintPreviewPage({ formId }: { formId: string }) {
     >
       {preview && meta ? (
         <div className="mx-auto max-w-3xl bg-shell p-3 sm:p-5">
+          {/* Figma chrome bar */}
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 print:hidden">
+            <div className="flex min-w-0 items-center gap-2">
+              <Link
+                href={`/safety/forms/${formId}`}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-[#959597] hover:bg-[#2A2A2A] hover:text-[#FDFDFF]"
+                aria-label="Close"
+              >
+                ✕
+              </Link>
+              <span className="flex h-7 w-7 items-center justify-center rounded bg-[#E31C23]/[0.15] text-[#E31C23]">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm1 7V3.5L18.5 9H15z" />
+                </svg>
+              </span>
+              <p className="truncate font-sans text-[12px] font-medium uppercase tracking-[-0.02em] text-[#FDFDFF]">
+                {preview.printTitle}
+              </p>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-[#959597] hover:bg-[#2A2A2A] hover:text-[#FDFDFF]"
+                aria-label="Print"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M6 9V3h12v6M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M6 14h12v7H6v-7z"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={downloadJson}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-[#959597] hover:bg-[#2A2A2A] hover:text-[#FDFDFF]"
+                aria-label="Download"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+
           <div className="rounded-2xl border border-[#2A2A2A] bg-[#1A1A1A] p-5 sm:p-6">
-            {/* Header */}
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#2A2A2A] pb-5">
               <div className="flex gap-3">
                 <div className="h-12 w-12 shrink-0 rounded-md bg-[#FDFDFF]" />
@@ -153,7 +196,6 @@ export function SafetyFormPrintPreviewPage({ formId }: { formId: string }) {
               </div>
             </div>
 
-            {/* Meta row */}
             <div className="mt-4 grid grid-cols-2 gap-3 border-b border-[#2A2A2A] pb-4 sm:grid-cols-4">
               <MetaCell
                 label="Work Order"
@@ -245,9 +287,8 @@ export function SafetyFormPrintPreviewPage({ formId }: { formId: string }) {
               />
             </div>
 
-            {/* Signature */}
             <div className="mt-4">
-              <p className="mb-2 font-sans text-[11px] font-medium uppercase tracking-[-0.02em] text-[#FDFDFF]">
+              <p className="mb-2 font-sans text-[11px] font-medium uppercase tracking-[-0.02em] text-[#959597]">
                 {meta.signature?.title ?? "Title Name — Signature"}
               </p>
               <div className="flex min-h-[100px] items-center justify-center rounded-xl border border-[#2A2A2A] bg-[#121212]">
@@ -270,7 +311,6 @@ export function SafetyFormPrintPreviewPage({ formId }: { formId: string }) {
               </div>
             </div>
 
-            {/* Footer */}
             <div className="mt-6 flex flex-wrap items-end justify-between gap-4 border-t border-[#2A2A2A] pt-4">
               <div className="space-y-1">
                 <p className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#6F6F72]">

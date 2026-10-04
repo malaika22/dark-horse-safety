@@ -11,10 +11,13 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/auth.guards';
 import {
+  AttachPurchaseOrderDto,
+  CancelWorkOrderDto,
   CreateWorkOrderDto,
   ExportJobPacketDto,
   HoldCancelWorkOrderDto,
   RequestDocumentDto,
+  RequestPurchaseOrderDto,
   WorkOrderListQueryDto,
 } from './dto/work-order.dto';
 import { WorkOrdersService } from './work-orders.service';
@@ -68,10 +71,22 @@ export class WorkOrdersController {
     return this.workOrders.hoursByPayCycle(id);
   }
 
+  @Get(':id/po-status')
+  @ApiOperation({ summary: 'PO required gate status for NetSuite / invoicing' })
+  poStatus(@Param('id') id: string) {
+    return this.workOrders.poStatus(id);
+  }
+
   @Post(':id/export-packet')
   @ApiOperation({ summary: 'Export / preview job packet sections' })
   exportPacket(@Param('id') id: string, @Body() dto: ExportJobPacketDto) {
     return this.workOrders.exportPacket(id, dto);
+  }
+
+  @Get(':id/cancel-preview')
+  @ApiOperation({ summary: 'Cancel work order preview / blocked gate' })
+  cancelPreview(@Param('id') id: string) {
+    return this.workOrders.cancelPreview(id);
   }
 
   @Post(':id/hold')
@@ -82,8 +97,26 @@ export class WorkOrdersController {
 
   @Post(':id/cancel')
   @ApiOperation({ summary: 'Cancel work order (requires reason)' })
-  cancel(@Param('id') id: string, @Body() dto: HoldCancelWorkOrderDto) {
+  cancel(@Param('id') id: string, @Body() dto: CancelWorkOrderDto) {
     return this.workOrders.cancel(id, dto);
+  }
+
+  @Post(':id/request-po')
+  @ApiOperation({ summary: 'Request purchase order from customer' })
+  requestPo(@Param('id') id: string, @Body() dto: RequestPurchaseOrderDto) {
+    return this.workOrders.requestPurchaseOrder(id, dto);
+  }
+
+  @Post(':id/mark-po-received')
+  @ApiOperation({ summary: 'Mark purchase order received' })
+  markPoReceived(@Param('id') id: string) {
+    return this.workOrders.markPoReceived(id);
+  }
+
+  @Post(':id/attach-po')
+  @ApiOperation({ summary: 'Attach purchase order to work order' })
+  attachPo(@Param('id') id: string, @Body() dto: AttachPurchaseOrderDto) {
+    return this.workOrders.attachPurchaseOrder(id, dto);
   }
 
   @Post(':id/request-document')

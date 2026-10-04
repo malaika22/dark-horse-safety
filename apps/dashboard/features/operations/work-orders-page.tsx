@@ -29,11 +29,10 @@ import {
 import { toastApiError } from "@/lib/toast";
 import {
   useSetHeaderActions,
-  useSetHeaderBreadcrumb,
 } from "@/features/app-shell/header-actions-context";
 import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
 import { OpsWorkOrdersEmptyState } from "@/features/operations/operations-states";
-import { CloseRuleModal } from "@/features/operations/work-order-modals";
+import { CloseRuleModal, CancelWorkOrderModal } from "@/features/operations/work-order-modals";
 
 const SORT_OPTIONS = [
   { id: "createdAt", label: "Created" },
@@ -113,8 +112,9 @@ export function WorkOrdersPage() {
   const [hours, setHours] = React.useState<CrmHoursByPayCycle | null>(null);
   const [closeOpen, setCloseOpen] = React.useState(false);
   const [closeId, setCloseId] = React.useState<string | null>(null);
+  const [cancelOpen, setCancelOpen] = React.useState(false);
+  const [cancelId, setCancelId] = React.useState<string | null>(null);
 
-  useSetHeaderBreadcrumb("Operations / Work Order");
   useSetHeaderActions(
     <div className="flex flex-wrap gap-2">
       <DashboardToolbarButton
@@ -348,6 +348,14 @@ export function WorkOrdersPage() {
                   setCloseOpen(true);
                 },
               },
+              {
+                id: "cancel",
+                label: "Cancel Work Order",
+                onSelect: () => {
+                  setCancelId(row.id);
+                  setCancelOpen(true);
+                },
+              },
             ]}
           />
         ),
@@ -537,6 +545,12 @@ export function WorkOrdersPage() {
           open={closeOpen}
           workOrderId={closeId}
           onClose={() => setCloseOpen(false)}
+          onDone={refresh}
+        />
+        <CancelWorkOrderModal
+          open={cancelOpen}
+          workOrderId={cancelId}
+          onClose={() => setCancelOpen(false)}
           onDone={refresh}
         />
       </div>

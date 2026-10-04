@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { cn, DashboardToolbarButton } from "@dark-horse-safety/ui";
 import {
   operationsApi,
@@ -105,6 +106,7 @@ function Stepper({ steps, current }: { steps: string[]; current?: string | null 
 }
 
 export function SalesTicketDetailPage({ ticketId }: { ticketId: string }) {
+  const router = useRouter();
   const [detail, setDetail] = React.useState<SalesTicketDetail | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -117,7 +119,7 @@ export function SalesTicketDetailPage({ ticketId }: { ticketId: string }) {
 
   useSetHeaderBreadcrumb(
     detail
-      ? `Sales Tickets / ${detail.code.replace("ST-", "")}`
+      ? `Sales Tickets / ${detail.code.replace(/^ST-/, "")}`
       : "Sales Tickets",
   );
 
@@ -149,6 +151,13 @@ export function SalesTicketDetailPage({ ticketId }: { ticketId: string }) {
   useSetHeaderActions(
     detail ? (
       <div className="flex flex-wrap gap-2">
+        <DashboardToolbarButton
+          onClick={() =>
+            router.push(`/operations/invoices/${detail.id}`)
+          }
+        >
+          Invoice Preview
+        </DashboardToolbarButton>
         <DashboardToolbarButton
           disabled={busy}
           onClick={() => {
@@ -199,7 +208,7 @@ export function SalesTicketDetailPage({ ticketId }: { ticketId: string }) {
         </DashboardToolbarButton>
       </div>
     ) : null,
-    [detail?.id, detail?.approvalStatus, busy, nsReason, nsRef],
+    [detail?.id, detail?.approvalStatus, busy, nsReason, nsRef, router],
   );
 
   const d = detail?.detail;

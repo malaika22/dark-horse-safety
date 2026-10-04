@@ -22,7 +22,6 @@ import {
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import {
   useSetHeaderActions,
-  useSetHeaderBreadcrumb,
 } from "@/features/app-shell/header-actions-context";
 import {
   OpsLoadFailedState,
@@ -87,7 +86,6 @@ export function SalesTicketsPage() {
   const [kpi, setKpi] = React.useState<SalesTicketQueueKpi>(EMPTY_KPI);
   const [creating, setCreating] = React.useState(false);
 
-  useSetHeaderBreadcrumb("Operations / Sales Ticket Review Queue");
   useSetHeaderActions(
     <DashboardToolbarButton
       variant="primary"
@@ -322,12 +320,6 @@ export function SalesTicketsPage() {
 
   return (
     <div className="space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="font-sans text-[22px] font-[590] uppercase tracking-[-0.02em] text-[#FDFDFF]">
-          Sales Ticket Review Queue
-        </h1>
-      </div>
-
       <DashboardStatGrid>
         <DashboardStatRow>
           <DashboardStatCell

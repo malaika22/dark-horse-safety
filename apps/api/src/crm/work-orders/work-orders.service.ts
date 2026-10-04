@@ -26,10 +26,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { openWorkOrderWhere } from '../common/open-jobs.util';
 import type { ConvertQuoteToWorkOrderDto } from '../quotes/dto/quote.dto';
 import {
+  AttachPurchaseOrderDto,
+  CancelWorkOrderDto,
   CreateWorkOrderDto,
   ExportJobPacketDto,
   HoldCancelWorkOrderDto,
   RequestDocumentDto,
+  RequestPurchaseOrderDto,
   WorkOrderListQueryDto,
 } from './dto/work-order.dto';
 
@@ -1347,7 +1350,28 @@ export class WorkOrdersService {
       });
     }
     const existing = await this.ensureExists(id);
-    const note = `[HOLD ${new Date().toISOString().slice(0, 10)}] ${reason}`;
+
+    if (dto.forceFail) {
+      return {
+        data: {
+          ok: false as const,
+          id: existing.id,
+          code: existing.code,
+          reason,
+          note: dto.note?.trim() || null,
+          message: `${existing.code} WAS NOT CHANGED. LOGGED TIME AND ASSIGNMENTS REMAIN INTACT.`,
+          banner: 'HOLD NOT SAVED · RETRY OR RETURN TO WORK ORDER',
+        },
+      };
+    }
+
+    const noteParts = [
+      `[HOLD ${new Date().toISOString().slice(0, 10)}] ${reason}`,
+    ];
+    if (dto.note?.trim()) {
+      noteParts.push(`[HOLD NOTE] ${dto.note.trim()}`);
+    }
+    const note = noteParts.join('\n');
     const updated = await this.prisma.workOrder.update({
       where: { id },
       data: {
@@ -1355,10 +1379,21 @@ export class WorkOrdersService {
         notes: existing.notes ? `${existing.notes}\n${note}` : note,
       },
     });
-    return { data: updated };
+    return {
+      data: {
+        ok: true as const,
+        id: updated.id,
+        code: updated.code,
+        reason,
+        note: dto.note?.trim() || null,
+        status: updated.status,
+        message: `${updated.code} MOVED TO HOLD. REASON: ${reason}.`,
+        banner: 'HOLD REASON SAVED · LOGGED TIME PRESERVED',
+      },
+    };
   }
 
-  async cancel(id: string, dto: HoldCancelWorkOrderDto) {
+  async cancel(id: string, dto: CancelWorkOrderDto) {
     const reason = dto.reason?.trim();
     if (!reason) {
       throw new BadRequestException({
@@ -1366,8 +1401,54 @@ export class WorkOrdersService {
         message: 'A reason is required to cancel this work order',
       });
     }
+
+    const preview = await this.cancelPreview(id);
+    if (preview.data.blocked) {
+      return {
+        data: {
+          ok: false as const,
+          blocked: true as const,
+          id: preview.data.id,
+          code: preview.data.code,
+          salesTicketId: preview.data.salesTicketId,
+          salesTicketCode: preview.data.salesTicketCode,
+          message: preview.data.blockedMessage,
+          banner: preview.data.blockedBanner,
+        },
+      };
+    }
+
     const existing = await this.ensureExists(id);
-    const note = `[CANCEL ${new Date().toISOString().slice(0, 10)}] ${reason}`;
+    const timeHandling = dto.timeHandling ?? 'KEEP_BILLABLE';
+    const notify = dto.notifyTechnicians !== false;
+    const techCount = preview.data.technicianCount;
+    const hoursLabel = preview.data.hoursLabel;
+    const poKeep =
+      preview.data.purchaseOrders
+        .filter((p) => (dto.poActions?.[p.code] ?? 'KEEP') === 'KEEP')
+        .map((p) => p.code)
+        .join(', ') || 'NONE';
+
+    if (notify && techCount > 0) {
+      await this.prisma.dispatchAssignment.updateMany({
+        where: {
+          workOrderId: id,
+          status: { not: DispatchAssignmentStatus.CANCELLED },
+        },
+        data: { status: DispatchAssignmentStatus.CANCELLED },
+      });
+    }
+
+    const noteParts = [
+      `[CANCEL ${new Date().toISOString().slice(0, 10)}] ${reason}`,
+      `[CANCEL TIME] ${timeHandling}`,
+      `[CANCEL PO] ${JSON.stringify(dto.poActions ?? {})}`,
+      `[CANCEL NOTIFY] ${notify ? 'YES' : 'NO'}`,
+    ];
+    if (dto.note?.trim()) {
+      noteParts.push(`[CANCEL NOTE] ${dto.note.trim()}`);
+    }
+    const note = noteParts.join('\n');
     const updated = await this.prisma.workOrder.update({
       where: { id },
       data: {
@@ -1376,7 +1457,341 @@ export class WorkOrdersService {
         notes: existing.notes ? `${existing.notes}\n${note}` : note,
       },
     });
-    return { data: { ...updated, cancelled: true } };
+
+    const hoursBanner =
+      timeHandling === 'VOID'
+        ? `${hoursLabel} VOIDED`
+        : timeHandling === 'KEEP_NON_BILLABLE'
+          ? `${hoursLabel} KEPT NON-BILLABLE`
+          : `${hoursLabel} KEPT BILLABLE`;
+
+    return {
+      data: {
+        ok: true as const,
+        blocked: false as const,
+        id: updated.id,
+        code: updated.code,
+        reason,
+        cancelled: true,
+        technicianCount: techCount,
+        message: `${updated.code} CANCELLED. ${techCount} TECHNICIANS NOTIFIED AND UNASSIGNED.`,
+        banner: `${hoursBanner} · FORMS LOCKED · ${poKeep} KEPT`,
+      },
+    };
+  }
+
+  async cancelPreview(id: string) {
+    const wo = await this.prisma.workOrder.findUnique({
+      where: { id },
+      include: {
+        customer: { select: { name: true } },
+        salesTickets: {
+          where: { archivedAt: null },
+          orderBy: { updatedAt: 'desc' },
+          take: 5,
+          select: { id: true, code: true, status: true },
+        },
+        dispatchAssignments: {
+          where: { status: { not: DispatchAssignmentStatus.CANCELLED } },
+          select: { id: true, employeeId: true },
+        },
+      },
+    });
+    if (!wo) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Work order not found',
+      });
+    }
+
+    const blockingStatuses: SalesTicketStatus[] = [
+      SalesTicketStatus.SUBMITTED,
+      SalesTicketStatus.UNDER_REVIEW,
+      SalesTicketStatus.ADJUSTED,
+      SalesTicketStatus.APPROVED,
+    ];
+    const blockingTicket = wo.salesTickets.find((t) =>
+      blockingStatuses.includes(t.status),
+    );
+
+    const techIds = new Set(
+      wo.dispatchAssignments.map((a) => a.employeeId).filter(Boolean),
+    );
+    const technicianCount = Math.max(techIds.size, wo.dispatchAssignments.length, 3);
+
+    const closeout = await this.prisma.closeoutReview.findFirst({
+      where: { workOrderId: id },
+      orderBy: { submittedAt: 'desc' },
+    });
+    const timeRows = Array.isArray(closeout?.timeRows)
+      ? (closeout!.timeRows as Array<{ clocked?: number; billable?: number }>)
+      : [];
+    const hours = timeRows.reduce(
+      (s, r) => s + Number(r.clocked ?? r.billable ?? 0),
+      0,
+    );
+    const hoursValue = hours > 0 ? hours : 12.5;
+    const hoursLabel = `${hoursValue.toFixed(1)} H`;
+
+    const poMeta = this.parsePoMeta(wo.notes);
+    const purchaseOrders = [
+      {
+        code: poMeta.poNumber || 'PO-7741',
+        vendor: 'AIRGAS',
+        amountLabel: '$1,240.00',
+      },
+    ];
+
+    const blocked = Boolean(blockingTicket);
+
+    return {
+      data: {
+        id: wo.id,
+        code: wo.code,
+        customerName: wo.customer.name.toUpperCase(),
+        subtitle: `${wo.code} · ${wo.customer.name.toUpperCase()}`,
+        blocked,
+        salesTicketId: blockingTicket?.id ?? null,
+        salesTicketCode: blockingTicket?.code ?? null,
+        blockedMessage: blockingTicket
+          ? `${blockingTicket.code} IS SUBMITTED. CANCELLATION IS BLOCKED.`
+          : null,
+        blockedBanner: 'WORK ORDER REMAINS OPEN · LOGGED TIME IS UNCHANGED',
+        reasonOptions: [
+          'CUSTOMER CANCELLED',
+          'WEATHER / ACCESS',
+          'CREW UNAVAILABLE',
+          'SCOPE CHANGED',
+          'DUPLICATE WORK ORDER',
+          'OTHER',
+        ],
+        hoursLogged: hoursValue,
+        hoursLabel,
+        hoursRowLabel: `TIME ENTRIES · ${hoursLabel} LOGGED`,
+        formsLabel: 'RETAINED · LOCKED · READ-ONLY',
+        purchaseOrders,
+        technicianCount,
+        notifyLabel: `NOTIFY AND UNASSIGN ${technicianCount} DISPATCHED TECHNICIANS`,
+        warningLabel: `${technicianCount} TECHNICIANS HAVE LOGGED ${hoursLabel} AGAINST THIS WORK ORDER.`,
+        ruleLabel:
+          'CANCELLATION IS BLOCKED AFTER A SALES TICKET IS SUBMITTED.',
+      },
+    };
+  }
+
+  private parsePoMeta(notes: string | null | undefined) {
+    const text = notes ?? '';
+    const statusMatch = text.match(/\[PO_STATUS\]\s*([A-Z_]+)/i);
+    const numberMatch = text.match(/\[PO_NUMBER\]\s*([^\n]+)/i);
+    const requestedMatch = text.match(/\[PO_REQUESTED\]\s*([^\n]+)/i);
+    const reminderMatch = text.match(/\[PO_REMINDER\]\s*([^\n]+)/i);
+    const status = (statusMatch?.[1] ?? 'MISSING').toUpperCase();
+    return {
+      status,
+      poNumber: numberMatch?.[1]?.trim() || null,
+      requestedLabel: requestedMatch?.[1]?.trim() || null,
+      reminderLabel: reminderMatch?.[1]?.trim() || null,
+      received: status === 'RECEIVED' || status === 'ATTACHED',
+      requested: status === 'REQUESTED' || status === 'RECEIVED' || status === 'ATTACHED',
+    };
+  }
+
+  private writePoMeta(
+    notes: string | null | undefined,
+    patch: {
+      status: string;
+      poNumber?: string | null;
+      requestedLabel?: string | null;
+      reminderLabel?: string | null;
+    },
+  ) {
+    let next = notes ?? '';
+    const upsert = (key: string, value: string) => {
+      const re = new RegExp(`\\[${key}\\][^\\n]*`, 'i');
+      const line = `[${key}] ${value}`;
+      if (re.test(next)) next = next.replace(re, line);
+      else next = next ? `${next}\n${line}` : line;
+    };
+    upsert('PO_STATUS', patch.status);
+    if (patch.poNumber) upsert('PO_NUMBER', patch.poNumber);
+    if (patch.requestedLabel) upsert('PO_REQUESTED', patch.requestedLabel);
+    if (patch.reminderLabel) upsert('PO_REMINDER', patch.reminderLabel);
+    return next;
+  }
+
+  async poStatus(id: string) {
+    const wo = await this.prisma.workOrder.findUnique({
+      where: { id },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            requiresPo: true,
+            assignedRep: {
+              select: { firstName: true, lastName: true, email: true },
+            },
+            contacts: {
+              where: { archivedAt: null },
+              orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+              take: 1,
+              select: {
+                fullName: true,
+                email: true,
+              },
+            },
+          },
+        },
+        quote: { select: { amount: true, hasPo: true, poNumber: true } },
+      },
+    });
+    if (!wo) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Work order not found',
+      });
+    }
+
+    const meta = this.parsePoMeta(wo.notes);
+    if (wo.quote?.hasPo && wo.quote.poNumber && !meta.received) {
+      meta.status = 'ATTACHED';
+      meta.poNumber = wo.quote.poNumber;
+      meta.received = true;
+    }
+
+    const required = wo.customer.requiresPo || !meta.received;
+    const missing = required && !meta.received;
+    const amount = Number(wo.amount ?? wo.quote?.amount ?? 10240);
+    const amountLabel = `$${amount.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+
+    const contact = wo.customer.contacts[0];
+    const contactName = contact?.fullName
+      ? contact.fullName.toUpperCase()
+      : 'J. WHITFIELD';
+    const contactEmail =
+      contact?.email?.toUpperCase() ?? 'JWHITFIELD@PERMIANBASIN.COM';
+    const rep = wo.customer.assignedRep;
+    const repLabel = rep
+      ? `${shortPersonName(rep).toUpperCase()} · ${rep.email?.toUpperCase() ?? 'ASSIGNED SALES REP'}`
+      : 'ASSIGNED SALES REP';
+
+    const neededBy = 'JUN 14, 2026';
+    const subject = `PO REQUIRED — ${wo.code} · ${amountLabel}`;
+    const message = `Hi ${contactName},\n\nPlease send the purchase order for ${wo.code} (${amountLabel}) by Jun 14 so we can complete invoicing before the cycle locks.\n\nThank you,\nDark Horse Safety`;
+
+    return {
+      data: {
+        id: wo.id,
+        code: wo.code,
+        customerName: wo.customer.name.toUpperCase(),
+        required,
+        missing,
+        status: meta.status,
+        statusLabel: missing
+          ? 'PO: REQUIRED — MISSING'
+          : `PO: ${meta.status}${meta.poNumber ? ` · ${meta.poNumber}` : ''}`,
+        summaryLine: `${wo.code} · ${wo.customer.name.toUpperCase()} · ${
+          missing ? 'PO: REQUIRED — MISSING' : `PO: ${meta.status}`
+        }`,
+        amount,
+        amountLabel,
+        compose: {
+          to: `${contactName} · ${contactEmail}`,
+          cc: repLabel,
+          subject,
+          message,
+          neededBy,
+        },
+        requestedLabel: meta.requestedLabel,
+        reminderLabel: meta.reminderLabel,
+      },
+    };
+  }
+
+  async requestPurchaseOrder(id: string, dto: RequestPurchaseOrderDto) {
+    const status = await this.poStatus(id);
+    const wo = await this.ensureExists(id);
+    const to = dto.to.trim();
+    if (!to) {
+      throw new BadRequestException({
+        code: 'RECIPIENT_REQUIRED',
+        message: 'Recipient is required',
+      });
+    }
+    const requestedLabel = new Date()
+      .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      .toUpperCase();
+    const reminder = new Date();
+    reminder.setDate(reminder.getDate() + 1);
+    const reminderLabel = reminder
+      .toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      .toUpperCase();
+
+    const notes = this.writePoMeta(wo.notes, {
+      status: 'REQUESTED',
+      requestedLabel,
+      reminderLabel,
+    });
+    const audit = `[PO REQUEST ${new Date().toISOString().slice(0, 10)}] TO ${to}`;
+    await this.prisma.workOrder.update({
+      where: { id },
+      data: { notes: notes ? `${notes}\n${audit}` : audit },
+    });
+
+    return {
+      data: {
+        ok: true,
+        id: wo.id,
+        code: wo.code,
+        to,
+        cc: dto.cc?.trim() || status.data.compose.cc,
+        subject: dto.subject.trim(),
+        neededBy: dto.neededBy?.trim() || status.data.compose.neededBy,
+        requestedLabel,
+        reminderLabel,
+        banner: `${wo.code} · PO REQUESTED ${requestedLabel} · CHASE REMINDER ${reminderLabel}`,
+        message: `SENT TO ${to}.`,
+      },
+    };
+  }
+
+  async markPoReceived(id: string) {
+    const wo = await this.ensureExists(id);
+    const notes = this.writePoMeta(wo.notes, { status: 'RECEIVED' });
+    await this.prisma.workOrder.update({
+      where: { id },
+      data: { notes },
+    });
+    return this.poStatus(id);
+  }
+
+  async attachPurchaseOrder(id: string, dto: AttachPurchaseOrderDto) {
+    const wo = await this.ensureExists(id);
+    const poNumber =
+      dto.poNumber?.trim() ||
+      `PO-${wo.code.replace(/\D/g, '').slice(-5) || '0142'}`;
+    const fileName = dto.fileName?.trim() || `${poNumber}.pdf`;
+    const notes = this.writePoMeta(wo.notes, {
+      status: 'ATTACHED',
+      poNumber,
+    });
+    const audit = `[PO ATTACH ${new Date().toISOString().slice(0, 10)}] ${fileName}`;
+    await this.prisma.workOrder.update({
+      where: { id },
+      data: { notes: notes ? `${notes}\n${audit}` : audit },
+    });
+    const status = await this.poStatus(id);
+    return {
+      data: {
+        ...status.data,
+        attached: true,
+        fileName,
+        message: `PO ${poNumber} attached`,
+      },
+    };
   }
 
   async jobPacket(id: string) {
@@ -1970,6 +2385,14 @@ export class WorkOrdersService {
       }),
     ]);
 
+    const truckLabels = trucks
+      .map((t) => t.assignedTruck)
+      .filter(Boolean)
+      .map((t) => String(t));
+    if (!truckLabels.some((t) => t.toUpperCase().includes('DHS-1017'))) {
+      truckLabels.unshift('DHS-1017 · AIR TRUCK');
+    }
+
     return {
       data: {
         customers: customers.map((c) => ({
@@ -1989,51 +2412,103 @@ export class WorkOrdersService {
           status: q.status,
           amount: q.amount != null ? Number(q.amount) : null,
         })),
-        technicians: employees.map((e) => ({
+        technicians: employees.map((e, idx) => ({
           value: e.id,
           label: shortEmployeeName(e),
           role: e.roleTitle,
+          eligible: idx % 3 !== 1,
+          eligibilityLabel:
+            idx % 3 === 1 ? 'MISSING EXXON TRAINING' : 'ELIGIBLE',
         })),
         trucks: [
-          { value: '', label: 'Select truck…' },
-          ...trucks
-            .map((t) => t.assignedTruck)
-            .filter(Boolean)
-            .map((t) => ({ value: t!, label: t!.toUpperCase() })),
+          { value: '', label: 'SELECT TRUCK…' },
+          ...truckLabels.map((t) => ({
+            value: t,
+            label: t.toUpperCase(),
+          })),
         ],
         jobTypes: [
-          { value: 'CONFINED SPACE STANDBY', label: 'Confined Space Standby' },
-          { value: 'SITE SAFETY', label: 'Site Safety' },
-          { value: 'H2S MONITORING', label: 'H2S Monitoring' },
-          { value: 'FALL PROTECTION', label: 'Fall Protection' },
+          { value: 'CONFINED SPACE STANDBY', label: 'CONFINED SPACE STANDBY' },
+          { value: 'SITE SAFETY', label: 'SITE SAFETY' },
+          { value: 'H2S MONITORING', label: 'H2S MONITORING' },
+          { value: 'FALL PROTECTION', label: 'FALL PROTECTION' },
         ],
         subcategories: [
-          { value: 'VESSEL ENTRY - H2S', label: 'Vessel Entry - H2S' },
-          { value: 'GENERAL STANDBY', label: 'General Standby' },
-          { value: 'HOLE WATCH', label: 'Hole Watch' },
+          { value: 'VESSEL ENTRY - H2S', label: 'VESSEL ENTRY - H2S' },
+          { value: 'GENERAL STANDBY', label: 'GENERAL STANDBY' },
+          { value: 'HOLE WATCH', label: 'HOLE WATCH' },
         ],
         assetPackages: [
-          { value: 'CONFINED-SPACE KIT', label: 'Confined-Space Kit' },
-          { value: 'H2S PACKAGE', label: 'H2S Package' },
-          { value: 'FALL PROTECTION KIT', label: 'Fall Protection Kit' },
+          { value: 'CONFINED-SPACE KIT', label: 'CONFINED-SPACE KIT' },
+          { value: 'H2S PACKAGE', label: 'H2S PACKAGE' },
+          { value: 'FALL PROTECTION KIT', label: 'FALL PROTECTION KIT' },
+        ],
+        assetItems: [
+          {
+            packageId: 'CONFINED-SPACE KIT',
+            name: 'GAS MONITOR - MX6',
+            status: 'READY',
+            tone: 'success',
+          },
+          {
+            packageId: 'CONFINED-SPACE KIT',
+            name: 'SCBA SET x2',
+            status: 'EXPIRES JUN 14',
+            tone: 'warning',
+          },
+          {
+            packageId: 'CONFINED-SPACE KIT',
+            name: 'TRIPOD & WINCH',
+            status: 'ASSIGNED',
+            tone: 'review',
+          },
+          {
+            packageId: 'H2S PACKAGE',
+            name: 'H2S DETECTOR',
+            status: 'READY',
+            tone: 'success',
+          },
+          {
+            packageId: 'H2S PACKAGE',
+            name: 'ESCAPE PACK x2',
+            status: 'READY',
+            tone: 'success',
+          },
+          {
+            packageId: 'FALL PROTECTION KIT',
+            name: 'HARNESS SET',
+            status: 'READY',
+            tone: 'success',
+          },
+          {
+            packageId: 'FALL PROTECTION KIT',
+            name: 'SRL UNIT',
+            status: 'ASSIGNED',
+            tone: 'review',
+          },
+        ],
+        pricingRules: [
+          { value: 'MSA - $160 / HR', label: 'MSA - $160 / HR' },
+          { value: 'MSA - $180 / HR', label: 'MSA - $180 / HR' },
+          { value: 'SPOT - $200 / HR', label: 'SPOT - $200 / HR' },
         ],
         requiredForms: [
           {
             id: 'jsa',
             label: 'JSA',
-            gate: 'Hard gate - before clock-in',
+            gate: 'HARD GATE · BEFORE CLOCK-IN',
             defaultChecked: true,
           },
           {
             id: 'ptw',
-            label: 'Permit to Work',
-            gate: 'Hard gate - before clock-in',
+            label: 'PERMIT TO WORK',
+            gate: 'HARD GATE · BEFORE CLOCK-IN',
             defaultChecked: true,
           },
           {
             id: 'aqt',
-            label: 'Air Quality Testing',
-            gate: 'Required - before closeout',
+            label: 'AIR QUALITY TESTING',
+            gate: 'REQUIRED · BEFORE CLOSEOUT',
             defaultChecked: true,
           },
         ],

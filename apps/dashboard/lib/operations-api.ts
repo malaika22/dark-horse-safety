@@ -123,21 +123,53 @@ export type DispatchEligibility = {
 
 export type DispatchReassignData = {
   assignmentId: string;
+  workOrderId: string;
   workOrderCode: string;
   customerName: string;
   locationName: string;
   scheduledDate: string;
+  dateLabel?: string;
+  jobTypeLabel?: string;
+  summaryLine?: string;
+  scheduleLine?: string;
   originally: string;
+  currentBanner?: string;
   declineReason: string;
+  eligibleCount?: number;
+  blockedCount?: number;
   candidates: Array<{
     employeeId: string;
     name: string;
     eligible: boolean;
     status: string;
     detail: string;
+    meta?: string;
+    truck?: string | null;
     distanceMi: number | null;
     jobsThatDay: number;
   }>;
+};
+
+export type DispatchReassignResult = {
+  ok: boolean;
+  workOrderId: string;
+  workOrderCode: string;
+  message: string;
+  banner: string;
+  newTechnicianName?: string;
+  oldTechnicianName?: string;
+  technicianName?: string;
+  notifiedNew?: boolean;
+  notifiedOriginal?: boolean;
+};
+
+export type DispatchOverrideRequestResult = {
+  ok: boolean;
+  workOrderId: string;
+  workOrderCode: string;
+  technicianName: string;
+  message: string;
+  banner: string;
 };
 
 export type DispatchOptions = {
@@ -149,6 +181,44 @@ export type DispatchOptions = {
   }>;
   crews: Array<{ value: string; label: string }>;
   customers: Array<{ value: string; label: string }>;
+};
+
+export type DispatchDeliveryPreview = {
+  kind: "post" | "notify";
+  jobs: number;
+  technicianCount: number;
+  dateLabel: string;
+  scheduleDate: string;
+  summaryLine: string;
+  technicians: Array<{
+    employeeId: string;
+    name: string;
+    assignmentIds: string[];
+  }>;
+  assignmentIds: string[];
+};
+
+export type DispatchDeliveryResult = {
+  ok: boolean;
+  outcome: "success" | "partial" | "failed";
+  jobs: number;
+  technicianCount: number;
+  deliveredCount: number;
+  dateLabel: string;
+  message: string;
+  banner: string;
+  title?: string;
+  summaryLine?: string;
+  technicians: Array<{
+    employeeId: string;
+    name: string;
+    status: "DELIVERED" | "NOT_RECEIVED";
+    assignmentIds?: string[];
+  }>;
+  failedTechnicianName?: string | null;
+  failedEmployeeId?: string | null;
+  updated?: number;
+  notified?: number;
 };
 
 export type OpsDashboardStat = {
@@ -255,16 +325,36 @@ export const operationsApi = {
   }) =>
     api.post<ApiData<DispatchCard>>(`/operations/dispatch/assign`, body),
 
-  postDispatchToMobile: (ids?: string[]) =>
-    api.post<ApiData<{ updated: number; message: string }>>(
-      `/operations/dispatch/post-to-mobile`,
-      { ids },
+  postDispatchPreview: (date?: string) =>
+    api.get<ApiData<DispatchDeliveryPreview>>(
+      `/operations/dispatch/post-to-mobile/preview${q({ date })}`,
     ),
 
-  notifyDispatchTechs: (ids?: string[]) =>
-    api.post<ApiData<{ notified: number; message: string }>>(
+  postDispatchToMobile: (body?: {
+    ids?: string[];
+    date?: string;
+    forceFail?: boolean;
+    forcePartial?: boolean;
+  }) =>
+    api.post<ApiData<DispatchDeliveryResult>>(
+      `/operations/dispatch/post-to-mobile`,
+      body ?? {},
+    ),
+
+  notifyDispatchPreview: (date?: string) =>
+    api.get<ApiData<DispatchDeliveryPreview>>(
+      `/operations/dispatch/notify-techs/preview${q({ date })}`,
+    ),
+
+  notifyDispatchTechs: (body?: {
+    ids?: string[];
+    date?: string;
+    forceFail?: boolean;
+    forcePartial?: boolean;
+  }) =>
+    api.post<ApiData<DispatchDeliveryResult>>(
       `/operations/dispatch/notify-techs`,
-      { ids },
+      body ?? {},
     ),
 
   rescheduleDispatch: (
@@ -296,11 +386,26 @@ export const operationsApi = {
     body: {
       employeeId: string;
       notifyTechnician?: boolean;
+      notifyOriginal?: boolean;
       note?: string;
+      forceFail?: boolean;
     },
   ) =>
-    api.post<ApiData<DispatchCard>>(
+    api.post<ApiData<DispatchReassignResult>>(
       `/operations/dispatch/${id}/reassign`,
+      body,
+    ),
+
+  requestDispatchOverride: (
+    id: string,
+    body: {
+      employeeId: string;
+      justification: string;
+      overrideByName?: string;
+    },
+  ) =>
+    api.post<ApiData<DispatchOverrideRequestResult>>(
+      `/operations/dispatch/${id}/request-override`,
       body,
     ),
 
@@ -329,6 +434,19 @@ export const operationsApi = {
       }>
     >(`/operations/billing`),
 
+  getBillingDetail: (id: string) =>
+    api.get<ApiData<BillingDetail>>(`/operations/billing/${id}`),
+
+  markBillingReviewed: (
+    id: string,
+    body: {
+      note?: string;
+      netsuiteRef?: string;
+      markNetsuiteUpdated?: boolean;
+    },
+  ) =>
+    api.patch<ApiData<BillingDetail>>(`/operations/billing/${id}`, body),
+
   purchaseOrdersOverview: () =>
     api.get<
       ApiData<{
@@ -336,6 +454,60 @@ export const operationsApi = {
         items: OpsPurchaseOrderItem[];
       }>
     >(`/operations/purchase-orders`),
+
+  purchaseOrderOptions: () =>
+    api.get<
+      ApiData<{
+        vendors: string[];
+        categories: string[];
+        deliveryLocations: string[];
+        receivers: string[];
+        markupOptions: number[];
+        workOrders: Array<{
+          id: string;
+          code: string;
+          customerName: string;
+        }>;
+        salesTickets: Array<{ id: string; code: string }>;
+        nextPoCode: string;
+      }>
+    >(`/operations/purchase-orders/options`),
+
+  createPurchaseOrder: (body: {
+    vendor: string;
+    vendorContact?: string;
+    orderDate?: string;
+    expectedDelivery?: string;
+    workOrderId?: string;
+    ticketId?: string;
+    category?: string;
+    description: string;
+    lineItems?: Array<{ item: string; qty: number; unitPrice: number }>;
+    deliveryLocation?: string;
+    received?: boolean;
+    receivedBy?: string;
+    receivedDate?: string;
+    notes?: string;
+    billBack?: boolean;
+    markupPct?: number;
+    blocksPayroll?: boolean;
+  }) =>
+    api.post<
+      ApiData<{
+        id: string;
+        code: string;
+        status: string;
+        statusLabel: string;
+        amount: number;
+        amountLabel: string;
+        billableAmount: number;
+        billableAmountLabel: string;
+        overThreshold: boolean;
+        ticketId: string;
+        workOrderId?: string | null;
+        customerName: string;
+      }>
+    >(`/operations/purchase-orders`, body),
 
   netsuiteOverview: () =>
     api.get<
@@ -354,6 +526,145 @@ export const operationsApi = {
         workflowStep: string | null;
       }>
     >(`/operations/netsuite/${id}/send`, {}),
+
+  exportReadyToNetsuite: () =>
+    api.post<ApiData<{ exported: number; message: string }>>(
+      `/operations/netsuite/export-ready`,
+      {},
+    ),
+
+  getNetsuiteError: (id: string) =>
+    api.get<ApiData<NetsuiteErrorDetail>>(`/operations/netsuite/${id}/error`),
+
+  markNetsuiteFollowUp: (id: string) =>
+    api.post<ApiData<NetsuiteErrorDetail>>(
+      `/operations/netsuite/${id}/follow-up`,
+      {},
+    ),
+
+  retryNetsuiteSend: (id: string) =>
+    api.post<
+      ApiData<
+        Partial<NetsuiteErrorDetail> & {
+          ok?: boolean;
+          message?: string;
+        }
+      >
+    >(`/operations/netsuite/${id}/retry`, {}),
+
+  listFormCorrections: () =>
+    api.get<
+      ApiData<{
+        kpis: FormCorrectionKpi;
+        items: FormCorrectionItem[];
+      }>
+    >(`/operations/form-corrections`),
+
+  getFormCorrection: (id: string) =>
+    api.get<ApiData<FormCorrectionDetail>>(
+      `/operations/form-corrections/${id}`,
+    ),
+
+  approveFormCorrection: (
+    id: string,
+    body?: { note?: string; forceFail?: boolean },
+  ) =>
+    api.post<ApiData<FormCorrectionActionResult>>(
+      `/operations/form-corrections/${id}/approve`,
+      body ?? {},
+    ),
+
+  denyFormCorrection: (
+    id: string,
+    body?: { reason?: string; note?: string; forceFail?: boolean },
+  ) =>
+    api.post<ApiData<FormCorrectionActionResult>>(
+      `/operations/form-corrections/${id}/deny`,
+      body ?? {},
+    ),
+
+  moreInfoFormCorrection: (
+    id: string,
+    body?: {
+      form?: string;
+      issue?: string;
+      instructions?: string;
+      message?: string;
+      note?: string;
+      forceFail?: boolean;
+    },
+  ) =>
+    api.post<ApiData<FormCorrectionActionResult>>(
+      `/operations/form-corrections/${id}/more-info`,
+      body ?? {},
+    ),
+
+  listAdditionalFormRequests: () =>
+    api.get<
+      ApiData<{
+        kpis: AdditionalFormKpi;
+        items: AdditionalFormItem[];
+        alert: string | null;
+      }>
+    >(`/operations/additional-form-requests`),
+
+  getAdditionalFormRequest: (id: string) =>
+    api.get<ApiData<AdditionalFormDetail>>(
+      `/operations/additional-form-requests/${id}`,
+    ),
+
+  approveAdditionalFormRequest: (
+    id: string,
+    body?: { note?: string; forceFail?: boolean },
+  ) =>
+    api.post<ApiData<AdditionalFormActionResult>>(
+      `/operations/additional-form-requests/${id}/approve`,
+      body ?? {},
+    ),
+
+  denyAdditionalFormRequest: (
+    id: string,
+    body?: { reason?: string; note?: string; forceFail?: boolean },
+  ) =>
+    api.post<ApiData<AdditionalFormActionResult>>(
+      `/operations/additional-form-requests/${id}/deny`,
+      body ?? {},
+    ),
+
+  moreInfoAdditionalFormRequest: (
+    id: string,
+    body?: { message?: string; note?: string; forceFail?: boolean },
+  ) =>
+    api.post<ApiData<AdditionalFormActionResult>>(
+      `/operations/additional-form-requests/${id}/more-info`,
+      body ?? {},
+    ),
+
+  getInvoicePreview: (id: string) =>
+    api.get<ApiData<InvoicePreview>>(`/operations/invoices/${id}/preview`),
+
+  saveInvoice: (
+    id: string,
+    body: { invoiceNotes?: string; netsuiteRef?: string },
+  ) =>
+    api.patch<ApiData<InvoicePreview>>(`/operations/invoices/${id}`, body),
+
+  sendInvoice: (
+    id: string,
+    body: {
+      recipient: string;
+      cc?: string;
+      subject: string;
+      message?: string;
+      scheduleMode?: "NOW" | "LATER";
+      scheduledAt?: string;
+      forceFail?: boolean;
+    },
+  ) =>
+    api.post<ApiData<InvoiceSendResult>>(
+      `/operations/invoices/${id}/send`,
+      body,
+    ),
 
   listSalesTickets: (params?: {
     page?: number;
@@ -529,6 +840,17 @@ export type SalesTicketStatus =
   | string;
 
 export type BillingKpi = {
+  ticketsThisCycle: number;
+  cycleLabel: string;
+  matched: number;
+  matchedPct: number;
+  needsCorrection: number;
+  needsCorrectionMeta: string;
+  unbilledValue: number;
+  unbilledValueLabel: string;
+  unbilledMeta: string;
+  readyForNetsuite: number;
+  readyForNetsuiteValueLabel: string;
   variances: number;
   underbilled: number;
   overbilled: number;
@@ -543,26 +865,111 @@ export type BillingVarianceItem = {
   code: string;
   workOrderId?: string | null;
   workOrderCode?: string | null;
+  workOrderYear?: string;
   customerName: string;
   locationLabel?: string | null;
+  submittedBy?: string;
+  employs?: string;
+  employsName?: string;
+  employsCompany?: string;
   reconciliation?: string | null;
   reconciliationLabel: string;
   workedHours: number;
   billedHours: number;
   deltaHours: number;
+  workedLabel?: string;
+  billedLabel?: string;
+  differenceLabel?: string;
+  netsuiteStatus?: string;
   amount: number;
   amountLabel: string;
   issueLabel?: string | null;
   approvalStatus?: string | null;
   jobDateLabel?: string | null;
+  stMissing?: boolean;
+};
+
+export type BillingDetail = {
+  id: string;
+  code: string;
+  billingFlag: string;
+  statusLabel: string;
+  headerBreadcrumb: string;
+  title: string;
+  subtitle: string;
+  exceptionIndex: number;
+  exceptionTotal: number;
+  exceptionIds: string[];
+  workOrder: {
+    id?: string | null;
+    code: string;
+    location: string;
+    serviceDate: string;
+    customer: string;
+    assigned: string[];
+    jobStart: string;
+    jobEnd: string;
+  };
+  salesTicket: {
+    id: string;
+    code: string;
+    linkedLabel: string;
+    hoursLabel: string;
+    source: string;
+    poNumber: string;
+    status: string;
+  };
+  netsuiteCorrection: {
+    status: string;
+    type: string;
+    action: string;
+    reason: string;
+    reference: string;
+  };
+  comparison: {
+    deltaLabel: string;
+    workedHours: number;
+    workedLabel: string;
+    workedMeta: string;
+    billedHours: number;
+    billedLabel: string;
+    billedMeta: string;
+    varianceHours: number;
+    varianceLabel: string;
+    varianceMeta: string;
+  };
+  techTime: Array<{
+    name: string;
+    date?: string;
+    clockIn?: string;
+    clockOut?: string;
+    hours?: number;
+    billable?: string;
+    category?: string;
+    status?: string;
+  }>;
+  compliance: {
+    submittedLabel: string;
+    items: Array<{ name: string; status: string }>;
+  };
+  adminNotes: Array<{ when: string; text: string }>;
+  auditHistory: Array<{ when: string; title: string; detail: string }>;
+  reviewed: boolean;
 };
 
 export type PurchaseOrderKpi = {
   total: number;
-  billedBack: number;
-  notOnTicket: number;
   totalAmount: number;
   totalAmountLabel: string;
+  received: number;
+  awaiting: number;
+  billedBack: number;
+  billedBackAmountLabel: string;
+  missingBeforeInvoice: number;
+  missingMeta: string;
+  overThreshold: number;
+  overThresholdMeta: string;
+  notOnTicket: number;
 };
 
 export type OpsPurchaseOrderItem = {
@@ -570,6 +977,12 @@ export type OpsPurchaseOrderItem = {
   code: string;
   status: string;
   statusLabel: string;
+  vendor: string;
+  type: string;
+  employs: string;
+  employsName: string;
+  employsCompany: string;
+  approvedBy: string;
   customerName: string;
   workOrderId?: string | null;
   workOrderCode?: string | null;
@@ -578,14 +991,21 @@ export type OpsPurchaseOrderItem = {
   amount: number;
   amountLabel: string;
   note?: string | null;
+  received?: boolean;
+  billBack?: boolean;
+  overThreshold?: boolean;
 };
 
 export type NetsuiteKpi = {
   ready: number;
-  sent: number;
-  corrected: number;
   readyValue: number;
   readyValueLabel: string;
+  sent: number;
+  sentValueLabel: string;
+  corrected: number;
+  correctedMeta: string;
+  failed: number;
+  failedMeta: string;
 };
 
 export type NetsuiteHandoffItem = {
@@ -593,15 +1013,297 @@ export type NetsuiteHandoffItem = {
   code: string;
   workOrderId?: string | null;
   workOrderCode?: string | null;
+  workOrderYear?: string;
   customerName: string;
   locationLabel?: string | null;
+  locationWell?: string;
+  locationField?: string;
+  serviceDate?: string;
+  hoursLabel?: string;
   amount: number;
   amountLabel: string;
+  netsuiteIdLabel?: string;
   approvalStatus?: string | null;
   netsuiteStatus: string;
   netsuiteLabel: string;
+  exportStatus?: string;
+  actionStatus?: string;
   workflowStep?: string | null;
+  stMissing?: boolean;
   ready: boolean;
+  failed?: boolean;
+};
+
+export type NetsuiteErrorDetail = {
+  id: string;
+  code: string;
+  title: string;
+  status: string;
+  occurredLabel: string;
+  salesTicket: string;
+  workOrder: string;
+  workOrderId?: string | null;
+  customer: string;
+  errorCode: string;
+  message: string;
+  syncLog: Array<{ when: string; text: string }>;
+  affected: {
+    invoice: string;
+    lineItems: number;
+    netsuiteResult: string;
+  };
+  resolution: string[];
+  followUp: boolean;
+  attempts: number;
+};
+
+export type FormCorrectionKpi = {
+  open: number;
+  openMeta: string;
+  resubmitted: number;
+  resubmittedMeta: string;
+  approved: number;
+  approvedMeta: string;
+  rejected: number;
+  rejectedMeta: string;
+  needsInfo: number;
+  needsInfoMeta: string;
+};
+
+export type FormCorrectionItem = {
+  id: string;
+  code: string;
+  workOrderId?: string | null;
+  workOrderCode?: string | null;
+  customerName: string;
+  formLabel: string;
+  reasonShort: string;
+  reasonAge: string;
+  requestedBy: string;
+  requestedByStatus?: string | null;
+  status: string;
+  statusLabel: string;
+  requestedLabel: string;
+  originalStatus: string;
+  version: string;
+};
+
+export type FormCorrectionDetail = {
+  id: string;
+  code: string;
+  title: string;
+  status: string;
+  statusLabel: string;
+  metaLabel: string;
+  index: number;
+  total: number;
+  ids: string[];
+  requests: Array<{
+    id: string;
+    code: string;
+    label: string;
+    pendingLabel: string;
+  }>;
+  original: {
+    form: string;
+    formTitle?: string;
+    submittedBy: string;
+    submitted: string;
+    lockedLabel: string;
+  };
+  workOrderCode?: string;
+  version?: string;
+  formDisplay?: string;
+  issueFlagged: string;
+  correction: {
+    requestedBy: string;
+    instruction: string;
+  };
+  resubmission: {
+    version: string;
+    resubmittedBy: string;
+    submitted: string;
+    status: string;
+  } | null;
+  rule: string;
+};
+
+export type FormCorrectionActionResult = {
+  ok: boolean;
+  id: string;
+  code: string;
+  status: string;
+  contextLine: string;
+  workOrderCode: string;
+  technicianName: string;
+  formLabel: string;
+  version: string;
+  message: string;
+  savedNote: string | null;
+  toastTitle: string | null;
+  toastSubtitle: string | null;
+  dueBackLabel: string | null;
+  detail?: FormCorrectionDetail;
+};
+
+export type AdditionalFormKpi = {
+  pending: number;
+  pendingMeta: string;
+  approved: number;
+  approvedMeta: string;
+  denied: number;
+  deniedMeta: string;
+  needsInfo: number;
+  needsInfoMeta: string;
+  formAdded: number;
+  formAddedMeta: string;
+};
+
+export type AdditionalFormItem = {
+  id: string;
+  code: string;
+  workOrderId?: string | null;
+  workOrderCode?: string | null;
+  customerName: string;
+  technicianName: string;
+  formRequested: string;
+  reasonShort: string;
+  urgency: string;
+  status: string;
+  statusLabel: string;
+  ageLabel: string;
+  reviewer: string;
+};
+
+export type AdditionalFormDetail = {
+  id: string;
+  code: string;
+  title: string;
+  status: string;
+  statusLabel: string;
+  urgency: string;
+  metaLabel: string;
+  index: number;
+  total: number;
+  ids: string[];
+  requests: Array<{
+    id: string;
+    code: string;
+    label: string;
+    pendingLabel: string;
+  }>;
+  details: {
+    workOrder: string;
+    customer: string;
+    location: string;
+    technician: string;
+    formRequested: string;
+    urgency: string;
+  };
+  history: Array<{ when: string; text: string }>;
+  reason: string;
+  rule: string;
+};
+
+export type AdditionalFormActionResult = {
+  ok: boolean;
+  id: string;
+  code: string;
+  status: string;
+  contextLine: string;
+  workOrderCode: string;
+  technicianName: string;
+  formRequested: string;
+  message: string;
+  savedNote: string | null;
+  toastTitle: string | null;
+  toastSubtitle: string | null;
+  detail?: AdditionalFormDetail;
+};
+
+export type InvoicePreview = {
+  ticketId: string;
+  ticketCode: string;
+  invoiceCode: string;
+  status: string;
+  statusLabel: string;
+  badgeTone: string;
+  stepper: string[];
+  stepperCurrent: string;
+  stepperMeta: string;
+  jobRef: {
+    ticketCode: string;
+    customer: string;
+    location: string;
+    dateRange: string;
+  };
+  terms: string;
+  subtotal: number;
+  taxPct: number;
+  tax: number;
+  total: number;
+  totalLabel: string;
+  lineItems: Array<{
+    item: string;
+    qty: number;
+    qtyDelta?: number;
+    rate?: number;
+    rateLabel?: string;
+    amount: number;
+    woLink?: string;
+    note?: string;
+  }>;
+  techTime: Array<{
+    name: string;
+    clockIn?: string;
+    clockOut?: string;
+    hours?: number;
+    status: string;
+    date?: string;
+  }>;
+  quoteCompare: {
+    quoted: number;
+    invoiced: number;
+    variance: number;
+    variancePct: number;
+    reason: string;
+  };
+  netsuite: {
+    statusLabel: string;
+    invoiceNotes: string;
+    netsuiteRef: string;
+  };
+  compose: {
+    recipient: string;
+    recipientEmail: string;
+    cc: string;
+    ccEmail: string;
+    subject: string;
+    message: string;
+    signature: string;
+    attachmentName: string;
+    attachmentSize: string;
+    scheduleDefault: string;
+  };
+  lastSend?: Record<string, unknown> | null;
+  workOrderId?: string | null;
+  workOrderCode?: string | null;
+};
+
+export type InvoiceSendResult = {
+  ok: boolean;
+  status: string;
+  recipient: string;
+  recipientEmail?: string;
+  cc?: string | null;
+  subject?: string;
+  attachmentName: string;
+  attachmentSize: string;
+  sentAtLabel?: string;
+  triedAtLabel?: string;
+  reason?: string;
+  invoiceCode: string;
+  amountLabel: string;
 };
 
 export type SalesTicketQueueKpi = {

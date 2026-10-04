@@ -26,7 +26,6 @@ import { toastApiError } from "@/lib/toast";
 import { BrandLoader } from "@/features/loading/brand-loader";
 import {
   useSetHeaderActions,
-  useSetHeaderBreadcrumb,
 } from "@/features/app-shell/header-actions-context";
 
 function CreateWoIcon() {
@@ -149,7 +148,6 @@ export function OpsDashboardPage() {
   const [activityTab, setActivityTab] = React.useState("all");
   const [reloadKey, setReloadKey] = React.useState(0);
 
-  useSetHeaderBreadcrumb("Operations / Operations Dashboard");
   useSetHeaderActions(
     <div className="flex flex-wrap items-center gap-2">
       {data?.lastSyncLabel ? (

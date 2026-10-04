@@ -199,12 +199,27 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
   {
     path: "/operations/netsuite",
     breadcrumb: "Operations",
-    pageTitle: "NetSuite Handoff",
+    pageTitle: "NetSuite Handoff · Export Preview",
+  },
+  {
+    path: "/operations/form-corrections",
+    breadcrumb: "Operations",
+    pageTitle: "Form Correction Requests",
+  },
+  {
+    path: "/operations/additional-form-requests",
+    breadcrumb: "Operations",
+    pageTitle: "Additional Form Requests",
+  },
+  {
+    path: "/operations/purchase-orders/new",
+    breadcrumb: "Operations / Purchase Orders",
+    pageTitle: "Add Purchase Order",
   },
   {
     path: "/operations/purchase-orders",
     breadcrumb: "Operations",
-    pageTitle: "Purchase Order",
+    pageTitle: "Purchase Orders",
   },
   {
     path: "/operations/billing",
@@ -214,7 +229,12 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
   {
     path: "/operations/sales-tickets",
     breadcrumb: "Operations",
-    pageTitle: "Sales Ticket",
+    pageTitle: "Sales Ticket Review Queue",
+  },
+  {
+    path: "/operations/recurring-series",
+    breadcrumb: "Operations",
+    pageTitle: "Recurring Series",
   },
   {
     path: "/operations/work-orders/new",
@@ -232,6 +252,11 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
     pageTitle: "Dispatch Calendar",
   },
   { path: "/operations", breadcrumb: "Operations", pageTitle: "Operations Dashboard" },
+  {
+    path: "/safety/forms",
+    breadcrumb: "Safety & Comp.",
+    pageTitle: "Forms",
+  },
   {
     path: "/safety/certifications",
     breadcrumb: "Safety & Comp.",
@@ -378,6 +403,42 @@ function headerMetaForPath(pathname: string): HeaderMeta {
     pathname !== "/operations/work-orders/new"
   ) {
     return { breadcrumb: "Operations / Work Order / Detail", pageTitle: null };
+  }
+  if (/^\/operations\/sales-tickets\/[^/]+$/.test(pathname)) {
+    return { breadcrumb: "Operations / Sales Ticket / Detail", pageTitle: null };
+  }
+  if (/^\/operations\/recurring-series\/[^/]+$/.test(pathname)) {
+    return {
+      breadcrumb: "Operations / Recurring Series / Detail",
+      pageTitle: null,
+    };
+  }
+  if (/^\/operations\/billing\/[^/]+$/.test(pathname)) {
+    return { breadcrumb: "Reconciliation / Detail", pageTitle: null };
+  }
+  if (/^\/operations\/netsuite\/[^/]+\/error$/.test(pathname)) {
+    return { breadcrumb: "Operations / NetSuite Error", pageTitle: null };
+  }
+  if (/^\/operations\/form-corrections\/[^/]+$/.test(pathname)) {
+    return {
+      breadcrumb: "Operations / Form Correction Request",
+      pageTitle: null,
+    };
+  }
+  if (/^\/operations\/additional-form-requests\/[^/]+$/.test(pathname)) {
+    return {
+      breadcrumb: "Operations / Additional Form Request",
+      pageTitle: null,
+    };
+  }
+  if (/^\/operations\/invoices\/[^/]+$/.test(pathname)) {
+    return { breadcrumb: "Operations / Invoice Preview", pageTitle: null };
+  }
+  if (/^\/safety\/forms\/[^/]+\/preview$/.test(pathname)) {
+    return { breadcrumb: "Safety & Comp. / Forms / Print Preview", pageTitle: null };
+  }
+  if (/^\/safety\/forms\/[^/]+$/.test(pathname)) {
+    return { breadcrumb: "Safety & Comp. / Forms", pageTitle: null };
   }
 
   const exact = HEADER_TITLES.find((entry) => entry.path === pathname);

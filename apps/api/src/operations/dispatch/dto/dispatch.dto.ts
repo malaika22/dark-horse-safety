@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsDateString,
   IsEnum,
@@ -106,9 +107,31 @@ export class ReassignDispatchDto {
   notifyTechnician?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  notifyOriginal?: boolean;
+
+  @IsOptional()
   @IsString()
   @MaxLength(2000)
   note?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  forceFail?: boolean;
+}
+
+export class RequestReassignOverrideDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @IsString()
+  @MaxLength(2000)
+  justification!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  overrideByName?: string;
 }
 
 export class OverrideDispatchDto {
@@ -120,6 +143,25 @@ export class OverrideDispatchDto {
   @IsString()
   @MaxLength(120)
   overrideByName?: string;
+}
+
+export class PostNotifyDispatchDto {
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  ids?: string[];
+
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  forceFail?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  forcePartial?: boolean;
 }
 
 export class DispatchAcceptanceQueryDto {

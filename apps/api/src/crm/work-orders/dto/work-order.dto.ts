@@ -1,8 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
+  IsBoolean,
   IsDateString,
   IsIn,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -37,6 +39,97 @@ export class HoldCancelWorkOrderDto {
   @IsString()
   @MaxLength(2000)
   reason!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  note?: string;
+
+  @ApiPropertyOptional({
+    description: 'Simulate hold failure for UI error path',
+  })
+  @IsOptional()
+  @IsBoolean()
+  forceFail?: boolean;
+}
+
+export class CancelWorkOrderDto {
+  @ApiProperty({
+    example: 'CUSTOMER CANCELLED',
+  })
+  @IsString()
+  @MaxLength(200)
+  reason!: string;
+
+  @ApiPropertyOptional({
+    enum: ['KEEP_BILLABLE', 'KEEP_NON_BILLABLE', 'VOID'],
+  })
+  @IsOptional()
+  @IsIn(['KEEP_BILLABLE', 'KEEP_NON_BILLABLE', 'VOID'])
+  timeHandling?: 'KEEP_BILLABLE' | 'KEEP_NON_BILLABLE' | 'VOID';
+
+  @ApiPropertyOptional({
+    description: 'PO keep/cancel decisions keyed by PO code',
+  })
+  @IsOptional()
+  @IsObject()
+  poActions?: Record<string, 'KEEP' | 'CANCEL'>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  notifyTechnicians?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  note?: string;
+}
+
+export class RequestPurchaseOrderDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(300)
+  to!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  cc?: string;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(500)
+  subject!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(8000)
+  message?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  neededBy?: string;
+}
+
+export class AttachPurchaseOrderDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  poNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(260)
+  fileName?: string;
 }
 
 export class ExportJobPacketDto {

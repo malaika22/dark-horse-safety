@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   DashboardModal,
   DashboardToolbarButton,
@@ -9,12 +10,43 @@ import {
 import {
   crmApi,
   type CrmJobPacketExport,
+  type WorkOrderCancelPreview,
+  type WorkOrderPoStatus,
 } from "@/lib/crm-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { PayrollPrimaryButton } from "@/features/hr/payroll-resolve-modals";
 
 const fieldClass =
   "w-full rounded-lg border border-[#3E3E3E] bg-[#2A2A2A] px-3 py-2.5 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF] outline-none placeholder:text-[#5A5A5A]";
+
+const labelClass =
+  "font-sans text-[10px] font-[510] uppercase tracking-[-0.02em] text-[#959597]";
+
+function GhostBtn({
+  children,
+  onClick,
+  disabled,
+  className,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "rounded-lg px-3 py-2 font-sans text-[12px] font-[510] uppercase tracking-[-0.02em] text-[#959597] transition-colors hover:text-[#FDFDFF] disabled:opacity-50",
+        className,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
 
 function SecondaryBtn({
   children,
@@ -32,7 +64,31 @@ function SecondaryBtn({
   );
 }
 
-/** Close rule — hold / cancel with required reason. */
+function SuccessCheck() {
+  return (
+    <span
+      aria-hidden
+      className="inline-flex h-6 w-6 items-center justify-center text-[#5ECF8E]"
+    >
+      ✓
+    </span>
+  );
+}
+
+function FailX() {
+  return (
+    <span
+      aria-hidden
+      className="inline-flex h-6 w-6 items-center justify-center text-[#E86A6A]"
+    >
+      ✕
+    </span>
+  );
+}
+
+type HoldPhase = "form" | "success" | "failed";
+
+/** Close / Hold work order — reason form + success / fail outcomes. */
 export function CloseRuleModal({
   open,
   workOrderId,
@@ -44,14 +100,40 @@ export function CloseRuleModal({
   onClose: () => void;
   onDone?: () => void;
 }) {
-  const [reason, setReason] = React.useState("");
+  const router = useRouter();
+  const [phase, setPhase] = React.useState<HoldPhase>("form");
+  const [reason, setReason] = React.useState("HOLD — AWAITING PARTS");
+  const [note, setNote] = React.useState(
+    "WAITING ON CUSTOMER PO BEFORE CLOSEOUT",
+  );
   const [busy, setBusy] = React.useState(false);
+  const [forceFail, setForceFail] = React.useState(false);
+  const [cancelOpen, setCancelOpen] = React.useState(false);
+  const [result, setResult] = React.useState<{
+    code: string;
+    reason: string;
+    message: string;
+    banner: string;
+  } | null>(null);
 
   React.useEffect(() => {
-    if (open) setReason("");
+    if (!open) return;
+    setPhase("form");
+    setReason("HOLD — AWAITING PARTS");
+    setNote("WAITING ON CUSTOMER PO BEFORE CLOSEOUT");
+    setForceFail(false);
+    setResult(null);
+    setCancelOpen(false);
   }, [open]);
 
-  async function run(kind: "hold" | "cancel") {
+  function handleClose() {
+    setPhase("form");
+    setResult(null);
+    setCancelOpen(false);
+    onClose();
+  }
+
+  async function confirmHold(opts?: { forceFail?: boolean }) {
     if (!workOrderId) return;
     if (!reason.trim()) {
       toastApiError(new Error("Reason is required"));
@@ -59,15 +141,316 @@ export function CloseRuleModal({
     }
     setBusy(true);
     try {
-      if (kind === "hold") {
-        await crmApi.holdWorkOrder(workOrderId, { reason: reason.trim() });
-        toastSuccess("Work order held");
+      const res = await crmApi.holdWorkOrder(workOrderId, {
+        reason: reason.trim(),
+        note: note.trim() || undefined,
+        forceFail: opts?.forceFail ?? forceFail,
+      });
+      setResult({
+        code: res.data.code,
+        reason: res.data.reason,
+        message: res.data.message,
+        banner: res.data.banner,
+      });
+      if (res.data.ok === false) {
+        setPhase("failed");
       } else {
-        await crmApi.cancelWorkOrder(workOrderId, { reason: reason.trim() });
-        toastSuccess("Work order cancelled");
+        setPhase("success");
+        onDone?.();
       }
-      onDone?.();
-      onClose();
+    } catch (err) {
+      toastApiError(err);
+      setResult({
+        code: "WO",
+        reason: reason.trim(),
+        message:
+          "WORK ORDER WAS NOT CHANGED. LOGGED TIME AND ASSIGNMENTS REMAIN INTACT.",
+        banner: "HOLD NOT SAVED · RETRY OR RETURN TO WORK ORDER",
+      });
+      setPhase("failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelInstead() {
+    setCancelOpen(true);
+  }
+
+  function viewWo() {
+    if (workOrderId) {
+      router.push(`/operations/work-orders/${workOrderId}`);
+    }
+    handleClose();
+  }
+
+  if (cancelOpen) {
+    return (
+      <CancelWorkOrderModal
+        open={open}
+        workOrderId={workOrderId}
+        onClose={() => {
+          setCancelOpen(false);
+          handleClose();
+        }}
+        onDone={() => {
+          onDone?.();
+          handleClose();
+        }}
+      />
+    );
+  }
+
+  if (phase === "success" && result) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title="Work Order On Hold"
+        titleLeading={<SuccessCheck />}
+        widthClassName="max-w-[480px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            <SecondaryBtn onClick={viewWo}>View Work Order</SecondaryBtn>
+            <PayrollPrimaryButton onClick={handleClose}>Done</PayrollPrimaryButton>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+          {result.message}
+        </p>
+        <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-3 text-center">
+          <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#5ECF8E]">
+            {result.banner}
+          </p>
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  if (phase === "failed" && result) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title="Could Not Put Work Order On Hold"
+        titleLeading={<FailX />}
+        widthClassName="max-w-[480px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <GhostBtn disabled={busy} onClick={handleClose}>
+              Cancel
+            </GhostBtn>
+            <div className="flex flex-wrap gap-2">
+              <SecondaryBtn onClick={viewWo}>View Work Order</SecondaryBtn>
+              <PayrollPrimaryButton
+                disabled={busy}
+                onClick={() => void confirmHold({ forceFail: false })}
+              >
+                Retry
+              </PayrollPrimaryButton>
+            </div>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+          {result.message}
+        </p>
+        <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-3 text-center">
+          <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#E86A6A]">
+            {result.banner}
+          </p>
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  return (
+    <DashboardModal
+      open={open}
+      onClose={handleClose}
+      title="Close / Hold Work Order"
+      widthClassName="max-w-[480px]"
+      footer={
+        <div className="flex w-full flex-wrap items-center justify-end gap-2">
+          <GhostBtn disabled={busy} onClick={handleClose}>
+            Cancel
+          </GhostBtn>
+          <PayrollPrimaryButton
+            disabled={busy}
+            onClick={() => void confirmHold()}
+          >
+            Confirm
+          </PayrollPrimaryButton>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <p className="font-sans text-[12px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+          Work orders close only through sales ticket approval / billing. Hold
+          or cancel require a reason.
+        </p>
+        <label className="block space-y-2">
+          <span className={labelClass}>Reason</span>
+          <input
+            className={fieldClass}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </label>
+        <label className="block space-y-2">
+          <span className={labelClass}>Note</span>
+          <textarea
+            rows={3}
+            className={fieldClass}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void cancelInstead()}
+          className="font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#E86A6A] hover:underline disabled:opacity-50"
+        >
+          Cancel Work Order Instead
+        </button>
+        <label className="flex items-center gap-2 pt-1">
+          <input
+            type="checkbox"
+            checked={forceFail}
+            onChange={(e) => setForceFail(e.target.checked)}
+            className="rounded border-[#3E3E3E]"
+          />
+          <span className="font-sans text-[10px] uppercase text-[#6F6F72]">
+            Simulate hold failure
+          </span>
+        </label>
+      </div>
+    </DashboardModal>
+  );
+}
+
+type CancelPhase = "form" | "success" | "blocked";
+
+/** Cancel work order — form / success / blocked-by-sales-ticket. */
+export function CancelWorkOrderModal({
+  open,
+  workOrderId,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  workOrderId: string | null;
+  onClose: () => void;
+  onDone?: () => void;
+}) {
+  const router = useRouter();
+  const [phase, setPhase] = React.useState<CancelPhase>("form");
+  const [preview, setPreview] = React.useState<WorkOrderCancelPreview | null>(
+    null,
+  );
+  const [reason, setReason] = React.useState("CUSTOMER CANCELLED");
+  const [timeHandling, setTimeHandling] = React.useState<
+    "KEEP_BILLABLE" | "KEEP_NON_BILLABLE" | "VOID"
+  >("KEEP_BILLABLE");
+  const [poActions, setPoActions] = React.useState<
+    Record<string, "KEEP" | "CANCEL">
+  >({});
+  const [notify, setNotify] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
+  const [result, setResult] = React.useState<{
+    code: string;
+    message: string;
+    banner: string;
+    salesTicketId?: string | null;
+    salesTicketCode?: string | null;
+  } | null>(null);
+
+  const load = React.useCallback(async () => {
+    if (!workOrderId) return;
+    try {
+      const res = await crmApi.getWorkOrderCancelPreview(workOrderId);
+      setPreview(res.data);
+      setReason(res.data.reasonOptions[0] ?? "CUSTOMER CANCELLED");
+      const actions: Record<string, "KEEP" | "CANCEL"> = {};
+      for (const po of res.data.purchaseOrders) {
+        actions[po.code] = "KEEP";
+      }
+      setPoActions(actions);
+      setNotify(true);
+      setTimeHandling("KEEP_BILLABLE");
+      if (res.data.blocked) {
+        setResult({
+          code: res.data.code,
+          message: res.data.blockedMessage ?? "CANCELLATION IS BLOCKED.",
+          banner: res.data.blockedBanner,
+          salesTicketId: res.data.salesTicketId,
+          salesTicketCode: res.data.salesTicketCode,
+        });
+        setPhase("blocked");
+      } else {
+        setPhase("form");
+      }
+    } catch (err) {
+      toastApiError(err);
+    }
+  }, [workOrderId]);
+
+  React.useEffect(() => {
+    if (!open || !workOrderId) return;
+    setResult(null);
+    void load();
+  }, [open, workOrderId, load]);
+
+  function handleClose() {
+    setPhase("form");
+    setResult(null);
+    onClose();
+  }
+
+  function viewWo() {
+    if (workOrderId) {
+      router.push(`/operations/work-orders/${workOrderId}`);
+    }
+    handleClose();
+  }
+
+  function viewTicket() {
+    const tid = result?.salesTicketId ?? preview?.salesTicketId;
+    if (tid) {
+      router.push(`/operations/sales-tickets/${tid}`);
+    }
+    handleClose();
+  }
+
+  async function confirmCancel() {
+    if (!workOrderId) return;
+    if (!reason.trim()) {
+      toastApiError(new Error("Reason is required"));
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await crmApi.cancelWorkOrder(workOrderId, {
+        reason: reason.trim(),
+        timeHandling,
+        poActions,
+        notifyTechnicians: notify,
+      });
+      setResult({
+        code: res.data.code,
+        message: res.data.message,
+        banner: res.data.banner,
+        salesTicketId: res.data.salesTicketId,
+        salesTicketCode: res.data.salesTicketCode,
+      });
+      if (res.data.blocked || res.data.ok === false) {
+        setPhase("blocked");
+      } else {
+        setPhase("success");
+        onDone?.();
+      }
     } catch (err) {
       toastApiError(err);
     } finally {
@@ -75,40 +458,474 @@ export function CloseRuleModal({
     }
   }
 
+  if (phase === "success" && result) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title="Work Order Cancelled"
+        titleLeading={<SuccessCheck />}
+        widthClassName="max-w-[480px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            <GhostBtn onClick={viewWo}>View Work Order</GhostBtn>
+            <PayrollPrimaryButton onClick={handleClose}>Done</PayrollPrimaryButton>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+          {result.message}
+        </p>
+        <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-3 text-center">
+          <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#5ECF8E]">
+            {result.banner}
+          </p>
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  if (phase === "blocked" && result) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title="Cannot Cancel Work Order"
+        titleLeading={<FailX />}
+        widthClassName="max-w-[480px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <GhostBtn onClick={handleClose}>Cancel</GhostBtn>
+            <div className="flex flex-wrap gap-2">
+              <SecondaryBtn onClick={viewWo}>View Work Order</SecondaryBtn>
+              <PayrollPrimaryButton onClick={viewTicket}>
+                View Sales Ticket
+              </PayrollPrimaryButton>
+            </div>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+          {result.message}
+        </p>
+        <div className="mt-4 rounded-lg border border-[#3A1C1C] bg-[#1A1A1A] px-4 py-3 text-center">
+          <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#E86A6A]">
+            {result.banner}
+          </p>
+        </div>
+      </DashboardModal>
+    );
+  }
+
   return (
     <DashboardModal
       open={open}
-      onClose={onClose}
-      title="Close Rule"
-      widthClassName="max-w-[480px]"
+      onClose={handleClose}
+      title="Cancel Work Order"
+      widthClassName="max-w-[560px]"
       footer={
-        <div className="flex justify-end gap-2">
-          <SecondaryBtn disabled={busy} onClick={() => void run("hold")}>
-            Hold Work Order
-          </SecondaryBtn>
-          <SecondaryBtn disabled={busy} onClick={() => void run("cancel")}>
-            Cancle Work Order
-          </SecondaryBtn>
+        <div className="flex w-full flex-wrap items-center justify-between gap-2">
+          <GhostBtn disabled={busy} onClick={handleClose}>
+            Keep Open
+          </GhostBtn>
+          <button
+            type="button"
+            disabled={busy || !reason.trim()}
+            onClick={() => void confirmCancel()}
+            className="inline-flex h-8 items-center justify-center rounded-lg bg-[#8B2E2E] px-3 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#FDFDFF] disabled:opacity-50"
+          >
+            Cancel Work Order
+          </button>
         </div>
       }
     >
-      <div className="space-y-4 px-1">
-        <p className="font-sans text-[12px] uppercase leading-relaxed tracking-[-0.02em] text-[#C8C8C8]">
-          This WO advances to closed on sales ticket approval / submission.
-          Manual cancel or hold requires a reason.
-        </p>
-        <label className="block space-y-2">
-          <span className="font-sans text-[11px] font-[510] uppercase text-[#FDFDFF]">
-            Reason
+      <p className="mb-4 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#959597]">
+        {preview?.subtitle ?? "Loading…"}
+      </p>
+
+      <div className="space-y-4">
+        <label className="block space-y-1.5">
+          <span className={labelClass}>
+            Reason <span className="text-[#E86A6A]">*</span>
           </span>
-          <textarea
-            rows={5}
+          <select
             className={fieldClass}
-            placeholder="Internal note for this request..."
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-          />
+          >
+            {(preview?.reasonOptions ?? ["CUSTOMER CANCELLED"]).map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
         </label>
+
+        <div className="space-y-3 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+          <p className="font-sans text-[10px] uppercase tracking-[-0.02em] text-[#6F6F72]">
+            What Happens To Logged Work
+          </p>
+
+          <div className="space-y-2">
+            <p className="font-sans text-[11px] uppercase text-[#FDFDFF]">
+              {preview?.hoursRowLabel ?? "Time Entries"}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {(
+                [
+                  ["KEEP_BILLABLE", "Keep Billable"],
+                  ["KEEP_NON_BILLABLE", "Keep Non-Billable"],
+                  ["VOID", "Void"],
+                ] as const
+              ).map(([value, label]) => (
+                <label
+                  key={value}
+                  className="flex cursor-pointer items-center gap-2"
+                >
+                  <input
+                    type="radio"
+                    name="timeHandling"
+                    checked={timeHandling === value}
+                    onChange={() => setTimeHandling(value)}
+                  />
+                  <span className="font-sans text-[10px] uppercase text-[#C8C8C8]">
+                    {label}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#2A2A2A] pt-3">
+            <p className="font-sans text-[11px] uppercase text-[#FDFDFF]">
+              Forms
+            </p>
+            <p className="font-sans text-[10px] uppercase text-[#6F6F72]">
+              {preview?.formsLabel ?? "RETAINED · LOCKED · READ-ONLY"}
+            </p>
+          </div>
+
+          <div className="space-y-2 border-t border-[#2A2A2A] pt-3">
+            <p className="font-sans text-[11px] uppercase text-[#FDFDFF]">
+              Purchase Orders
+            </p>
+            {(preview?.purchaseOrders ?? []).map((po) => (
+              <div
+                key={po.code}
+                className="flex flex-wrap items-center justify-between gap-2"
+              >
+                <p className="font-sans text-[11px] uppercase text-[#C8C8C8]">
+                  {po.code} · {po.vendor} · {po.amountLabel}
+                </p>
+                <div className="flex gap-3">
+                  {(["KEEP", "CANCEL"] as const).map((action) => (
+                    <label
+                      key={action}
+                      className="flex cursor-pointer items-center gap-1.5"
+                    >
+                      <input
+                        type="radio"
+                        name={`po-${po.code}`}
+                        checked={(poActions[po.code] ?? "KEEP") === action}
+                        onChange={() =>
+                          setPoActions((prev) => ({
+                            ...prev,
+                            [po.code]: action,
+                          }))
+                        }
+                      />
+                      <span className="font-sans text-[10px] uppercase text-[#C8C8C8]">
+                        {action === "KEEP" ? "Keep" : "Cancel"}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-3">
+          <input
+            type="checkbox"
+            checked={notify}
+            onChange={(e) => setNotify(e.target.checked)}
+            className="accent-[#5ECF8E]"
+          />
+          <span className="font-sans text-[11px] uppercase text-[#FDFDFF]">
+            {preview?.notifyLabel ?? "Notify And Unassign Technicians"}
+          </span>
+        </label>
+
+        <div className="rounded-lg border border-[#5A4A1A] bg-[#2A2410] px-3 py-3">
+          <p className="font-sans text-[11px] uppercase leading-relaxed tracking-[-0.02em] text-[#E8C547]">
+            ⚠ {preview?.warningLabel ?? "Technicians have logged time."}
+          </p>
+        </div>
+
+        <p className="text-center font-sans text-[10px] uppercase tracking-[-0.02em] text-[#6F6F72]">
+          {preview?.ruleLabel ??
+            "Cancellation is blocked after a sales ticket is submitted."}
+        </p>
+      </div>
+    </DashboardModal>
+  );
+}
+
+type PoPhase = "blocker" | "request" | "sent";
+
+/** PO required gate before NetSuite send — blocker / request / sent. */
+export function PoRequiredGateModal({
+  open,
+  workOrderId,
+  onClose,
+  onCleared,
+}: {
+  open: boolean;
+  workOrderId: string | null;
+  onClose: () => void;
+  onCleared?: () => void;
+}) {
+  const router = useRouter();
+  const [phase, setPhase] = React.useState<PoPhase>("blocker");
+  const [status, setStatus] = React.useState<WorkOrderPoStatus | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [to, setTo] = React.useState("");
+  const [cc, setCc] = React.useState("");
+  const [subject, setSubject] = React.useState("");
+  const [message, setMessage] = React.useState("");
+  const [neededBy, setNeededBy] = React.useState("");
+  const [sentBanner, setSentBanner] = React.useState("");
+  const [sentTo, setSentTo] = React.useState("");
+
+  const load = React.useCallback(async () => {
+    if (!workOrderId) return;
+    try {
+      const res = await crmApi.getWorkOrderPoStatus(workOrderId);
+      setStatus(res.data);
+      setTo(res.data.compose.to);
+      setCc(res.data.compose.cc);
+      setSubject(res.data.compose.subject);
+      setMessage(res.data.compose.message);
+      setNeededBy(res.data.compose.neededBy);
+    } catch (err) {
+      toastApiError(err);
+    }
+  }, [workOrderId]);
+
+  React.useEffect(() => {
+    if (!open || !workOrderId) return;
+    setPhase("blocker");
+    setSentBanner("");
+    setSentTo("");
+    void load();
+  }, [open, workOrderId, load]);
+
+  function handleClose() {
+    setPhase("blocker");
+    onClose();
+  }
+
+  function viewWo() {
+    if (workOrderId) {
+      router.push(`/operations/work-orders/${workOrderId}`);
+    }
+    handleClose();
+  }
+
+  async function markReceived() {
+    if (!workOrderId) return;
+    setBusy(true);
+    try {
+      await crmApi.markWorkOrderPoReceived(workOrderId);
+      toastSuccess("PO marked received");
+      onCleared?.();
+      handleClose();
+    } catch (err) {
+      toastApiError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function attachPo() {
+    if (!workOrderId) return;
+    setBusy(true);
+    try {
+      const res = await crmApi.attachWorkOrderPo(workOrderId, {});
+      toastSuccess(res.data.message ?? "PO attached");
+      onCleared?.();
+      handleClose();
+    } catch (err) {
+      toastApiError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendRequest() {
+    if (!workOrderId) return;
+    if (!to.trim() || !subject.trim()) {
+      toastApiError(new Error("To and subject are required"));
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await crmApi.requestWorkOrderPo(workOrderId, {
+        to: to.trim(),
+        cc: cc.trim() || undefined,
+        subject: subject.trim(),
+        message: message.trim() || undefined,
+        neededBy: neededBy.trim() || undefined,
+      });
+      setSentTo(res.data.to);
+      setSentBanner(res.data.banner);
+      setPhase("sent");
+      toastSuccess("PO request sent");
+    } catch (err) {
+      toastApiError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (phase === "sent") {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title="PO Request Sent"
+        titleLeading={<SuccessCheck />}
+        widthClassName="max-w-[520px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            <GhostBtn onClick={viewWo}>View Work Order</GhostBtn>
+            <PayrollPrimaryButton onClick={handleClose}>Done</PayrollPrimaryButton>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase tracking-[-0.02em] text-[#959597]">
+          Sent to {sentTo}.
+        </p>
+        <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-3 text-center">
+          <p className="font-sans text-[11px] uppercase tracking-[-0.02em] text-[#5ECF8E]">
+            {sentBanner}
+          </p>
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  if (phase === "request" && status) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title="Request Purchase Order"
+        widthClassName="max-w-[560px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <GhostBtn disabled={busy} onClick={() => setPhase("blocker")}>
+              Cancel
+            </GhostBtn>
+            <PayrollPrimaryButton
+              disabled={busy}
+              onClick={() => void sendRequest()}
+            >
+              Send Request
+            </PayrollPrimaryButton>
+          </div>
+        }
+      >
+        <p className="mb-4 font-sans text-[12px] uppercase tracking-[-0.02em] text-[#959597]">
+          {status.customerName} · {status.code}
+        </p>
+        <div className="space-y-3">
+          <label className="block space-y-1.5">
+            <span className={labelClass}>To</span>
+            <input
+              className={fieldClass}
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className={labelClass}>Cc</span>
+            <input
+              className={fieldClass}
+              value={cc}
+              onChange={(e) => setCc(e.target.value)}
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className={labelClass}>Subject</span>
+            <input
+              className={fieldClass}
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className={labelClass}>Message</span>
+            <textarea
+              rows={6}
+              className={fieldClass}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className={labelClass}>Needed By · Before Cycle Lock</span>
+            <input
+              className={fieldClass}
+              value={neededBy}
+              onChange={(e) => setNeededBy(e.target.value)}
+            />
+          </label>
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  return (
+    <DashboardModal
+      open={open}
+      onClose={handleClose}
+      title="PO Required Before NetSuite Send"
+      widthClassName="max-w-[560px]"
+      footer={
+        <div className="flex w-full flex-wrap items-center justify-between gap-2">
+          <GhostBtn disabled={busy} onClick={handleClose}>
+            Cancel
+          </GhostBtn>
+          <div className="flex flex-wrap gap-2">
+            <SecondaryBtn
+              disabled={busy || !status}
+              onClick={() => setPhase("request")}
+            >
+              Request PO
+            </SecondaryBtn>
+            <SecondaryBtn disabled={busy} onClick={() => void markReceived()}>
+              Mark PO Received
+            </SecondaryBtn>
+            <PayrollPrimaryButton
+              disabled={busy}
+              onClick={() => void attachPo()}
+            >
+              Attach PO
+            </PayrollPrimaryButton>
+          </div>
+        </div>
+      }
+    >
+      <p className="font-sans text-[12px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+        This customer requires a purchase order before invoice / NetSuite
+        handoff. Attach a PO or mark it received before continuing.
+      </p>
+      <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-3">
+        <p className="font-sans text-[12px] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+          {status?.summaryLine ?? "Loading…"}
+        </p>
       </div>
     </DashboardModal>
   );

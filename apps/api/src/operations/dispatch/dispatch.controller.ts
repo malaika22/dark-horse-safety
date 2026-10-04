@@ -16,7 +16,9 @@ import {
   DispatchAcceptanceQueryDto,
   DispatchRangeQueryDto,
   OverrideDispatchDto,
+  PostNotifyDispatchDto,
   ReassignDispatchDto,
+  RequestReassignOverrideDto,
   RescheduleDispatchDto,
 } from './dto/dispatch.dto';
 
@@ -75,16 +77,28 @@ export class DispatchController {
     return this.service.assign(dto);
   }
 
+  @Get('post-to-mobile/preview')
+  @ApiOperation({ summary: 'Preview post schedule to mobile' })
+  postPreview(@Query('date') date?: string) {
+    return this.service.postToMobilePreview(date);
+  }
+
+  @Get('notify-techs/preview')
+  @ApiOperation({ summary: 'Preview notify technicians' })
+  notifyPreview(@Query('date') date?: string) {
+    return this.service.notifyTechsPreview(date);
+  }
+
   @Post('post-to-mobile')
   @ApiOperation({ summary: 'Post pending assignments to mobile' })
-  postToMobile(@Body() body: { ids?: string[] }) {
-    return this.service.postToMobile(body?.ids);
+  postToMobile(@Body() body: PostNotifyDispatchDto) {
+    return this.service.postToMobile(body);
   }
 
   @Post('notify-techs')
   @ApiOperation({ summary: 'Notify technicians of assignments' })
-  notify(@Body() body: { ids?: string[] }) {
-    return this.service.notifyTechs(body?.ids);
+  notify(@Body() body: PostNotifyDispatchDto) {
+    return this.service.notifyTechs(body);
   }
 
   @Post(':id/reschedule')
@@ -97,6 +111,15 @@ export class DispatchController {
   @ApiOperation({ summary: 'Reassign after decline' })
   reassign(@Param('id') id: string, @Body() dto: ReassignDispatchDto) {
     return this.service.reassign(id, dto);
+  }
+
+  @Post(':id/request-override')
+  @ApiOperation({ summary: 'Request eligibility override (admin review queue)' })
+  requestOverride(
+    @Param('id') id: string,
+    @Body() dto: RequestReassignOverrideDto,
+  ) {
+    return this.service.requestReassignOverride(id, dto);
   }
 
   @Post(':id/leave-unassigned')

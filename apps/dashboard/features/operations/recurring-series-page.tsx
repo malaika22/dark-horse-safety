@@ -22,7 +22,6 @@ import {
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import {
   useSetHeaderActions,
-  useSetHeaderBreadcrumb,
 } from "@/features/app-shell/header-actions-context";
 import {
   OpsLoadFailedState,
@@ -185,7 +184,6 @@ export function RecurringSeriesPage() {
   const [reloadKey, setReloadKey] = React.useState(0);
   const [createOpen, setCreateOpen] = React.useState(false);
 
-  useSetHeaderBreadcrumb("Operations / Recurring Series");
   useSetHeaderActions(null, []);
 
   const refresh = React.useCallback(() => setReloadKey((k) => k + 1), []);

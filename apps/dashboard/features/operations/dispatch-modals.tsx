@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   DashboardModal,
   DashboardToolbarButton,
@@ -585,37 +586,72 @@ export function ReassignAfterDeclineModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const router = useRouter();
+  type Phase =
+    | "form"
+    | "noEligible"
+    | "override"
+    | "overrideRequested"
+    | "success"
+    | "failed";
+
+  const [phase, setPhase] = React.useState<Phase>("form");
   const [data, setData] = React.useState<DispatchReassignData | null>(null);
   const [selected, setSelected] = React.useState("");
-  const [notify, setNotify] = React.useState(true);
+  const [notifyNew, setNotifyNew] = React.useState(true);
+  const [notifyOld, setNotifyOld] = React.useState(true);
   const [note, setNote] = React.useState("");
+  const [forceFail, setForceFail] = React.useState(false);
+  const [overrideTechId, setOverrideTechId] = React.useState("");
+  const [justification, setJustification] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+  const [result, setResult] = React.useState<{
+    message: string;
+    banner: string;
+    workOrderId?: string;
+    workOrderCode?: string;
+  } | null>(null);
+
+  const load = React.useCallback(async () => {
+    if (!assignmentId) return;
+    setLoading(true);
+    try {
+      const res = await operationsApi.reassignCandidates(assignmentId);
+      setData(res.data);
+      const first = res.data.candidates.find((c) => c.eligible);
+      setSelected(first?.employeeId ?? "");
+      setOverrideTechId(res.data.candidates.find((c) => !c.eligible)?.employeeId ?? "");
+      setPhase((res.data.eligibleCount ?? 0) === 0 ? "noEligible" : "form");
+    } catch (err) {
+      toastApiError(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [assignmentId]);
 
   React.useEffect(() => {
     if (!open || !assignmentId) return;
-    let cancelled = false;
-    setLoading(true);
-    setSelected("");
     setNote("");
-    setNotify(true);
-    void (async () => {
-      try {
-        const res = await operationsApi.reassignCandidates(assignmentId);
-        if (cancelled) return;
-        setData(res.data);
-        const first = res.data.candidates.find((c) => c.eligible);
-        if (first) setSelected(first.employeeId);
-      } catch (err) {
-        toastApiError(err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, assignmentId]);
+    setNotifyNew(true);
+    setNotifyOld(true);
+    setForceFail(false);
+    setJustification("");
+    setResult(null);
+    void load();
+  }, [open, assignmentId, load]);
+
+  function handleClose() {
+    setPhase("form");
+    setResult(null);
+    onClose();
+  }
+
+  function viewWo() {
+    const id = result?.workOrderId ?? data?.workOrderId;
+    if (id) router.push(`/operations/work-orders/${id}`);
+    handleClose();
+  }
 
   async function reassign() {
     if (!assignmentId || !selected) {
@@ -624,14 +660,62 @@ export function ReassignAfterDeclineModal({
     }
     setBusy(true);
     try {
-      await operationsApi.reassignDispatch(assignmentId, {
+      const res = await operationsApi.reassignDispatch(assignmentId, {
         employeeId: selected,
-        notifyTechnician: notify,
+        notifyTechnician: notifyNew,
+        notifyOriginal: notifyOld,
         note: note.trim() || undefined,
+        forceFail,
       });
-      toastSuccess("Job reassigned");
+      setResult({
+        message: res.data.message,
+        banner: res.data.banner,
+        workOrderId: res.data.workOrderId,
+        workOrderCode: res.data.workOrderCode,
+      });
+      if (res.data.ok === false) {
+        setPhase("failed");
+      } else {
+        setPhase("success");
+        onDone();
+      }
+    } catch (err) {
+      toastApiError(err);
+      setResult({
+        message: "NO TECHNICIAN WAS REASSIGNED.",
+        banner: "RECHECK CANDIDATES",
+        workOrderId: data?.workOrderId,
+        workOrderCode: data?.workOrderCode,
+      });
+      setPhase("failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitOverride() {
+    if (!assignmentId || !overrideTechId) {
+      toastApiError(new Error("Select a blocked technician"));
+      return;
+    }
+    if (!justification.trim()) {
+      toastApiError(new Error("Justification is required"));
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await operationsApi.requestDispatchOverride(assignmentId, {
+        employeeId: overrideTechId,
+        justification: justification.trim(),
+      });
+      setResult({
+        message: res.data.message,
+        banner: res.data.banner,
+        workOrderId: res.data.workOrderId,
+        workOrderCode: res.data.workOrderCode,
+      });
+      setPhase("overrideRequested");
       onDone();
-      onClose();
     } catch (err) {
       toastApiError(err);
     } finally {
@@ -639,133 +723,1014 @@ export function ReassignAfterDeclineModal({
     }
   }
 
-  async function leaveUnassigned() {
-    if (!assignmentId) return;
-    setBusy(true);
-    try {
-      await operationsApi.leaveDispatchUnassigned(assignmentId);
-      toastSuccess("Left unassigned");
-      onDone();
-      onClose();
-    } catch (err) {
-      toastApiError(err);
-    } finally {
-      setBusy(false);
-    }
+  const eligible = data?.candidates.filter((c) => c.eligible) ?? [];
+  const blocked = data?.candidates.filter((c) => !c.eligible) ?? [];
+  const countsLabel = `${data?.eligibleCount ?? eligible.length} ELIGIBLE · ${data?.blockedCount ?? blocked.length} BLOCKED`;
+
+  if (phase === "success" && result) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title="Technician Reassigned"
+        titleLeading={<span className="text-[#5ECF8E]">✓</span>}
+        widthClassName="max-w-[480px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            <SecondaryBtn onClick={viewWo}>View Work Order</SecondaryBtn>
+            <PayrollPrimaryButton onClick={handleClose}>Done</PayrollPrimaryButton>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase leading-relaxed text-[#959597]">
+          {result.message}
+        </p>
+        <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-3 text-center">
+          <p className="font-sans text-[11px] uppercase text-[#5ECF8E]">
+            {result.banner}
+          </p>
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  if (phase === "failed" && result) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title="Reassignment Failed"
+        titleLeading={<span className="text-[#E86A6A]">✕</span>}
+        widthClassName="max-w-[480px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <GhostBtn onClick={handleClose}>Cancel</GhostBtn>
+            <div className="flex flex-wrap gap-2">
+              <SecondaryBtn onClick={viewWo}>View Work Order</SecondaryBtn>
+              <PayrollPrimaryButton
+                disabled={busy}
+                onClick={() => {
+                  setForceFail(false);
+                  setPhase(
+                    (data?.eligibleCount ?? 0) === 0 ? "noEligible" : "form",
+                  );
+                }}
+              >
+                Retry
+              </PayrollPrimaryButton>
+            </div>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase leading-relaxed text-[#959597]">
+          {result.message}
+        </p>
+        <div className="mt-4 rounded-lg border border-[#3A1C1C] bg-[#1A1A1A] px-4 py-3 text-center">
+          <p className="font-sans text-[11px] uppercase text-[#E86A6A]">
+            {result.banner}
+          </p>
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  if (phase === "overrideRequested" && result) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title="Override Requested"
+        titleLeading={<span className="text-[#E8C547]">!</span>}
+        widthClassName="max-w-[480px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            <SecondaryBtn onClick={viewWo}>View Work Order</SecondaryBtn>
+            <PayrollPrimaryButton onClick={handleClose}>Done</PayrollPrimaryButton>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase leading-relaxed text-[#959597]">
+          {result.message}
+        </p>
+        <div className="mt-4 rounded-lg border border-[#5A4A1A] bg-[#2A2410] px-4 py-3 text-center">
+          <p className="font-sans text-[11px] uppercase text-[#E8C547]">
+            {result.banner}
+          </p>
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  if (phase === "override") {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title="Eligibility Override"
+        widthClassName="max-w-[480px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <GhostBtn
+              disabled={busy}
+              onClick={() =>
+                setPhase(
+                  (data?.eligibleCount ?? 0) === 0 ? "noEligible" : "form",
+                )
+              }
+            >
+              Cancel
+            </GhostBtn>
+            <PayrollPrimaryButton
+              disabled={busy}
+              onClick={() => void submitOverride()}
+            >
+              Request Override
+            </PayrollPrimaryButton>
+          </div>
+        }
+      >
+        <p className="mb-4 font-sans text-[12px] uppercase leading-relaxed text-[#959597]">
+          Admin or supervisor only. Select a blocked technician and document the
+          exception for approval.
+        </p>
+        <div className="space-y-3">
+          <label className="block space-y-1.5">
+            <span className="font-sans text-[10px] uppercase text-[#959597]">
+              Technician
+            </span>
+            <select
+              className={fieldClass}
+              value={overrideTechId}
+              onChange={(e) => setOverrideTechId(e.target.value)}
+            >
+              <option value="">Select blocked technician</option>
+              {blocked.map((c) => (
+                <option key={c.employeeId} value={c.employeeId}>
+                  {c.name.toUpperCase()} — {c.detail}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1.5">
+            <span className="font-sans text-[10px] uppercase text-[#959597]">
+              Justification <span className="text-[#E86A6A]">*</span>
+            </span>
+            <textarea
+              rows={3}
+              className={cn(fieldClass, "h-auto min-h-[80px] py-2")}
+              placeholder="Document override reason"
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+            />
+          </label>
+          <p className="font-sans text-[11px] uppercase text-[#E8C547]">
+            No assignment changes until override is approved.
+          </p>
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  if (phase === "noEligible") {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title="Reassign Technician"
+        widthClassName="max-w-[560px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <GhostBtn onClick={handleClose}>Cancel</GhostBtn>
+            <button
+              type="button"
+              disabled={busy || loading}
+              onClick={() => setPhase("override")}
+              className="inline-flex h-8 items-center justify-center rounded-lg border border-[#C4A35A] px-3 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#C4A35A] disabled:opacity-50"
+            >
+              Override · Admin
+            </button>
+          </div>
+        }
+      >
+        {loading || !data ? (
+          <p className="font-sans text-[12px] uppercase text-[#959597]">
+            Loading…
+          </p>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+                  {data.summaryLine}
+                </p>
+                <p className="mt-1 font-sans text-[11px] uppercase text-[#959597]">
+                  {data.scheduleLine}
+                </p>
+              </div>
+              <p className="font-sans text-[10px] uppercase text-[#959597]">
+                {countsLabel}
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-[#7F1D1D]/40 bg-[#3B2020] px-3 py-2.5">
+              <p className="font-sans text-[11px] uppercase text-[#E8A0A0]">
+                {data.currentBanner}
+              </p>
+              <p className="mt-1 font-sans text-[10px] uppercase text-[#E8A0A0]/80">
+                Reason: &apos;{data.declineReason}&apos;
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-sans text-[10px] uppercase text-[#6F6F72]">
+                Eligibility Result
+              </p>
+              <p className="font-sans text-[10px] uppercase text-[#6F6F72]">
+                Recheck Or Request Override
+              </p>
+            </div>
+            <div className="rounded-lg border border-[#5A4A1A] bg-[#2A2410] px-3 py-3">
+              <p className="font-sans text-[11px] uppercase text-[#E8C547]">
+                No technician meets the requirements for this job.
+              </p>
+              <p className="mt-1 font-sans text-[10px] uppercase text-[#C4A35A]">
+                Review blocking reasons below. Override requires admin
+                permission.
+              </p>
+            </div>
+
+            <div>
+              <p className="mb-2 font-sans text-[10px] uppercase text-[#6F6F72]">
+                Not Eligible · Shown With Blocking Reason
+              </p>
+              <ul className="space-y-1">
+                {blocked.map((c) => (
+                  <li
+                    key={c.employeeId}
+                    className="flex items-start gap-2 rounded-lg bg-[#161616] px-3 py-2.5"
+                  >
+                    <span className="text-[#E86A6A]">✕</span>
+                    <div>
+                      <p className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+                        {c.name}
+                      </p>
+                      <p className="mt-0.5 font-sans text-[10px] uppercase text-[#E86A6A]">
+                        {c.meta ?? c.detail}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+      </DashboardModal>
+    );
   }
 
   return (
     <DashboardModal
       open={open}
-      onClose={onClose}
-      title="Reassign After Decline"
-      widthClassName="max-w-lg"
+      onClose={handleClose}
+      title="Reassign Technician"
+      widthClassName="max-w-[560px]"
       footer={
-        <div className="flex flex-wrap justify-end gap-2">
-          <SecondaryBtn onClick={onClose}>Cancel</SecondaryBtn>
-          <SecondaryBtn disabled={busy} onClick={() => void leaveUnassigned()}>
-            Leave Unassigned
-          </SecondaryBtn>
-          <PayrollPrimaryButton disabled={busy} onClick={() => void reassign()}>
-            Reassign
-          </PayrollPrimaryButton>
+        <div className="flex w-full flex-wrap items-center justify-between gap-2">
+          <GhostBtn onClick={handleClose}>Cancel</GhostBtn>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy || loading}
+              onClick={() => setPhase("override")}
+              className="inline-flex h-8 items-center justify-center rounded-lg border border-[#C4A35A] px-3 font-sans text-[11px] font-[510] uppercase tracking-[-0.02em] text-[#C4A35A] disabled:opacity-50"
+            >
+              Override · Admin
+            </button>
+            <PayrollPrimaryButton
+              disabled={busy || !selected}
+              onClick={() => void reassign()}
+            >
+              Reassign
+            </PayrollPrimaryButton>
+          </div>
         </div>
       }
     >
       {loading || !data ? (
         <p className="font-sans text-[12px] uppercase text-[#959597]">
-          {loading ? "Loading…" : "No data"}
+          Loading…
         </p>
       ) : (
         <div className="space-y-4">
-          <div>
-            <p className="font-sans text-[12px] uppercase text-[#FDFDFF]">
-              {data.workOrderCode} · {data.customerName} · {data.locationName} ·{" "}
-              {data.scheduledDate}
-            </p>
-            <p className="mt-1 font-sans text-[11px] uppercase text-[#959597]">
-              Originally: {data.originally}
-            </p>
-            <div className="mt-2 rounded-lg border border-[#7F1D1D]/40 bg-[#3B2020] px-3 py-2 font-sans text-[11px] uppercase text-[#E8A0A0]">
-              Decline reason (from mobile): {data.declineReason}
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+                {data.summaryLine}
+              </p>
+              <p className="mt-1 font-sans text-[11px] uppercase text-[#959597]">
+                {data.scheduleLine}
+              </p>
             </div>
+            <p className="font-sans text-[10px] uppercase text-[#959597]">
+              {countsLabel}
+            </p>
           </div>
-          <ul className="space-y-2">
-            {data.candidates.map((c) => {
-              const active = selected === c.employeeId;
-              return (
-                <li key={c.employeeId}>
-                  <button
-                    type="button"
-                    disabled={!c.eligible}
-                    onClick={() => setSelected(c.employeeId)}
-                    className={cn(
-                      "flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
-                      c.eligible
-                        ? active
-                          ? "border-[#C4A35A]/50 bg-[#2A2618]"
-                          : "border-[#2D2D30] bg-[#161616] hover:bg-[#1A1A1A]"
-                        : "cursor-not-allowed border-[#2A2A2A] bg-[#121212] opacity-60",
-                    )}
-                  >
-                    <div>
-                      <p className="font-sans text-[12px] uppercase text-[#FDFDFF]">
-                        {c.name}
-                      </p>
-                      <p
+
+          <div className="rounded-lg border border-[#7F1D1D]/40 bg-[#3B2020] px-3 py-2.5">
+            <p className="font-sans text-[11px] uppercase text-[#E8A0A0]">
+              {data.currentBanner}
+            </p>
+            <p className="mt-1 font-sans text-[10px] uppercase text-[#E8A0A0]/80">
+              Reason: &apos;{data.declineReason}&apos;
+            </p>
+          </div>
+
+          <div>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="font-sans text-[10px] uppercase text-[#6F6F72]">
+                Eligible
+              </p>
+              <p className="font-sans text-[10px] uppercase text-[#6F6F72]">
+                Certified · Available · Equipment Ready
+              </p>
+            </div>
+            <ul className="space-y-1">
+              {eligible.map((c) => {
+                const active = selected === c.employeeId;
+                return (
+                  <li key={c.employeeId}>
+                    <button
+                      type="button"
+                      onClick={() => setSelected(c.employeeId)}
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
+                        active
+                          ? "bg-[#1C3A2A]"
+                          : "bg-[#161616] hover:bg-[#1A1A1A]",
+                      )}
+                    >
+                      <span
                         className={cn(
-                          "mt-0.5 font-sans text-[10px] uppercase",
-                          c.eligible ? "text-[#ACEBCE]" : "text-[#959597]",
+                          "inline-flex h-4 w-4 items-center justify-center rounded-full border",
+                          active
+                            ? "border-[#5ECF8E] bg-[#5ECF8E]"
+                            : "border-[#6F6F72]",
                         )}
                       >
-                        {c.eligible
-                          ? `${c.status} · ${c.detail}`
-                          : `Blocked — ${c.detail}`}
-                      </p>
-                    </div>
-                    <span className={c.eligible ? "text-[#22C55E]" : "text-[#6F6F72]"}>
-                      {c.eligible ? "✓" : "×"}
-                    </span>
-                  </button>
+                        {active ? (
+                          <span className="h-1.5 w-1.5 rounded-full bg-[#111]" />
+                        ) : null}
+                      </span>
+                      <div>
+                        <p className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+                          {c.name}
+                        </p>
+                        <p
+                          className={cn(
+                            "mt-0.5 font-sans text-[10px] uppercase",
+                            active ? "text-[#5ECF8E]" : "text-[#959597]",
+                          )}
+                        >
+                          {c.meta ?? c.detail}
+                        </p>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <div>
+            <p className="mb-2 font-sans text-[10px] uppercase text-[#6F6F72]">
+              Not Eligible · Shown With Blocking Reason
+            </p>
+            <ul className="space-y-1">
+              {blocked.map((c) => (
+                <li
+                  key={c.employeeId}
+                  className="flex items-start gap-2 rounded-lg bg-[#161616] px-3 py-2.5 opacity-80"
+                >
+                  <span className="text-[#E86A6A]">✕</span>
+                  <div>
+                    <p className="font-sans text-[12px] uppercase text-[#959597]">
+                      {c.name}
+                    </p>
+                    <p className="mt-0.5 font-sans text-[10px] uppercase text-[#E86A6A]">
+                      {c.meta ?? c.detail}
+                    </p>
+                  </div>
                 </li>
-              );
-            })}
-          </ul>
-          <label className="flex items-center justify-between gap-3">
-            <span className="font-sans text-[11px] uppercase text-[#959597]">
-              Notify New Technician
-            </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={notify}
-              onClick={() => setNotify((v) => !v)}
-              className={cn(
-                "relative h-6 w-11 rounded-full transition-colors",
-                notify ? "bg-[#22C55E]" : "bg-[#3E3E3E]",
-              )}
-            >
-              <span
-                className={cn(
-                  "absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform",
-                  notify ? "left-5" : "left-0.5",
-                )}
+              ))}
+            </ul>
+          </div>
+
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={notifyNew}
+                onChange={(e) => setNotifyNew(e.target.checked)}
+                className="accent-[#5ECF8E]"
               />
-            </button>
-          </label>
-          <label className="flex flex-col gap-2">
-            <span className="font-sans text-[11px] uppercase text-[#959597]">
-              Note
+              <span className="font-sans text-[10px] uppercase text-[#C8C8C8]">
+                Notify New Technician
+              </span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={notifyOld}
+                onChange={(e) => setNotifyOld(e.target.checked)}
+                className="accent-[#5ECF8E]"
+              />
+              <span className="font-sans text-[10px] uppercase text-[#C8C8C8]">
+                Notify {data.originally} Of Removal
+              </span>
+            </label>
+          </div>
+
+          <label className="block space-y-1.5">
+            <span className="font-sans text-[10px] uppercase text-[#959597]">
+              Note To New Technician
             </span>
             <input
               className={fieldClass}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Optional note"
+              placeholder="Add note..."
             />
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={forceFail}
+              onChange={(e) => setForceFail(e.target.checked)}
+            />
+            <span className="font-sans text-[10px] uppercase text-[#6F6F72]">
+              Simulate reassignment failure
+            </span>
           </label>
         </div>
       )}
+    </DashboardModal>
+  );
+}
+
+type DeliveryPhase = "confirm" | "success" | "partial" | "failed";
+
+function DeliveryTechList({
+  technicians,
+}: {
+  technicians: Array<{ name: string; status: "DELIVERED" | "NOT_RECEIVED" }>;
+}) {
+  return (
+    <ul className="divide-y divide-[#2A2A2A]">
+      {technicians.map((t) => {
+        const ok = t.status === "DELIVERED";
+        return (
+          <li
+            key={t.name}
+            className="flex items-center justify-between gap-3 py-2.5"
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  ok ? "bg-[#5ECF8E]" : "bg-[#E86A6A]",
+                )}
+              />
+              <span className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+                {t.name}
+              </span>
+            </div>
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-0.5 font-sans text-[10px] uppercase",
+                ok
+                  ? "bg-[#1C3A2A] text-[#5ECF8E]"
+                  : "bg-[#3A1C1C] text-[#E86A6A]",
+              )}
+            >
+              {ok ? "Delivered" : "Not Received"}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** Post schedule to mobile — confirm / success / partial / fail. */
+export function PostScheduleModal({
+  open,
+  scheduleDate,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  scheduleDate?: string | null;
+  onClose: () => void;
+  onDone?: () => void;
+}) {
+  const [phase, setPhase] = React.useState<DeliveryPhase>("confirm");
+  const [preview, setPreview] = React.useState<
+    import("@/lib/operations-api").DispatchDeliveryPreview | null
+  >(null);
+  const [result, setResult] = React.useState<
+    import("@/lib/operations-api").DispatchDeliveryResult | null
+  >(null);
+  const [busy, setBusy] = React.useState(false);
+  const [forceFail, setForceFail] = React.useState(false);
+  const [forcePartial, setForcePartial] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setPhase("confirm");
+    setResult(null);
+    setForceFail(false);
+    setForcePartial(false);
+    void (async () => {
+      try {
+        const res = await operationsApi.postDispatchPreview(
+          scheduleDate ?? undefined,
+        );
+        setPreview(res.data);
+      } catch (err) {
+        toastApiError(err);
+      }
+    })();
+  }, [open, scheduleDate]);
+
+  function handleClose() {
+    setPhase("confirm");
+    onClose();
+  }
+
+  async function submit(opts?: {
+    forceFail?: boolean;
+    forcePartial?: boolean;
+    retryEmployeeId?: string;
+  }) {
+    setBusy(true);
+    try {
+      const res = await operationsApi.postDispatchToMobile({
+        ids: preview?.assignmentIds,
+        date: scheduleDate ?? preview?.scheduleDate,
+        forceFail: opts?.forceFail ?? forceFail,
+        forcePartial: opts?.forcePartial ?? forcePartial,
+      });
+      setResult(res.data);
+      setPhase(res.data.outcome);
+      if (res.data.outcome === "success") onDone?.();
+      else if (res.data.outcome === "partial") onDone?.();
+    } catch (err) {
+      toastApiError(err);
+      setResult({
+        ok: false,
+        outcome: "failed",
+        jobs: preview?.jobs ?? 0,
+        technicianCount: preview?.technicianCount ?? 0,
+        deliveredCount: 0,
+        dateLabel: preview?.dateLabel ?? "",
+        message: "SCHEDULE UNCHANGED. NO TECHNICIANS WERE NOTIFIED.",
+        banner: `ERROR: PUSH SERVICE UNREACHABLE · ${preview?.dateLabel ?? ""} SCHEDULE`,
+        title: "COULD NOT POST SCHEDULE",
+        technicians: (preview?.technicians ?? []).map((t) => ({
+          ...t,
+          status: "NOT_RECEIVED" as const,
+        })),
+      });
+      setPhase("failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (phase === "success" && result) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title={result.title ?? "Schedule Posted"}
+        titleLeading={<span className="text-[#5ECF8E]">✓</span>}
+        widthClassName="max-w-[520px]"
+        footer={
+          <div className="flex justify-end">
+            <PayrollPrimaryButton onClick={handleClose}>
+              View Dispatch
+            </PayrollPrimaryButton>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase text-[#959597]">
+          {result.message}
+        </p>
+        <div className="mt-4 rounded-lg border border-[#1C3A2A] bg-[#14241C] px-3 py-2.5">
+          <p className="font-sans text-[11px] uppercase text-[#5ECF8E]">
+            {result.banner}
+          </p>
+        </div>
+        <div className="mt-3">
+          <DeliveryTechList technicians={result.technicians} />
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  if (phase === "partial" && result) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title={result.title ?? "Posted Partial"}
+        titleLeading={<span className="text-[#E8C547]">⚠</span>}
+        widthClassName="max-w-[520px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            <GhostBtn onClick={handleClose}>Continue</GhostBtn>
+            <SecondaryBtn
+              onClick={() =>
+                toastSuccess(
+                  `Calling ${result.failedTechnicianName ?? "technician"}…`,
+                )
+              }
+            >
+              Call Technician
+            </SecondaryBtn>
+            <PayrollPrimaryButton
+              disabled={busy}
+              onClick={() =>
+                void submit({ forceFail: false, forcePartial: false })
+              }
+            >
+              Retry For {result.failedTechnicianName ?? "Tech"}
+            </PayrollPrimaryButton>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase text-[#959597]">
+          {result.message}
+        </p>
+        <div className="mt-4 rounded-lg border border-[#5A4A1A] bg-[#2A2410] px-3 py-2.5">
+          <p className="font-sans text-[11px] uppercase text-[#E8C547]">
+            {result.banner}
+          </p>
+        </div>
+        <div className="mt-3">
+          <DeliveryTechList technicians={result.technicians} />
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  if (phase === "failed" && result) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title={result.title ?? "Could Not Post Schedule"}
+        titleLeading={<span className="text-[#E86A6A]">✕</span>}
+        widthClassName="max-w-[480px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            <GhostBtn onClick={handleClose}>Dismiss</GhostBtn>
+            <PayrollPrimaryButton
+              disabled={busy}
+              onClick={() =>
+                void submit({ forceFail: false, forcePartial: false })
+              }
+            >
+              Retry
+            </PayrollPrimaryButton>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase text-[#959597]">
+          {result.message}
+        </p>
+        <div className="mt-4 rounded-lg border border-[#3A1C1C] bg-[#1A1A1A] px-4 py-3 text-center">
+          <p className="font-sans text-[11px] uppercase text-[#E86A6A]">
+            {result.banner}
+          </p>
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  return (
+    <DashboardModal
+      open={open}
+      onClose={handleClose}
+      title="Post Schedule To Mobile?"
+      widthClassName="max-w-[480px]"
+      footer={
+        <div className="flex w-full flex-wrap items-center justify-end gap-2">
+          <GhostBtn disabled={busy} onClick={handleClose}>
+            Cancel
+          </GhostBtn>
+          <PayrollPrimaryButton
+            disabled={busy || !preview}
+            onClick={() => void submit()}
+          >
+            Post Schedule
+          </PayrollPrimaryButton>
+        </div>
+      }
+    >
+      <p className="font-sans text-[12px] uppercase leading-relaxed text-[#959597]">
+        This posts the assigned jobs to the technicians&apos; mobile apps for
+        the selected day. Techs can then accept or decline.
+      </p>
+      <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-3 text-center">
+        <p className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+          {preview?.summaryLine ?? "Loading…"}
+        </p>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-4">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={forcePartial}
+            onChange={(e) => {
+              setForcePartial(e.target.checked);
+              if (e.target.checked) setForceFail(false);
+            }}
+          />
+          <span className="font-sans text-[10px] uppercase text-[#6F6F72]">
+            Simulate partial failure
+          </span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={forceFail}
+            onChange={(e) => {
+              setForceFail(e.target.checked);
+              if (e.target.checked) setForcePartial(false);
+            }}
+          />
+          <span className="font-sans text-[10px] uppercase text-[#6F6F72]">
+            Simulate total failure
+          </span>
+        </label>
+      </div>
+    </DashboardModal>
+  );
+}
+
+/** Notify technicians — confirm / success / partial / fail. */
+export function NotifyTechsModal({
+  open,
+  scheduleDate,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  scheduleDate?: string | null;
+  onClose: () => void;
+  onDone?: () => void;
+}) {
+  const [phase, setPhase] = React.useState<DeliveryPhase>("confirm");
+  const [preview, setPreview] = React.useState<
+    import("@/lib/operations-api").DispatchDeliveryPreview | null
+  >(null);
+  const [result, setResult] = React.useState<
+    import("@/lib/operations-api").DispatchDeliveryResult | null
+  >(null);
+  const [busy, setBusy] = React.useState(false);
+  const [forceFail, setForceFail] = React.useState(false);
+  const [forcePartial, setForcePartial] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setPhase("confirm");
+    setResult(null);
+    setForceFail(false);
+    setForcePartial(false);
+    void (async () => {
+      try {
+        const res = await operationsApi.notifyDispatchPreview(
+          scheduleDate ?? undefined,
+        );
+        setPreview(res.data);
+      } catch (err) {
+        toastApiError(err);
+      }
+    })();
+  }, [open, scheduleDate]);
+
+  function handleClose() {
+    setPhase("confirm");
+    onClose();
+  }
+
+  async function submit(opts?: {
+    forceFail?: boolean;
+    forcePartial?: boolean;
+  }) {
+    setBusy(true);
+    try {
+      const res = await operationsApi.notifyDispatchTechs({
+        ids: preview?.assignmentIds,
+        date: scheduleDate ?? preview?.scheduleDate,
+        forceFail: opts?.forceFail ?? forceFail,
+        forcePartial: opts?.forcePartial ?? forcePartial,
+      });
+      setResult(res.data);
+      setPhase(res.data.outcome);
+      if (res.data.outcome !== "failed") onDone?.();
+    } catch (err) {
+      toastApiError(err);
+      setResult({
+        ok: false,
+        outcome: "failed",
+        jobs: preview?.jobs ?? 0,
+        technicianCount: preview?.technicianCount ?? 0,
+        deliveredCount: 0,
+        dateLabel: preview?.dateLabel ?? "",
+        message:
+          "PUSH NOTIFICATION COULD NOT BE DELIVERED. TECHNICIANS HAVE NOT BEEN NOTIFIED.",
+        banner: `ERROR: PUSH SERVICE UNAVAILABLE · ${preview?.dateLabel ?? ""} SCHEDULE UNCHANGED`,
+        title: "NOTIFICATION FAILED",
+        technicians: (preview?.technicians ?? []).map((t) => ({
+          ...t,
+          status: "NOT_RECEIVED" as const,
+        })),
+      });
+      setPhase("failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (phase === "success" && result) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title={result.title ?? "Notifications Sent"}
+        titleLeading={<span className="text-[#5ECF8E]">✓</span>}
+        widthClassName="max-w-[520px]"
+        footer={
+          <div className="flex justify-end">
+            <PayrollPrimaryButton onClick={handleClose}>Done</PayrollPrimaryButton>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase text-[#959597]">
+          {result.message}
+        </p>
+        <div className="mt-4 rounded-lg border border-[#1C3A2A] bg-[#14241C] px-3 py-2.5">
+          <p className="font-sans text-[11px] uppercase text-[#5ECF8E]">
+            {result.banner}
+          </p>
+        </div>
+        <div className="mt-3">
+          <DeliveryTechList technicians={result.technicians} />
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  if (phase === "partial" && result) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title={result.title ?? "Sent Partial"}
+        titleLeading={<span className="text-[#E8C547]">⚠</span>}
+        widthClassName="max-w-[520px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            <GhostBtn onClick={handleClose}>Continue</GhostBtn>
+            <SecondaryBtn
+              onClick={() =>
+                toastSuccess(
+                  `Calling ${result.failedTechnicianName ?? "technician"}…`,
+                )
+              }
+            >
+              Call Technician
+            </SecondaryBtn>
+            <PayrollPrimaryButton
+              disabled={busy}
+              onClick={() =>
+                void submit({ forceFail: false, forcePartial: false })
+              }
+            >
+              Retry For {result.failedTechnicianName ?? "Tech"}
+            </PayrollPrimaryButton>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase text-[#959597]">
+          {result.message}
+        </p>
+        <div className="mt-4 rounded-lg border border-[#5A4A1A] bg-[#2A2410] px-3 py-2.5">
+          <p className="font-sans text-[11px] uppercase text-[#E8C547]">
+            {result.banner}
+          </p>
+        </div>
+        <div className="mt-3">
+          <DeliveryTechList technicians={result.technicians} />
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  if (phase === "failed" && result) {
+    return (
+      <DashboardModal
+        open={open}
+        onClose={handleClose}
+        title={result.title ?? "Notification Failed"}
+        titleLeading={<span className="text-[#E86A6A]">✕</span>}
+        widthClassName="max-w-[480px]"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-end gap-2">
+            <GhostBtn onClick={handleClose}>Dismiss</GhostBtn>
+            <PayrollPrimaryButton
+              disabled={busy}
+              onClick={() =>
+                void submit({ forceFail: false, forcePartial: false })
+              }
+            >
+              Retry
+            </PayrollPrimaryButton>
+          </div>
+        }
+      >
+        <p className="font-sans text-[12px] uppercase text-[#959597]">
+          {result.message}
+        </p>
+        <div className="mt-4 rounded-lg border border-[#3A1C1C] bg-[#1A1A1A] px-4 py-3 text-center">
+          <p className="font-sans text-[11px] uppercase text-[#E86A6A]">
+            {result.banner}
+          </p>
+        </div>
+      </DashboardModal>
+    );
+  }
+
+  return (
+    <DashboardModal
+      open={open}
+      onClose={handleClose}
+      title="Notify Technicians?"
+      widthClassName="max-w-[480px]"
+      footer={
+        <div className="flex w-full flex-wrap items-center justify-end gap-2">
+          <GhostBtn disabled={busy} onClick={handleClose}>
+            Cancel
+          </GhostBtn>
+          <PayrollPrimaryButton
+            disabled={busy || !preview}
+            onClick={() => void submit()}
+          >
+            Send Notification
+          </PayrollPrimaryButton>
+        </div>
+      }
+    >
+      <p className="font-sans text-[12px] uppercase leading-relaxed text-[#959597]">
+        Send a push notification to the assigned technicians about their
+        schedule and any changes.
+      </p>
+      <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-3 text-center">
+        <p className="font-sans text-[12px] uppercase text-[#FDFDFF]">
+          {preview?.summaryLine ?? "Loading…"}
+        </p>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-4">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={forcePartial}
+            onChange={(e) => {
+              setForcePartial(e.target.checked);
+              if (e.target.checked) setForceFail(false);
+            }}
+          />
+          <span className="font-sans text-[10px] uppercase text-[#6F6F72]">
+            Simulate partial failure
+          </span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={forceFail}
+            onChange={(e) => {
+              setForceFail(e.target.checked);
+              if (e.target.checked) setForcePartial(false);
+            }}
+          />
+          <span className="font-sans text-[10px] uppercase text-[#6F6F72]">
+            Simulate total failure
+          </span>
+        </label>
+      </div>
     </DashboardModal>
   );
 }

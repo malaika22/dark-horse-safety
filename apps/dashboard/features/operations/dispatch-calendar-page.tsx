@@ -23,7 +23,6 @@ import {
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import {
   useSetHeaderActions,
-  useSetHeaderBreadcrumb,
 } from "@/features/app-shell/header-actions-context";
 import {
   AssignJobModal,
@@ -31,6 +30,8 @@ import {
   DispatchWorkOrderCardModal,
   EligibilityCheckModal,
   HardGateOverrideModal,
+  NotifyTechsModal,
+  PostScheduleModal,
   ReassignAfterDeclineModal,
 } from "@/features/operations/dispatch-modals";
 import {
@@ -126,6 +127,8 @@ export function DispatchCalendarPage() {
   } | null>(null);
   const [reassignId, setReassignId] = React.useState<string | null>(null);
   const [reassignOpen, setReassignOpen] = React.useState(false);
+  const [postOpen, setPostOpen] = React.useState(false);
+  const [notifyOpen, setNotifyOpen] = React.useState(false);
   const [rescheduleOpen, setRescheduleOpen] = React.useState(false);
   const [rescheduleBusy, setRescheduleBusy] = React.useState(false);
   const [reschedulePreview, setReschedulePreview] = React.useState<{
@@ -138,39 +141,24 @@ export function DispatchCalendarPage() {
     scheduledDate?: string;
   } | null>(null);
 
-  useSetHeaderBreadcrumb("Jobs / Operations / Dispatch");
-
   const refresh = React.useCallback(() => setReloadKey((k) => k + 1), []);
 
-  const postToMobile = React.useCallback(async () => {
-    try {
-      const res = await operationsApi.postDispatchToMobile();
-      toastSuccess(res.data.message);
-      refresh();
-    } catch (err) {
-      toastApiError(err);
-    }
-  }, [refresh]);
-
-  const notifyTechs = React.useCallback(async () => {
-    try {
-      const res = await operationsApi.notifyDispatchTechs();
-      toastSuccess(res.data.message);
-    } catch (err) {
-      toastApiError(err);
-    }
-  }, []);
+  const scheduleDate = board?.from ?? kpi.from ?? undefined;
 
   useSetHeaderActions(
     <div className="flex flex-wrap items-center gap-2">
-      <DashboardToolbarButton onClick={() => void notifyTechs()}>
+      <DashboardToolbarButton onClick={() => setNotifyOpen(true)}>
         Notify Techs
       </DashboardToolbarButton>
-      <DashboardToolbarButton variant="primary" showChevron onClick={() => void postToMobile()}>
+      <DashboardToolbarButton
+        variant="primary"
+        showChevron
+        onClick={() => setPostOpen(true)}
+      >
         Post to Mobile
       </DashboardToolbarButton>
     </div>,
-    [notifyTechs, postToMobile],
+    [],
   );
 
   React.useEffect(() => {
@@ -544,7 +532,7 @@ export function DispatchCalendarPage() {
             >
               Assign Job
             </DashboardToolbarButton>
-            <DashboardToolbarButton onClick={() => void postToMobile()}>
+            <DashboardToolbarButton onClick={() => setPostOpen(true)}>
               Post Schedule
             </DashboardToolbarButton>
           </div>
@@ -790,6 +778,20 @@ export function DispatchCalendarPage() {
         open={reassignOpen}
         assignmentId={reassignId}
         onClose={() => setReassignOpen(false)}
+        onDone={refresh}
+      />
+
+      <PostScheduleModal
+        open={postOpen}
+        scheduleDate={scheduleDate}
+        onClose={() => setPostOpen(false)}
+        onDone={refresh}
+      />
+
+      <NotifyTechsModal
+        open={notifyOpen}
+        scheduleDate={scheduleDate}
+        onClose={() => setNotifyOpen(false)}
         onDone={refresh}
       />
 

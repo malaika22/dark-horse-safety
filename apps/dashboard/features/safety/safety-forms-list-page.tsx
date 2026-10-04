@@ -8,10 +8,6 @@ import {
 } from "@dark-horse-safety/ui";
 import { safetyApi, type SafetyFormListItem } from "@/lib/safety-api";
 import {
-  useSetHeaderActions,
-  useSetHeaderBreadcrumb,
-} from "@/features/app-shell/header-actions-context";
-import {
   OpsLoadFailedState,
   OpsLoadingListState,
 } from "@/features/operations/operations-states";
@@ -91,9 +87,6 @@ export function SafetyFormsListPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [items, setItems] = React.useState<SafetyFormListItem[]>([]);
-
-  useSetHeaderBreadcrumb("Safety & Compliance / Forms");
-  useSetHeaderActions(null, []);
 
   const load = React.useCallback(async () => {
     setLoading(true);
