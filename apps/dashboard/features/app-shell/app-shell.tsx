@@ -190,12 +190,32 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
   { path: "/hr/employees", breadcrumb: "Employees & HR", pageTitle: "Employees" },
   { path: "/hr", breadcrumb: "Employees & HR", pageTitle: "HR Dashboard" },
   {
+    path: "/fleet/required-equipment-rules",
+    breadcrumb: "Fleet & Assets",
+    pageTitle: "Required Equipment Rules",
+  },
+  {
+    path: "/fleet/customer-owned-equipment",
+    breadcrumb: "Fleet & Assets",
+    pageTitle: "Customer-Owned Equipment",
+  },
+  {
+    path: "/fleet/repair-requests",
+    breadcrumb: "Fleet & Assets",
+    pageTitle: "Repair Requests",
+  },
+  {
+    path: "/fleet/inspections",
+    breadcrumb: "Fleet & Assets",
+    pageTitle: "Inspections",
+  },
+  {
     path: "/fleet/calibration",
     breadcrumb: "Fleet & Assets",
     pageTitle: "Calibration",
   },
   { path: "/fleet/assets", breadcrumb: "Fleet & Assets", pageTitle: "Assets" },
-  { path: "/fleet", breadcrumb: "Fleet & Assets", pageTitle: "Fleet Hub" },
+  { path: "/fleet", breadcrumb: "Fleet & Assets", pageTitle: "Fleet Dashboard" },
   {
     path: "/operations/netsuite",
     breadcrumb: "Operations",
@@ -397,6 +417,22 @@ function headerMetaForPath(pathname: string): HeaderMeta {
     pathname !== "/crm/locations/new"
   ) {
     return { breadcrumb: "Accounts / Locations / Wells", pageTitle: null };
+  }
+  if (/^\/fleet\/inspections\/[^/]+\/edit$/.test(pathname)) {
+    return {
+      breadcrumb: "Fleet & Assets / Edit Inspection",
+      pageTitle: "Edit Inspection",
+    };
+  }
+  if (
+    /^\/fleet\/inspections\/[^/]+$/.test(pathname) &&
+    pathname !== "/fleet/inspections"
+  ) {
+    const code = pathname.split("/").pop()?.toUpperCase() ?? "DETAIL";
+    return {
+      breadcrumb: `Fleet & Assets / Inspections / ${code}`,
+      pageTitle: null,
+    };
   }
   if (
     /^\/operations\/work-orders\/[^/]+$/.test(pathname) &&

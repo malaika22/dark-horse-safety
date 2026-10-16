@@ -197,12 +197,32 @@ export const APP_NAV: NavItem[] = [
     label: "Fleet & Assets",
     icon: "fleet",
     children: [
-      { id: "fleet-hub", label: "Fleet Hub", href: "/fleet" },
+      { id: "fleet-hub", label: "Fleet Dashboard", href: "/fleet" },
       { id: "fleet-assets", label: "Assets", href: "/fleet/assets" },
+      {
+        id: "fleet-inspections",
+        label: "Inspections",
+        href: "/fleet/inspections",
+      },
       {
         id: "fleet-calibration",
         label: "Calibration",
         href: "/fleet/calibration",
+      },
+      {
+        id: "fleet-repair-requests",
+        label: "Repair Requests",
+        href: "/fleet/repair-requests",
+      },
+      {
+        id: "fleet-customer-owned",
+        label: "Customer-Owned Equipment",
+        href: "/fleet/customer-owned-equipment",
+      },
+      {
+        id: "fleet-equipment-rules",
+        label: "Required Equipment Rules",
+        href: "/fleet/required-equipment-rules",
       },
     ],
   },

@@ -291,6 +291,7 @@ model Customer {
   routeRules    RouteRule[]
   quotes        Quote[]
   workOrders    WorkOrder[]
+  customerOwnedEquipment CustomerOwnedEquipment[]
   salesTickets  SalesTicket[]
   recurringSeries RecurringWorkOrderSeries[]
   closeoutReviews CloseoutReview[]
@@ -1095,6 +1096,7 @@ model WorkOrder {
   closeoutReviews CloseoutReview[]
   formCorrectionRequests FormCorrectionRequest[]
   additionalFormRequests AdditionalFormRequest[]
+  fleetInspections FleetInspection[]
   archivedAt     DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -2192,4 +2194,249 @@ model AdditionalFormRequest {
   @@index([status])
   @@index([urgency])
   @@index([createdAt])
+}
+
+// ─── Fleet — Required Equipment Rules ────────────────────────────────────────
+
+enum EquipmentEnforcement {
+  BLOCKS_DISPATCH
+  WARNING
+  INFORMATIONAL
+}
+
+enum EquipmentPerUnit {
+  JOB
+  TECHNICIAN
+  TRUCK
+}
+
+enum EquipmentRuleStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model EquipmentRule {
+  id           String               @id @default(uuid())
+  code         String               @unique
+  equipment    String
+  qty          Int                  @default(1)
+  per          EquipmentPerUnit     @default(JOB)
+  enforcement  EquipmentEnforcement @default(BLOCKS_DISPATCH)
+  substitutes  String?
+  appliesTo    String               @default("ALL JOBS")
+  condition    String?
+  jobType      String
+  status       EquipmentRuleStatus  @default(ACTIVE)
+  /// [{ customerId, customerName, qty, standardQty }]
+  overrides    Json?
+  archivedAt   DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([jobType])
+  @@index([status])
+  @@index([enforcement])
+  @@index([archivedAt])
+}
+
+// ─── Fleet Operations ────────────────────────────────────────────────────────
+
+enum FleetInspectionResult {
+  PASS
+  FAILED
+  NOT_DONE
+  PASS_WITH_FINDINGS
+}
+
+enum FleetInspectionStatus {
+  COMPLETE
+  NEEDS_REVIEW
+  EXPIRED
+  MISSING
+  REVIEWED
+  REPAIR_RAISED
+}
+
+enum FleetCalibrationResult {
+  PASS
+  PASS_WITH_ADJUSTMENT
+  FAILED
+  NOT_DONE
+}
+
+enum FleetCalibrationStatus {
+  CURRENT
+  DUE_SOON
+  OVERDUE
+  OUT_OF_SERVICE
+}
+
+enum FleetRepairPriority {
+  URGENT
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum FleetRepairStatus {
+  OPEN
+  IN_REPAIR
+  AWAITING_PARTS
+  CLOSED
+  CANCELLED
+}
+
+enum CustomerOwnedStatus {
+  CURRENT
+  EXPIRING
+  OVERDUE
+  NEEDS_REVIEW
+}
+
+model FleetInspection {
+  id                 String                @id @default(uuid())
+  code               String                @unique
+  assetCode          String
+  assetLabel         String
+  parentTruck        String?
+  inspectorName      String
+  inspectedAt        DateTime?
+  dueAt              DateTime?
+  result             FleetInspectionResult
+  status             FleetInspectionStatus
+  type               String?
+  flags              Json?
+  failedItems        Json?
+  payrollBlocking    Boolean               @default(false)
+  hasLinkedRepair    Boolean               @default(false)
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  customerName       String?
+  locationLabel      String?
+  workOrderCode      String?
+  workOrderId        String?
+  workOrder          WorkOrder?            @relation(fields: [workOrderId], references: [id], onDelete: SetNull)
+  repairCode         String?
+  serial             String?
+  source             String?
+  findingsSummary    String?
+  checklistItems     Json?
+  photos             Json?
+  actionsTaken       Json?
+  version            Int                   @default(1)
+  parentInspectionId String?
+  reInspectionId     String?
+  reInspectionDueAt  DateTime?
+  editReason         String?
+  editDetails        String?
+  editedBy           String?
+  editedAt           DateTime?
+  originalSnapshot   Json?
+  archivedAt         DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  correctiveActions  FleetCorrectiveAction[]
+
+  @@index([status])
+  @@index([result])
+  @@index([dueAt])
+  @@index([archivedAt])
+  @@index([parentInspectionId])
+}
+
+model FleetCorrectiveAction {
+  id             String          @id @default(uuid())
+  code           String          @unique
+  inspectionId   String
+  inspection     FleetInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  inspectionCode String
+  assetLabel     String
+  parentTruck    String?
+  rootCause      String
+  description    String
+  assignedTo     String
+  dueAt          DateTime?
+  priority       String          @default("HIGH")
+  findings       Json?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([inspectionId])
+}
+
+model FleetCalibration {
+  id            String                 @id @default(uuid())
+  code          String                 @unique
+  assetCode     String
+  assetLabel    String?
+  model         String
+  parentTruck   String?
+  lastCalAt     DateTime?
+  nextDueAt     DateTime?
+  result        FleetCalibrationResult
+  status        FleetCalibrationStatus
+  serial        String?
+  frequencyDays Int                    @default(365)
+  archivedAt    DateTime?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@index([status])
+  @@index([nextDueAt])
+  @@index([archivedAt])
+}
+
+model FleetRepairRequest {
+  id             String              @id @default(uuid())
+  code           String              @unique
+  assetCode      String
+  assetLabel     String
+  issue          String
+  priority       FleetRepairPriority
+  vendorName     String?
+  assignedName   String?
+  etaAt          DateTime?
+  etaLabel       String?
+  status         FleetRepairStatus   @default(OPEN)
+  parentTruck    String?
+  reportedAt     DateTime            @default(now())
+  inspectionCode String?
+  purchaseOrder  String?
+  contactPhone   String?
+  archivedAt     DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([status])
+  @@index([priority])
+  @@index([archivedAt])
+}
+
+model CustomerOwnedEquipment {
+  id                   String              @id @default(uuid())
+  code                 String              @unique
+  description          String
+  customerId           String?
+  customer             Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customerName         String
+  wellSite             String
+  county               String?
+  lastInspectionResult String?
+  lastInspectionAt     DateTime?
+  nextDueAt            DateTime?
+  status               CustomerOwnedStatus
+  customerOwned        Boolean             @default(true)
+  type                 String?
+  model                String?
+  serial               String?
+  reviewedAt           DateTime?
+  reviewedBy           String?
+  archivedAt           DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([status])
+  @@index([customerId])
+  @@index([nextDueAt])
+  @@index([archivedAt])
 }

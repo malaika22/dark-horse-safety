@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+﻿import { CalibrationPage } from "@/features/fleet/calibration-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Calibration" />;
+  return <CalibrationPage />;
 }

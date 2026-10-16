@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+﻿import { FleetDashboardPage } from "@/features/fleet/fleet-dashboard-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Fleet Hub" />;
+  return <FleetDashboardPage />;
 }
