@@ -62,6 +62,13 @@ async function bootstrap() {
     .addTag('crm-saved-views', 'CRM saved list views')
     .addTag('crm-lookups', 'CRM form lookups / autocomplete')
     .addTag('crm-uploads', 'File uploads to local storage')
+    .addTag('mobile-auth', 'Mobile app: verification codes, reset, session')
+    .addTag('mobile-profile', 'Mobile app: profile, home, devices, on-call')
+    .addTag('mobile-clock', 'Mobile app: clock, pause, GPS flags, sync')
+    .addTag('mobile-jobs', 'Mobile app: jobs, closeout, sales ticket')
+    .addTag('mobile-forms', 'Mobile app: safety forms, scope change')
+    .addTag('mobile-time', 'Mobile app: timesheet, edits, time off')
+    .addTag('mobile-notifications', 'Mobile app: notifications')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
