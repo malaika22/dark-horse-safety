@@ -544,8 +544,8 @@ export class WorkOrdersService {
       include: {
         customer: { select: { id: true, name: true, code: true } },
         location: {
-          select: {
-            id: true,
+      select: {
+        id: true,
             name: true,
             code: true,
             city: true,
