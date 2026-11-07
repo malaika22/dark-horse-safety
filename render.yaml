@@ -12,10 +12,16 @@ databases:
   - name: dark-horse-safety-db
     databaseName: darkhorse
     user: darkhorse
-    # Smallest paid tier (0.1 CPU / 256MB). Free Postgres is DELETED 30 days
-    # after creation — that is what killed the previous database. If Render
-    # rejects this name, use the current plan id `0.1c-256mb`.
-    plan: basic-256mb
+    # TEMPORARY: free tier, so development is unblocked while the client
+    # reviews costs. A free Render Postgres is DELETED 30 days after creation
+    # (created 2026-11-07 -> gone ~2026-12-07) and is capped at 1GB storage.
+    #
+    # When the client approves the spend, change this one line to:
+    #     plan: 0.1c-256mb     # $6/mo, 0.1 CPU / 256MB, +$0.30/GB storage
+    # and re-apply the Blueprint. There is no production data yet, so if the
+    # instance has to be recreated rather than resized, the cost is re-running
+    # `prisma migrate deploy` and the seed.
+    plan: free
     # Must match the web service's region, or the private network won't route.
     region: singapore
     postgresMajorVersion: "17"
@@ -24,6 +30,9 @@ services:
   - type: web
     name: dark-horse-safety
     runtime: node
+    # Free: 512MB RAM but spins down when idle (~50s first request).
+    # `0.5c-512mb` is $7/mo for the same 512MB RAM, always on, and unlocks
+    # preDeployCommand and persistent disks.
     plan: free
     region: singapore
     rootDir: .
