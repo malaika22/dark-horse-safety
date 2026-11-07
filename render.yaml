@@ -1,0 +1,120 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Keeps build/start commands and the database definition in version control
+# instead of the dashboard, so a change to how this service boots shows up in
+# a diff.
+#
+# No secrets live in this file. Every `sync: false` var is set by hand in the
+# Render UI; the database credentials are wired automatically by `fromDatabase`
+# and never pass through a human or a clipboard.
+
+databases:
+  - name: dark-horse-safety-db
+    databaseName: darkhorse
+    user: darkhorse
+    # Smallest paid tier (0.1 CPU / 256MB). Free Postgres is DELETED 30 days
+    # after creation — that is what killed the previous database. If Render
+    # rejects this name, use the current plan id `0.1c-256mb`.
+    plan: basic-256mb
+    # Must match the web service's region, or the private network won't route.
+    region: singapore
+    postgresMajorVersion: "17"
+
+services:
+  - type: web
+    name: dark-horse-safety
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: .
+    autoDeploy: true
+    healthCheckPath: /health
+
+    buildCommand: npm ci && npm run build -w @dark-horse-safety/api
+
+    # Migrations run at START, not during the build — deliberately, and only
+    # because the database is on Render. `connectionString` below is a PRIVATE
+    # network URL (dpg-xxxxx-a), and the private network is not routable from
+    # the build container; `prisma migrate deploy` there fails with ENOTFOUND.
+    #
+    # The cost is that a failed migration crash-loops the instance instead of
+    # leaving the last good build serving. On a paid instance type, delete the
+    # prisma:deploy below and use preDeployCommand instead, which runs after
+    # the build, on the private network, and aborts the deploy cleanly:
+    #
+    #   preDeployCommand: npm run prisma:deploy -w @dark-horse-safety/api
+    startCommand: >-
+      npm run prisma:deploy -w @dark-horse-safety/api &&
+      npm run start:prod -w @dark-horse-safety/api
+
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+
+      # --- Database ---------------------------------------------------------
+      # Wired by Render from the `databases` block above. Nothing to paste, so
+      # no repeat of the dead-project-ref failure.
+      #
+      # Both point at the same instance: Render Postgres has no PgBouncer in
+      # front of it, so the schema's directUrl (used by `prisma migrate`) and
+      # url (used by Prisma Client) are the same connection. DIRECT_URL is
+      # still required because prisma/schema.prisma declares it.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dark-horse-safety-db
+          property: connectionString
+      - key: DIRECT_URL
+        fromDatabase:
+          name: dark-horse-safety-db
+          property: connectionString
+
+      # --- Auth -------------------------------------------------------------
+      # Generated once by Render, so it can never be blank. An empty JWT_SECRET
+      # throws "JwtStrategy requires a secret or key" at boot; a missing one
+      # silently falls back to a dev secret committed to this repo.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+
+      # https://<this-service>.onrender.com/auth/google/callback
+      # Must match the Authorized redirect URI in Google Cloud Console exactly.
+      - key: GOOGLE_CALLBACK_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+
+      # --- Frontend ---------------------------------------------------------
+      - key: CORS_ORIGIN       # comma-separated origins, no trailing slash
+        sync: false
+      - key: FRONTEND_URL      # base for links in password-reset/invite emails
+        sync: false
+
+      # --- Email ------------------------------------------------------------
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: SMTP_HOST         # fallback used when Resend is unavailable
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_SECURE
+        value: "true"
+
+      # --- Misc -------------------------------------------------------------
+      - key: ADMIN_EMAIL
+        sync: false
+
+      # PORT is injected by Render — do not set it here.
+      #
+      # UPLOADS_DIR is left unset, so uploads.service.ts defaults to
+      # <cwd>/uploads. That is EPHEMERAL on Render: uploaded files are lost on
+      # every deploy and every cold start. Attach a persistent disk (paid
+      # instance types) or move to object storage before this carries real data.
