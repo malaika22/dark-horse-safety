@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { UploadsModule } from './common/uploads.module';
 import { CrmModule } from './crm/crm.module';
 import { HrModule } from './hr/hr.module';
+import { MobileModule } from './mobile/mobile.module';
 import { FleetModule } from './fleet/fleet.module';
 import { OperationsModule } from './operations/operations.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -27,6 +28,7 @@ import { SafetyModule } from './safety/safety.module';
     OperationsModule,
     ReportsModule,
     SafetyModule,
+    MobileModule,
   ],
   controllers: [AppController],
   providers: [AppService],

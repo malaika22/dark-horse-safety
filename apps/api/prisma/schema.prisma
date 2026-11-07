@@ -2441,3 +2441,126 @@ model CustomerOwnedEquipment {
   @@index([nextDueAt])
   @@index([archivedAt])
 }
+
+// ─── Mobile app (additive; no relations to existing models) ──────────────────
+
+model MobileProfile {
+  id                  String    @id @default(uuid())
+  userId              String    @unique
+  homeAddress         String?
+  homeLat             Float?
+  homeLng             Float?
+  homeLocationSetAt   DateTime?
+  notificationsEnabled Boolean  @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
+model MobileDevice {
+  id                 String   @id @default(uuid())
+  userId             String
+  deviceId           String   @unique
+  platform           String
+  pushToken          String?
+  appVersion         String?
+  locationPermission String?
+  pushEnabled        Boolean  @default(true)
+  lastSeenAt         DateTime @default(now())
+  createdAt          DateTime @default(now())
+
+  @@index([userId])
+}
+
+model MobileOtpCode {
+  id         String    @id @default(uuid())
+  identifier String
+  purpose    String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([identifier, purpose])
+}
+
+model MobileNotification {
+  id             String    @id @default(uuid())
+  userId         String
+  dedupeKey      String
+  type           String
+  title          String
+  body           String
+  actionLabel    String?
+  reference      Json?
+  requiresAction Boolean   @default(false)
+  resolved       Boolean   @default(false)
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, createdAt])
+}
+
+model MobileRequestLog {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  response  Json
+  createdAt DateTime @default(now())
+}
+
+model HomeLocationChangeRequest {
+  id         String   @id @default(uuid())
+  userId     String
+  employeeId String
+  address    String
+  lat        Float
+  lng        Float
+  reason     String?
+  status     String   @default("PENDING_REVIEW")
+  createdAt  DateTime @default(now())
+  decidedAt  DateTime?
+
+  @@index([userId])
+  @@index([status])
+}
+
+model TimeEntryPause {
+  id          String    @id @default(uuid())
+  timeEntryId String
+  employeeId  String
+  reason      String
+  note        String?
+  photoUrl    String?
+  startedAt   DateTime
+  endedAt     DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([timeEntryId])
+  @@index([employeeId])
+}
+
+model SupervisorMessage {
+  id          String   @id @default(uuid())
+  userId      String
+  employeeId  String
+  supervisorId String?
+  kind        String   @default("MESSAGE")
+  subject     String?
+  body        String
+  workOrderId String?
+  createdAt   DateTime @default(now())
+
+  @@index([employeeId])
+}
+
+model LocationAccessRequest {
+  id         String   @id @default(uuid())
+  userId     String
+  employeeId String
+  note       String?
+  status     String   @default("SENT")
+  createdAt  DateTime @default(now())
+
+  @@index([employeeId])
+}
