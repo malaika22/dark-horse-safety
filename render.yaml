@@ -22,8 +22,9 @@ databases:
     # instance has to be recreated rather than resized, the cost is re-running
     # `prisma migrate deploy` and the seed.
     plan: free
-    # Must match the web service's region, or the private network won't route.
-    region: singapore
+    # Must match the web service's region (Ohio), or the private network
+    # won't route and the internal connection string will fail to resolve.
+    region: ohio
     postgresMajorVersion: "17"
 
 services:
@@ -39,7 +40,7 @@ services:
     # after it changes. Postgres and any service with a persistent disk take
     # brief downtime when resized; a plain web service redeploys with none.
     plan: free
-    region: singapore
+    region: ohio
     rootDir: .
     autoDeploy: true
     healthCheckPath: /health
