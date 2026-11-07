@@ -30,9 +30,14 @@ services:
   - type: web
     name: dark-horse-safety
     runtime: node
-    # Free: 512MB RAM but spins down when idle (~50s first request).
-    # `0.5c-512mb` is $7/mo for the same 512MB RAM, always on, and unlocks
-    # preDeployCommand and persistent disks.
+    # Free is 0.1 CPU / 512MB and spins down when idle (~50s first request).
+    # `0.5c-512mb` is $7/mo: same 512MB RAM but 5x the CPU (0.1 -> 0.5),
+    # always on, and unlocks preDeployCommand and persistent disks.
+    # Render's dashboard and legacy docs call this tier "starter".
+    #
+    # A compute plan does not take effect until the first SUCCESSFUL deploy
+    # after it changes. Postgres and any service with a persistent disk take
+    # brief downtime when resized; a plain web service redeploys with none.
     plan: free
     region: singapore
     rootDir: .
