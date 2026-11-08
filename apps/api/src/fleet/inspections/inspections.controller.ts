@@ -13,6 +13,7 @@ import { JwtAuthGuard } from '../../auth/guards/auth.guards';
 import {
   BulkReviewDto,
   CreateCorrectiveActionDto,
+  CreateInspectionRecordDto,
   CreateRepairFromInspectionDto,
   EditInspectionDto,
   InspectionListQueryDto,
@@ -49,6 +50,18 @@ export class InspectionsController {
   @ApiOperation({ summary: 'Mark inspections reviewed' })
   bulkReview(@Body() dto: BulkReviewDto) {
     return this.service.bulkMarkReviewed(dto);
+  }
+
+  @Get('form-options')
+  @ApiOperation({ summary: 'Assets, inspectors, and checklists for a new record' })
+  formOptions() {
+    return this.service.formOptions();
+  }
+
+  @Post('records')
+  @ApiOperation({ summary: 'Create an inspection record' })
+  createRecord(@Body() dto: CreateInspectionRecordDto) {
+    return this.service.createRecord(dto);
   }
 
   @Get(':id')

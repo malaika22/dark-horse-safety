@@ -53,11 +53,41 @@ export type MobileActor = { userId: string; employee: Employee };
 export class MobileContext {
   constructor(readonly prisma: PrismaService) {}
 
-  /** Resolve the signed-in user's Employee record (User.id -> Employee.userId). */
+  /**
+   * Resolve the signed-in user to the Employee the admin portal already lists.
+   * Matches a stored userId first, then the same email, then a unique first-initial and last name.
+   * The match is saved on Employee.userId so later mobile and portal calls use one person.
+   */
   async actor(userId: string): Promise<MobileActor> {
-    const employee = await this.prisma.employee.findUnique({
+    let employee = await this.prisma.employee.findUnique({
       where: { userId },
     });
+    if (!employee) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (user?.email) {
+        employee = await this.prisma.employee.findFirst({
+          where: { email: { equals: user.email, mode: 'insensitive' }, archivedAt: null },
+        });
+      }
+      if (!employee && user?.lastName) {
+        const candidates = await this.prisma.employee.findMany({
+          where: {
+            lastName: { equals: user.lastName, mode: 'insensitive' },
+            archivedAt: null,
+            userId: null,
+          },
+        });
+        const initial = (user.firstName ?? '').trim().charAt(0).toUpperCase();
+        const hits = candidates.filter((row) => row.firstName.trim().charAt(0).toUpperCase() === initial);
+        if (hits.length === 1) employee = hits[0];
+      }
+      if (employee && !employee.userId) {
+        employee = await this.prisma.employee.update({
+          where: { id: employee.id },
+          data: { userId },
+        });
+      }
+    }
     if (!employee || employee.archivedAt) {
       throw new ForbiddenException({
         code: 'EMPLOYEE_NOT_LINKED',

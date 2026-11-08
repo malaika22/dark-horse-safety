@@ -4,6 +4,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   MaxLength,
@@ -185,6 +186,100 @@ export class EditInspectionDto {
   @IsString()
   @MaxLength(120)
   editedBy?: string;
+}
+
+export class CreateChecklistItemDto {
+  @IsString()
+  @MaxLength(120)
+  label!: string;
+
+  @IsIn(['PASS', 'FAIL', 'N/A', 'NA'])
+  result!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  tag?: string;
+}
+
+export class CreateInspectionRecordDto {
+  @IsString()
+  @MaxLength(40)
+  assetCode!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  assetLabel?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  serial?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  parentTruck?: string;
+
+  @IsString()
+  @MaxLength(120)
+  inspectorName!: string;
+
+  @IsString()
+  inspectedAt!: string;
+
+  @IsIn(['MONTHLY', 'PRE-JOB', 'ANNUAL', 'POST-INCIDENT', 'RE-INSPECTION'])
+  type!: string;
+
+  @IsIn(['MOBILE_APP', 'WEB'])
+  source!: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateChecklistItemDto)
+  checklistItems!: CreateChecklistItemDto[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  findingsSummary?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  photoUrls?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  createRepair?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  markOutOfService?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  reinspectionRequired?: boolean;
+
+  @IsOptional()
+  @IsString()
+  reinspectionDueAt?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  parentInspectionId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  incidentReference?: string;
 }
 
 export class CreateRepairFromInspectionDto {

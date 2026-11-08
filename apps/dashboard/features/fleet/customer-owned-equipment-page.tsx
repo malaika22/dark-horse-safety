@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   DashboardBadge,
   DashboardBulkSelectBar,
@@ -33,7 +34,7 @@ import {
   fleetFiltersToParams,
   type FleetFilterValues,
 } from "./fleet-filters-drawer";
-import { fleetBadgeTone } from "./fleet-ui";
+import { downloadCsv, fleetBadgeTone } from "./fleet-ui";
 import {
   OpsLoadFailedState,
   OpsLoadingListState,
@@ -54,6 +55,7 @@ const CO_STATUSES = [
 ];
 
 export function CustomerOwnedEquipmentPage() {
+  const router = useRouter();
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [kpi, setKpi] = React.useState<FleetKpiCell[]>([]);
@@ -150,14 +152,52 @@ export function CustomerOwnedEquipmentPage() {
     }
   }
 
+  function ownedBody(row: FleetCustomerOwned, patch: { operationalStatus?: string; frequency?: string }) {
+    const date = (value?: string | null) => (value && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : undefined);
+    return {
+      name: row.description,
+      type: row.type || "EQUIPMENT",
+      customerName: row.customerName,
+      customerId: row.customerId || undefined,
+      serial: row.serial || undefined,
+      location: row.wellSite || undefined,
+      operationalStatus: patch.operationalStatus ?? row.operationalStatus,
+      frequency: patch.frequency ?? row.frequency,
+      formName: row.formName,
+      nextDue: date(row.nextDueAt),
+      lastInspected: date(row.lastInspectionAt),
+      lastResult: row.lastInspectionResult || undefined,
+      notes: row.notes,
+      photoUrl: row.photoUrl,
+    };
+  }
+
   async function markOutOfService(row: FleetCustomerOwned) {
-    toastSuccess(`${row.code} — out of service stub (customer-owned)`);
+    setBusy(true);
+    try {
+      await fleetApi.saveCustomerOwned(ownedBody(row, { operationalStatus: "OUT OF SERVICE" }), row.id);
+      toastSuccess(`${row.code} marked out of service`);
+      void reload();
+    } catch (err) {
+      toastApiError(err);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function submitFrequency() {
     if (!freqRow) return;
-    toastSuccess(`Frequency adjusted for ${freqRow.description} — stub`);
-    setFreqOpen(false);
+    setBusy(true);
+    try {
+      await fleetApi.saveCustomerOwned(ownedBody(freqRow, { frequency: `${freqDays} DAYS` }), freqRow.id);
+      toastSuccess(`${freqRow.code} frequency saved`);
+      setFreqOpen(false);
+      void reload();
+    } catch (err) {
+      toastApiError(err);
+    } finally {
+      setBusy(false);
+    }
   }
 
   const columns = React.useMemo<DashboardDataTableColumn<FleetCustomerOwned>[]>(
@@ -193,11 +233,47 @@ export function CustomerOwnedEquipmentPage() {
         ),
       },
       {
+        id: "type",
+        header: "Type",
+        cell: (row) => (
+          <span className="font-sans text-[11px] uppercase text-[#C8C8C8]">
+            {row.type ?? "—"}
+          </span>
+        ),
+      },
+      {
         id: "customer",
-        header: "Customer",
+        header: "Owning Customer",
         cell: (row) => (
           <span className="font-sans text-[11px] uppercase text-[#C8C8C8]">
             {row.customerName}
+          </span>
+        ),
+      },
+      {
+        id: "location",
+        header: "Location / Well",
+        cell: (row) => (
+          <span className="font-sans text-[11px] uppercase text-[#C8C8C8]">
+            {row.wellSite}
+          </span>
+        ),
+      },
+      {
+        id: "last",
+        header: "Last Inspected",
+        cell: (row) => (
+          <span className="font-sans text-[11px] uppercase text-[#C8C8C8]">
+            {row.dateLabel ?? "—"}
+          </span>
+        ),
+      },
+      {
+        id: "result",
+        header: "Result",
+        cell: (row) => (
+          <span className="font-sans text-[11px] uppercase text-[#C8C8C8]">
+            {row.lastInspectionResult ?? "—"}
           </span>
         ),
       },
@@ -231,23 +307,17 @@ export function CustomerOwnedEquipmentPage() {
                 onSelect: () => void openRecord(row),
               },
               {
-                id: "cal",
-                label: "Add Calibration",
-                onSelect: () =>
-                  toastSuccess("Add calibration — coming soon"),
+                id: "edit",
+                label: "Edit equipment",
+                onSelect: () => router.push(`/fleet/customer-owned-equipment/${row.id}/edit`),
               },
-              {
-                id: "asset",
-                label: "View Asset",
-                onSelect: () =>
-                  toastSuccess(`View asset ${row.description}`),
-              },
-              {
-                id: "cert",
-                label: "Download Certificate",
-                onSelect: () =>
-                  toastSuccess("Certificate download — coming soon"),
-              },
+              ...(row.photoUrl
+                ? [{
+                    id: "photo",
+                    label: "Open photo",
+                    onSelect: () => window.open(row.photoUrl, "_blank", "noopener,noreferrer"),
+                  }]
+                : []),
               {
                 id: "freq",
                 label: "Adjust Frequency",
@@ -342,12 +412,20 @@ export function CustomerOwnedEquipmentPage() {
                 onDirectionChange={setSortDirection}
                 showDirectionInTrigger={false}
               />
+              <DashboardToolbarButton onClick={() => router.push("/fleet/customer-owned-equipment/new")}>
+                Add equipment
+              </DashboardToolbarButton>
               <DashboardExportMenu
                 items={[
                   {
                     id: "csv",
                     label: "Export current view · CSV",
-                    onSelect: () => toastSuccess("Export started"),
+                    onSelect: () =>
+                      downloadCsv(
+                        "customer-owned.csv",
+                        ["Code", "Equipment", "Customer", "Location", "Status", "Due"],
+                        rows.map((row) => [row.code, row.description, row.customerName, row.wellSite, row.statusLabel, row.dueLabel]),
+                      ),
                   },
                 ]}
               />
@@ -400,7 +478,7 @@ export function CustomerOwnedEquipmentPage() {
       <DashboardModal
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
-        title="Detail Screen — Not Built Yet"
+        title={detail ? detail.code : "Equipment"}
       >
         {detail ? (
           <div className="space-y-4 font-sans text-[11px] uppercase">
@@ -433,7 +511,7 @@ export function CustomerOwnedEquipmentPage() {
                   ? `· ${detail.lastInspectionResult}`
                   : ""}
               </p>
-              <p className="text-[#959597]">Full history — placeholder</p>
+              {detail.notes ? <p className="text-[#C8C8C8]">{detail.notes}</p> : null}
             </section>
           </div>
         ) : null}

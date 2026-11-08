@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   DashboardBadge,
+  DashboardBulkSelectBar,
   DashboardDataTable,
   DashboardExportMenu,
   DashboardListToolbar,
@@ -35,7 +37,7 @@ import {
   type FleetFilterValues,
 } from "./fleet-filters-drawer";
 import { FleetFilteredEmptyState } from "./fleet-empty-state";
-import { fleetBadgeTone } from "./fleet-ui";
+import { downloadCsv, fleetBadgeTone } from "./fleet-ui";
 import {
   OpsLoadFailedState,
   OpsLoadingListState,
@@ -56,11 +58,12 @@ const REPAIR_STATUSES = [
   "CANCELLED",
 ];
 
-const REPAIR_PRIORITIES = ["URGENT", "HIGH", "NORMAL", "LOW"];
+const REPAIR_PRIORITIES = ["URGENT", "HIGH", "MEDIUM", "LOW"];
 
 type ModalKind = "vendor" | "eta" | "asset" | "po" | null;
 
 export function RepairRequestsPage() {
+  const router = useRouter();
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [kpi, setKpi] = React.useState<FleetKpiCell[]>([]);
@@ -93,6 +96,10 @@ export function RepairRequestsPage() {
   const [activeRow, setActiveRow] = React.useState<FleetRepair | null>(null);
   const [modalValue, setModalValue] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [overdueOnly, setOverdueOnly] = React.useState(false);
+  const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
+  const [bulkKind, setBulkKind] = React.useState<"eta" | "vendor" | null>(null);
+  const [bulkValue, setBulkValue] = React.useState("");
 
   const filterCount = countActiveFleetFilters(appliedFilters);
 
@@ -108,6 +115,7 @@ export function RepairRequestsPage() {
           sort: sortField,
           direction: sortDirection,
           status: appliedFilters.status || undefined,
+          overdueVsEta: overdueOnly || undefined,
           ...fleetFiltersToParams(appliedFilters),
         }),
         fleetApi.repairsKpi(),
@@ -124,13 +132,22 @@ export function RepairRequestsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, q, sortField, sortDirection, appliedFilters]);
+  }, [page, pageSize, q, sortField, sortDirection, appliedFilters, overdueOnly]);
 
   React.useEffect(() => {
     void reload();
   }, [reload]);
 
   function applyStatusFilter(status: string) {
+    if (status === "OVERDUE") {
+      setOverdueOnly((current) => !current);
+      const next = { ...appliedFilters, status: "" };
+      setAppliedFilters(next);
+      setDraftFilters(next);
+      setPage(1);
+      return;
+    }
+    setOverdueOnly(false);
     const next = {
       ...appliedFilters,
       status: appliedFilters.status === status ? "" : status,
@@ -177,19 +194,6 @@ export function RepairRequestsPage() {
     }
   }
 
-  async function resolveRepair(row: FleetRepair) {
-    setBusy(true);
-    try {
-      await fleetApi.resolveRepair(row.id);
-      toastSuccess(`${row.code} resolved`);
-      void reload();
-    } catch (err) {
-      toastApiError(err);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function cancelRepair(row: FleetRepair) {
     if (!window.confirm(`Cancel repair request ${row.code}?`)) return;
     setBusy(true);
@@ -217,16 +221,34 @@ export function RepairRequestsPage() {
       },
       {
         id: "asset",
-        header: "Asset / Issue",
+        header: "Asset",
         cell: (row) => (
-          <div className="max-w-[180px]">
+          <div className="max-w-[160px]">
             <div className="truncate font-sans text-[11px] uppercase text-[#FDFDFF]">
-              {row.assetLabel}
+              {row.assetCode}
             </div>
             <div className="truncate font-sans text-[10px] uppercase text-[#959597]">
-              {row.issue}
+              {row.assetLabel}
             </div>
           </div>
+        ),
+      },
+      {
+        id: "truck",
+        header: "Parent Truck",
+        cell: (row) => (
+          <span className="font-sans text-[11px] uppercase text-[#C8C8C8]">
+            {row.parentTruck ?? "—"}
+          </span>
+        ),
+      },
+      {
+        id: "issue",
+        header: "Issue",
+        cell: (row) => (
+          <span className="font-sans text-[11px] uppercase text-[#C8C8C8]">
+            {row.issue}
+          </span>
         ),
       },
       {
@@ -248,6 +270,15 @@ export function RepairRequestsPage() {
         ),
       },
       {
+        id: "reported",
+        header: "Reported By",
+        cell: (row) => (
+          <span className="font-sans text-[11px] uppercase text-[#C8C8C8]">
+            {row.reportedBy ?? row.assignedName ?? "—"}
+          </span>
+        ),
+      },
+      {
         id: "eta",
         header: "ETA",
         cell: (row) => (
@@ -258,6 +289,15 @@ export function RepairRequestsPage() {
             )}
           >
             {row.etaLabel ?? "—"}
+          </span>
+        ),
+      },
+      {
+        id: "days",
+        header: "Days Open",
+        cell: (row) => (
+          <span className="font-sans text-[11px] uppercase text-[#C8C8C8]">
+            {row.daysOpen ?? "—"}
           </span>
         ),
       },
@@ -279,13 +319,12 @@ export function RepairRequestsPage() {
               {
                 id: "open",
                 label: "Open",
-                onSelect: () =>
-                  toastSuccess(`Repair ${row.code} — detail coming soon`),
+                onSelect: () => router.push(`/fleet/repair-requests/${row.code}`),
               },
               {
                 id: "resolve",
                 label: "Resolve",
-                onSelect: () => void resolveRepair(row),
+                onSelect: () => router.push(`/fleet/repair-requests/${row.code}#resolve`),
               },
               {
                 id: "vendor",
@@ -298,25 +337,24 @@ export function RepairRequestsPage() {
                 onSelect: () => openModal("eta", row),
               },
               {
-                id: "asset",
-                label: "Move Asset",
-                onSelect: () => openModal("asset", row),
-              },
-              {
                 id: "po",
-                label: "Link PO",
+                label: "Link Purchase Order",
                 onSelect: () => openModal("po", row),
               },
               {
-                id: "contact",
-                label: "Contact Vendor",
-                onSelect: () => {
-                  if (row.contactPhone) {
-                    toastSuccess(`Call vendor: ${row.contactPhone}`);
-                  } else {
-                    toastSuccess("No vendor phone on file");
-                  }
-                },
+                id: "asset",
+                label: "Move Asset",
+                onSelect: () => router.push(`/fleet/assets/${encodeURIComponent(row.assetCode)}/move`),
+              },
+              {
+                id: "print",
+                label: "Print Work Ticket",
+                onSelect: () => router.push(`/fleet/repair-requests/${row.code}#print`),
+              },
+              {
+                id: "corrective",
+                label: "Create Corrective Action",
+                onSelect: () => router.push(`/fleet/repair-requests/${row.code}`),
               },
               {
                 id: "cancel",
@@ -345,7 +383,11 @@ export function RepairRequestsPage() {
             : "";
 
   const statusFilter = appliedFilters.status;
-  const emptyHint = statusFilter ? emptyHints[statusFilter] : undefined;
+  const emptyHint = overdueOnly
+    ? emptyHints.OVERDUE
+    : statusFilter
+      ? emptyHints[statusFilter]
+      : undefined;
   const showFilteredEmpty = !loading && total === 0 && Boolean(emptyHint);
 
   if (loading && rows.length === 0 && !error) {
@@ -358,10 +400,12 @@ export function RepairRequestsPage() {
   return (
     <div className="space-y-4 bg-shell p-3 sm:space-y-5 sm:p-5">
       <DashboardStatGrid>
-        <DashboardStatRow columns={4}>
+        <DashboardStatRow columns={5}>
           {kpi.map((cell) => {
             const key = cell.filterKey ?? "";
-            const active = Boolean(key && statusFilter === key);
+            const active = Boolean(
+              key && (key === "OVERDUE" ? overdueOnly : statusFilter === key),
+            );
             return (
               <button
                 key={cell.title}
@@ -443,6 +487,17 @@ export function RepairRequestsPage() {
         }
         actions={
           <>
+            <DashboardToolbarButton onClick={() => router.push("/fleet/repair-requests/new")}>
+              New request
+            </DashboardToolbarButton>
+            <DashboardToolbarButton
+              onClick={() => {
+                setOverdueOnly((current) => !current);
+                setPage(1);
+              }}
+            >
+              {overdueOnly ? "Overdue only ×" : "Overdue only"}
+            </DashboardToolbarButton>
             <DashboardSortMenu
               options={SORT_OPTIONS}
               field={sortField}
@@ -459,7 +514,12 @@ export function RepairRequestsPage() {
                 {
                   id: "csv",
                   label: "Export current view · CSV",
-                  onSelect: () => toastSuccess("Export started"),
+                  onSelect: () =>
+                    downloadCsv(
+                      "repair-requests.csv",
+                      ["Code", "Asset", "Issue", "Truck", "Status", "Priority", "Vendor", "ETA"],
+                      rows.map((row) => [row.code, row.assetLabel, row.issue, row.parentTruck, row.statusLabel, row.priorityLabel, row.vendorName, row.etaLabel]),
+                    ),
                 },
               ]}
             />
@@ -495,10 +555,24 @@ export function RepairRequestsPage() {
         />
       ) : (
         <>
+          {selectedIds.length > 0 ? (
+            <DashboardBulkSelectBar
+              selectedCount={selectedIds.length}
+              actions={
+                <div className="flex gap-2">
+                  <DashboardToolbarButton onClick={() => { setBulkKind("eta"); setBulkValue(""); }}>Update ETA</DashboardToolbarButton>
+                  <DashboardToolbarButton onClick={() => { setBulkKind("vendor"); setBulkValue(""); }}>Assign vendor</DashboardToolbarButton>
+                </div>
+              }
+            />
+          ) : null}
           <DashboardDataTable
             columns={columns}
             rows={rows}
             getRowId={(row) => row.id}
+            selectable
+            selectedIds={selectedIds}
+            onSelectedIdsChange={setSelectedIds}
             emptyMessage="No repair requests match your filters"
           />
 
@@ -535,6 +609,49 @@ export function RepairRequestsPage() {
         }}
       />
 
+      <DashboardModal
+        open={Boolean(bulkKind)}
+        onClose={() => setBulkKind(null)}
+        title={bulkKind === "eta" ? "Update ETA" : "Assign vendor"}
+        footer={
+          <DashboardToolbarButton
+            variant="primary"
+            disabled={busy || !bulkValue.trim()}
+            onClick={() => {
+              void (async () => {
+                setBusy(true);
+                try {
+                  await Promise.all(
+                    selectedIds.map((id) =>
+                      fleetApi.updateRepair(
+                        id,
+                        bulkKind === "eta" ? { etaLabel: bulkValue.trim() } : { vendorName: bulkValue.trim() },
+                      ),
+                    ),
+                  );
+                  toastSuccess(`${selectedIds.length} repair${selectedIds.length === 1 ? "" : "s"} updated`);
+                  setSelectedIds([]);
+                  setBulkKind(null);
+                  await reload();
+                } catch (err) {
+                  toastApiError(err);
+                } finally {
+                  setBusy(false);
+                }
+              })();
+            }}
+          >
+            Save
+          </DashboardToolbarButton>
+        }
+      >
+        <input
+          value={bulkValue}
+          onChange={(event) => setBulkValue(event.target.value)}
+          placeholder={bulkKind === "eta" ? "JUN 21" : "Vendor name"}
+          className="h-10 w-full rounded-lg border border-[#2D2D30] bg-[#1A1A1A] px-3 font-sans text-[12px] uppercase text-[#FDFDFF] outline-none"
+        />
+      </DashboardModal>
       <DashboardModal
         open={Boolean(modalKind)}
         onClose={() => setModalKind(null)}

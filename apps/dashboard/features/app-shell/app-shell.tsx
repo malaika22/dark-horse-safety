@@ -200,6 +200,26 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
     pageTitle: "Customer-Owned Equipment",
   },
   {
+    path: "/fleet/unaccounted",
+    breadcrumb: "Fleet & Assets",
+    pageTitle: null,
+  },
+  {
+    path: "/fleet/trucks/locations/new",
+    breadcrumb: "Fleet & Assets / Trucks & Locations / Add Location",
+    pageTitle: null,
+  },
+  {
+    path: "/fleet/trucks/locations",
+    breadcrumb: "Fleet & Assets / Trucks & Locations",
+    pageTitle: null,
+  },
+  {
+    path: "/fleet/trucks",
+    breadcrumb: "Fleet & Assets",
+    pageTitle: null,
+  },
+  {
     path: "/fleet/repair-requests",
     breadcrumb: "Fleet & Assets",
     pageTitle: "Repair Requests",
@@ -214,7 +234,7 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
     breadcrumb: "Fleet & Assets",
     pageTitle: "Calibration",
   },
-  { path: "/fleet/assets", breadcrumb: "Fleet & Assets", pageTitle: "Assets" },
+  { path: "/fleet/assets", breadcrumb: "Fleet & Assets", pageTitle: null },
   { path: "/fleet", breadcrumb: "Fleet & Assets", pageTitle: "Fleet Dashboard" },
   {
     path: "/operations/netsuite",
@@ -418,6 +438,12 @@ function headerMetaForPath(pathname: string): HeaderMeta {
   ) {
     return { breadcrumb: "Accounts / Locations / Wells", pageTitle: null };
   }
+  if (pathname === "/fleet/inspections/new") {
+    return {
+      breadcrumb: "Fleet & Assets / Inspections / Add Record",
+      pageTitle: null,
+    };
+  }
   if (/^\/fleet\/inspections\/[^/]+\/edit$/.test(pathname)) {
     return {
       breadcrumb: "Fleet & Assets / Edit Inspection",
@@ -475,6 +501,57 @@ function headerMetaForPath(pathname: string): HeaderMeta {
   }
   if (/^\/safety\/forms\/[^/]+$/.test(pathname)) {
     return { breadcrumb: "Safety & Comp. / Forms", pageTitle: null };
+  }
+
+  if (pathname === "/fleet/calibration/new") {
+    return { breadcrumb: "Fleet & Assets / Calibration / Add Record", pageTitle: null };
+  }
+  if (/^\/fleet\/calibration\/[^/]+$/.test(pathname)) {
+    return { breadcrumb: "Fleet & Assets / Calibration", pageTitle: null };
+  }
+  if (pathname === "/fleet/repair-requests/new") {
+    return { breadcrumb: "Fleet & Assets / Repair Requests / Create", pageTitle: null };
+  }
+  if (/^\/fleet\/repair-requests\/[^/]+$/.test(pathname)) {
+    return { breadcrumb: "Fleet & Assets / Repair Requests", pageTitle: null };
+  }
+  if (pathname === "/fleet/asset-readiness") {
+    return { breadcrumb: "Fleet & Assets / Asset Readiness", pageTitle: null };
+  }
+  if (pathname === "/fleet/inspections/new") {
+    return { breadcrumb: "Fleet & Assets / Inspections / Add Record", pageTitle: null };
+  }
+  if (/^\/fleet\/inspections\/[^/]+$/.test(pathname)) {
+    return { breadcrumb: "Fleet & Assets / Inspections", pageTitle: null };
+  }
+  if (pathname === "/fleet/checkout") {
+    return { breadcrumb: "Fleet & Assets / Checkout & Check-In", pageTitle: null };
+  }
+  if (pathname === "/fleet/inventory") {
+    return { breadcrumb: "Fleet & Assets / Inventory", pageTitle: null };
+  }
+  if (pathname === "/fleet/customer-owned-equipment/new") {
+    return { breadcrumb: "Fleet & Assets / Customer Equipment / Add", pageTitle: null };
+  }
+  if (/^\/fleet\/customer-owned-equipment\/[^/]+\/edit$/.test(pathname)) {
+    return { breadcrumb: "Fleet & Assets / Customer Equipment / Edit", pageTitle: null };
+  }
+  if (pathname === "/fleet/assets/new") {
+    return { breadcrumb: "Fleet & Assets / Assets / Add Asset", pageTitle: null };
+  }
+  const assetMove = pathname.match(/^\/fleet\/assets\/([^/]+)\/move$/);
+  if (assetMove) {
+    return { breadcrumb: "Fleet & Assets / Assets / Move Asset", pageTitle: null };
+  }
+  const assetEdit = pathname.match(/^\/fleet\/assets\/([^/]+)\/edit$/);
+  if (assetEdit) {
+    const code = decodeURIComponent(assetEdit[1] ?? "").toUpperCase();
+    return { breadcrumb: `Fleet & Assets / Assets / ${code} / Edit`, pageTitle: null };
+  }
+  const assetRecord = pathname.match(/^\/fleet\/assets\/([^/]+)$/);
+  if (assetRecord) {
+    const code = decodeURIComponent(assetRecord[1] ?? "").toUpperCase();
+    return { breadcrumb: `Fleet & Assets / Assets / ${code}`, pageTitle: null };
   }
 
   const exact = HEADER_TITLES.find((entry) => entry.path === pathname);

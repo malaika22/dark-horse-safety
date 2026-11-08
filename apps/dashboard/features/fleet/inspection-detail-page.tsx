@@ -45,6 +45,7 @@ export function InspectionDetailPage() {
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
   const [successMsg, setSuccessMsg] = React.useState<string | null>(null);
   const [createdId, setCreatedId] = React.useState<string | null>(null);
+  const [createdCode, setCreatedCode] = React.useState<string | null>(null);
 
   const [recheck, setRecheck] = React.useState<string[]>([]);
   const [includeAll, setIncludeAll] = React.useState(false);
@@ -112,6 +113,7 @@ export function InspectionDetailPage() {
         notes: notes.trim() || undefined,
       });
       setCreatedId(res.data.id);
+      setCreatedCode(res.data.code);
       setSuccessMsg(res.data.message);
       setConfirmOpen(false);
       setReinspectOpen(false);
@@ -229,17 +231,33 @@ export function InspectionDetailPage() {
                     },
                   },
                   {
-                    label: "Download PDF",
+                    label: "Download record",
                     onClick: () => {
                       setMenuOpen(false);
-                      toastSuccess("PDF export queued");
+                      const blob = new Blob(
+                        [[
+                          data.code,
+                          data.assetLabel,
+                          data.assetCode,
+                          data.result,
+                          data.inspectorName,
+                          data.findingsSummary ?? "",
+                        ].join("\n")],
+                        { type: "text/plain" },
+                      );
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement("a");
+                      link.href = url;
+                      link.download = `${data.code}.txt`;
+                      link.click();
+                      URL.revokeObjectURL(url);
                     },
                   },
                   {
                     label: "View Asset",
                     onClick: () => {
                       setMenuOpen(false);
-                      router.push("/fleet/assets");
+                      router.push(`/fleet/assets/${encodeURIComponent(data.assetCode)}`);
                     },
                   },
                   ...(data.linkedRepair
@@ -248,7 +266,7 @@ export function InspectionDetailPage() {
                           label: "View Linked Repair",
                           onClick: () => {
                             setMenuOpen(false);
-                            router.push("/fleet/repair-requests");
+                            router.push(`/fleet/repair-requests/${data.linkedRepair!.code}`);
                           },
                         },
                       ]
@@ -280,10 +298,22 @@ export function InspectionDetailPage() {
               </div>
             ) : null}
           </div>
-          <DashboardToolbarButton onClick={() => toastSuccess("Print queued")}>
+          <DashboardToolbarButton onClick={() => window.print()}>
             Print Report
           </DashboardToolbarButton>
-          <DashboardToolbarButton onClick={() => toastSuccess("Note added")}>
+          <DashboardToolbarButton
+            onClick={() => {
+              const note = window.prompt("Add a note");
+              if (!note?.trim() || !data) return;
+              void fleetApi
+                .editInspection(data.id, { reason: "NOTE", details: note.trim() })
+                .then((res) => {
+                  toastSuccess(res.data.message || "Note saved");
+                  return reload();
+                })
+                .catch(toastApiError);
+            }}
+          >
             Add Note
           </DashboardToolbarButton>
           <DashboardToolbarButton
@@ -302,29 +332,39 @@ export function InspectionDetailPage() {
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
           <DashboardStatCell
+            icon="alert"
             title="Result"
             value={data.resultLabel}
+            valueClassName={
+              data.result === "FAILED" ? "text-[#FF8A9A]" : "text-[#7DCEA0]"
+            }
             meta={`${data.type ?? "INSPECTION"} · ${data.dateLabel ?? "—"}`}
           />
           <DashboardStatCell
+            icon="safety"
             title="Items Passed"
             value={`${passed}/${totalItems}`}
             meta={`OF ${totalItems} CHECKLIST ITEMS`}
           />
           <DashboardStatCell
+            icon="lightning"
             title="Items Failed"
             value={String(failed)}
             meta={`OF ${totalItems} · SEE CHECKLIST`}
           />
           <DashboardStatCell
+            icon="document"
             title="Re-Inspection"
             value={
               data.reInspection?.code ??
               (data.reInspectionDueLabel ? "PENDING" : "—")
             }
+            valueClassName={
+              data.reInspection ? "text-[#8EB4FF] underline" : undefined
+            }
             meta={
               data.reInspection
-                ? `${data.reInspection.dueLabel ?? ""} · ${data.reInspection.inspectorName}`
+                ? `DUE ${data.reInspection.dueLabel ?? "—"} · ${data.reInspection.inspectorName}`
                 : data.reInspectionDueLabel
                   ? `DUE ${data.reInspectionDueLabel}`
                   : data.linkedRepair
@@ -357,10 +397,18 @@ export function InspectionDetailPage() {
                           fail ? "text-[#FF6B6B]" : "text-[#959597]",
                         )}
                       >
-                        {item.detail}
+                        {item.note || item.detail}
                       </p>
                     </div>
-                    <DashboardBadge variant={fail ? "error" : "success"}>
+                    <DashboardBadge
+                      variant={
+                        item.result === "FAIL"
+                          ? "error"
+                          : item.result === "N/A"
+                            ? "neutral"
+                            : "success"
+                      }
+                    >
                       {item.result}
                     </DashboardBadge>
                   </div>
@@ -411,42 +459,70 @@ export function InspectionDetailPage() {
                 ))}
               </ul>
             ) : null}
-            <div className="mt-4 space-y-2 font-sans text-[11px] uppercase">
-              {data.linkedRepair ? (
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between text-left text-[#8B9BB4]"
-                  onClick={() => router.push("/fleet/repair-requests")}
-                >
-                  <span>
-                    {data.linkedRepair.code}: {data.linkedRepair.issue}
-                  </span>
-                  <span>→</span>
-                </button>
-              ) : null}
-              {data.reInspection ? (
-                <button
-                  type="button"
-                  className="flex w-full items-center justify-between text-left text-[#8B9BB4]"
-                  onClick={() =>
-                    router.push(`/fleet/inspections/${data.reInspection!.id}`)
-                  }
-                >
-                  <span>
-                    {data.reInspection.code} · {data.reInspection.dueLabel}
-                  </span>
-                  <span>→</span>
-                </button>
-              ) : null}
-              <div className="flex items-center justify-between text-[#E8C547]">
-                <span>
-                  Corrective Action:{" "}
+            <dl className="mt-4 space-y-3 font-sans text-[11px] uppercase">
+              <div className="flex items-start justify-between gap-3">
+                <dt className="text-[#959597]">Linked Repair Request</dt>
+                <dd>
+                  {data.linkedRepair ? (
+                    <button
+                      type="button"
+                      className="text-[#8EB4FF]"
+                      onClick={() => router.push(`/fleet/repair-requests/${data.linkedRepair!.code}`)}
+                    >
+                      {data.linkedRepair.code} →
+                    </button>
+                  ) : (
+                    <span className="text-[#6B6B6D]">NONE</span>
+                  )}
+                </dd>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <dt className="text-[#959597]">Re-Inspection</dt>
+                <dd>
+                  {data.reInspection ? (
+                    <button
+                      type="button"
+                      className="text-[#8EB4FF]"
+                      onClick={() =>
+                        router.push(`/fleet/inspections/${data.reInspection!.id}`)
+                      }
+                    >
+                      {data.reInspection.code} · DUE {data.reInspection.dueLabel ?? "—"} →
+                    </button>
+                  ) : (
+                    <span className="text-[#6B6B6D]">NOT SCHEDULED</span>
+                  )}
+                </dd>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <dt className="text-[#959597]">Corrective Action</dt>
+                <dd className="text-[#E8C547]">
                   {data.correctiveActionRaised
                     ? data.correctiveActions[0]?.code
-                    : "NOT RAISED"}
-                </span>
+                    : "NOT RAISED YET"}
+                </dd>
               </div>
-            </div>
+              <div className="flex items-start justify-between gap-3">
+                <dt className="text-[#959597]">Asset</dt>
+                <dd>
+                  <button
+                    type="button"
+                    className="text-[#8EB4FF]"
+                    onClick={() => router.push("/fleet/assets")}
+                  >
+                    {data.assetCode}
+                    {data.parentTruck ? ` · ${data.parentTruck}` : ""} →
+                  </button>
+                </dd>
+              </div>
+              <div className="flex items-start justify-between gap-3">
+                <dt className="text-[#959597]">Source</dt>
+                <dd className="text-[#FDFDFF]">
+                  {data.sourceLabel ?? data.source ?? "—"}
+                  {data.type ? ` · ${data.type}` : ""}
+                </dd>
+              </div>
+            </dl>
           </DashboardPanel>
         </div>
       </div>
@@ -462,7 +538,7 @@ export function InspectionDetailPage() {
                 variant="primary"
                 onClick={() => router.push(`/fleet/inspections/${createdId}`)}
               >
-                View {data.reInspection?.code ?? "New"}
+                View {createdCode ?? data.reInspection?.code ?? "New"}
               </DashboardToolbarButton>
             ) : null}
             <DashboardToolbarButton onClick={() => setSuccessMsg(null)}>
@@ -654,7 +730,7 @@ export function InspectionDetailPage() {
               disabled={busy}
               onClick={() => void submitReinspect()}
             >
-              Confirm & Create
+              Confirm & Create {data.nextCode ?? ""}
             </DashboardToolbarButton>
           </>
         }

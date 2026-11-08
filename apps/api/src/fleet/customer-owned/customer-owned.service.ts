@@ -14,7 +14,16 @@ import {
 import {
   BulkReviewDto,
   CustomerOwnedListQueryDto,
+  SaveCustomerOwnedDto,
 } from './dto/customer-owned.dto';
+
+type CustomerExtra = {
+  frequency?: string;
+  formName?: string;
+  notes?: string;
+  photoUrl?: string;
+  operationalStatus?: string;
+};
 
 function customerOwnedStatusTone(status: CustomerOwnedStatus) {
   if (status === 'OVERDUE') return 'danger';
@@ -185,7 +194,14 @@ export class CustomerOwnedService {
     serial: string | null;
     reviewedAt: Date | null;
     reviewedBy: string | null;
-  }) {
+  }, extra?: CustomerExtra) {
+    const operational = extra?.operationalStatus || '';
+    const statusLabel =
+      operational === 'OUT OF SERVICE'
+        ? 'OUT OF SERVICE'
+        : row.status === 'CURRENT' && operational === 'ACTIVE'
+          ? 'ACTIVE'
+          : labelOf(row.status);
     return {
       id: row.id,
       code: row.code,
@@ -200,14 +216,133 @@ export class CustomerOwnedService {
       dateLabel: fmtShortDate(row.lastInspectionAt),
       dueLabel: buildDueLabel(row.nextDueAt),
       status: row.status,
-      statusLabel: labelOf(row.status),
-      statusTone: customerOwnedStatusTone(row.status),
+      statusLabel,
+      statusTone: operational === 'OUT OF SERVICE' ? 'danger' : customerOwnedStatusTone(row.status),
       type: row.type,
       model: row.model,
       serial: row.serial,
       reviewedAt: row.reviewedAt,
       reviewedBy: row.reviewedBy,
+      frequency: extra?.frequency ?? '',
+      formName: extra?.formName ?? '',
+      notes: extra?.notes ?? '',
+      photoUrl: extra?.photoUrl ?? '',
+      operationalStatus: operational,
     };
+  }
+
+  private async extraMap(ids: string[]) {
+    const map = new Map<string, CustomerExtra>();
+    try {
+      await this.prisma.$executeRawUnsafe(
+        `CREATE TABLE IF NOT EXISTS "FleetCustomerOwnedExtra" (
+          "equipmentId" TEXT PRIMARY KEY,
+          extra JSONB NOT NULL,
+          "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+      );
+      if (!ids.length) return map;
+      const rows = await this.prisma.$queryRawUnsafe<
+        Array<{ equipmentId: string; extra: CustomerExtra }>
+      >(`SELECT "equipmentId", extra FROM "FleetCustomerOwnedExtra"`);
+      for (const row of rows) {
+        if (ids.includes(row.equipmentId)) map.set(row.equipmentId, row.extra ?? {});
+      }
+    } catch {
+      return map;
+    }
+    return map;
+  }
+
+  private async writeExtra(id: string, extra: CustomerExtra) {
+    await this.extraMap([id]);
+    await this.prisma.$executeRawUnsafe(
+      `INSERT INTO "FleetCustomerOwnedExtra" ("equipmentId", extra, "updatedAt")
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT ("equipmentId") DO UPDATE SET extra = EXCLUDED.extra, "updatedAt" = NOW()`,
+      id,
+      JSON.stringify(extra),
+    );
+  }
+
+  private statusFor(nextDue: Date | null, result: string | null): CustomerOwnedStatus {
+    if (result && /FAIL/i.test(result)) return 'NEEDS_REVIEW';
+    if (!nextDue) return 'CURRENT';
+    const days = (nextDue.getTime() - Date.now()) / DAY_MS;
+    if (days < 0) return 'OVERDUE';
+    if (days <= 30) return 'EXPIRING';
+    return 'CURRENT';
+  }
+
+  private async save(dto: SaveCustomerOwnedDto, existingId?: string) {
+    const name = asciiSafe(dto.name.trim().toUpperCase());
+    const customerName = asciiSafe(dto.customerName.trim().toUpperCase());
+    if (!name || !customerName || !dto.type?.trim()) {
+      throw new BadRequestException('Equipment name, type, and customer are required');
+    }
+    const nextDue = dto.nextDue ? new Date(dto.nextDue) : null;
+    const lastInspected = dto.lastInspected ? new Date(dto.lastInspected) : null;
+    const result = dto.lastResult ? asciiSafe(dto.lastResult.trim().toUpperCase()) : null;
+    const data = {
+      description: name,
+      type: asciiSafe(dto.type.trim().toUpperCase()),
+      customerName,
+      customerId: dto.customerId || null,
+      serial: dto.serial ? asciiSafe(dto.serial.trim().toUpperCase()) : null,
+      wellSite: dto.location ? asciiSafe(dto.location.trim().toUpperCase()) : '',
+      lastInspectionAt: lastInspected && !Number.isNaN(lastInspected.getTime()) ? lastInspected : null,
+      lastInspectionResult: result,
+      nextDueAt: nextDue && !Number.isNaN(nextDue.getTime()) ? nextDue : null,
+      status: this.statusFor(
+        nextDue && !Number.isNaN(nextDue.getTime()) ? nextDue : null,
+        result,
+      ),
+      customerOwned: true,
+    };
+    const row = existingId
+      ? await this.prisma.customerOwnedEquipment.update({ where: { id: existingId }, data })
+      : await this.prisma.customerOwnedEquipment.create({
+          data: {
+            ...data,
+            code: await this.nextCode(),
+          },
+        });
+    const extra: CustomerExtra = {
+      frequency: dto.frequency ? asciiSafe(dto.frequency.trim().toUpperCase()) : '',
+      formName: dto.formName ? asciiSafe(dto.formName.trim().toUpperCase()) : '',
+      notes: dto.notes ? asciiSafe(dto.notes.trim()) : '',
+      photoUrl: dto.photoUrl?.trim() ?? '',
+      operationalStatus:
+        asciiSafe((dto.operationalStatus || 'ACTIVE').trim().toUpperCase()) === 'OUT OF SERVICE'
+          ? 'OUT OF SERVICE'
+          : 'ACTIVE',
+    };
+    await this.writeExtra(row.id, extra);
+    return { data: this.mapRow(row, extra) };
+  }
+
+  private async nextCode() {
+    const rows = await this.prisma.customerOwnedEquipment.findMany({ select: { code: true } });
+    let max = 0;
+    for (const row of rows) {
+      const value = Number(row.code.replace(/\D/g, ''));
+      if (Number.isFinite(value) && value > max) max = value;
+    }
+    return `COE-${String(max + 1).padStart(4, '0')}`;
+  }
+
+  async create(dto: SaveCustomerOwnedDto) {
+    await this.ensureSeed();
+    return this.save(dto);
+  }
+
+  async update(id: string, dto: SaveCustomerOwnedDto) {
+    await this.ensureSeed();
+    const row = await this.prisma.customerOwnedEquipment.findFirst({
+      where: { archivedAt: null, OR: [{ id }, { code: { equals: id, mode: 'insensitive' } }] },
+    });
+    if (!row) throw new NotFoundException('Customer-owned equipment not found');
+    return this.save(dto, row.id);
   }
 
   async list(query: CustomerOwnedListQueryDto) {
@@ -249,8 +384,9 @@ export class CustomerOwnedService {
     };
 
     const rows = await this.prisma.customerOwnedEquipment.findMany({ where });
+    const extras = await this.extraMap(rows.map((row) => row.id));
     const sort = (query.sort ?? 'nextDueAt').toLowerCase();
-    const mapped = rows.map((r) => this.mapRow(r));
+    const mapped = rows.map((r) => this.mapRow(r, extras.get(r.id)));
     mapped.sort((a, b) => {
       const pin = customerOwnedPinScore(a) - customerOwnedPinScore(b);
       if (pin !== 0) return pin;
@@ -320,10 +456,11 @@ export class CustomerOwnedService {
     const rows = await this.prisma.customerOwnedEquipment.findMany({
       where: { id: { in: dto.ids } },
     });
+    const extras = await this.extraMap(rows.map((row) => row.id));
     return {
       data: {
         updated: rows.length,
-        items: rows.map((r) => this.mapRow(r)),
+        items: rows.map((r) => this.mapRow(r, extras.get(r.id))),
       },
     };
   }
@@ -337,6 +474,7 @@ export class CustomerOwnedService {
       },
     });
     if (!row) throw new NotFoundException('Customer-owned equipment not found');
-    return { data: this.mapRow(row) };
+    const extras = await this.extraMap([row.id]);
+    return { data: this.mapRow(row, extras.get(row.id)) };
   }
 }

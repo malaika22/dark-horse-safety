@@ -86,6 +86,7 @@ export function useScrollLock(locked: boolean) {
 export interface DashboardMenuItem {
   id: string;
   label: string;
+  hint?: string;
   destructive?: boolean;
   onSelect?: () => void;
 }
@@ -206,8 +207,13 @@ export function DashboardMenuPopover({
     >
       {children ?? (
         <ul className="flex flex-col gap-3">
-          {items.map((item) => (
-            <li key={item.id}>
+          {items.map((item, index) => (
+            <li
+              key={item.id}
+              className={cn(
+                item.destructive && index > 0 && "mt-1 border-t border-[#2D2D30] pt-3",
+              )}
+            >
               <button
                 type="button"
                 role="menuitem"
@@ -224,6 +230,11 @@ export function DashboardMenuPopover({
                 )}
               >
                 {item.label}
+                {item.hint ? (
+                  <span className="mt-1 block font-sans text-[10px] normal-case leading-snug tracking-normal text-[#959597]">
+                    {item.hint}
+                  </span>
+                ) : null}
               </button>
             </li>
           ))}

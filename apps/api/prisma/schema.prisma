@@ -2412,6 +2412,80 @@ model FleetRepairRequest {
   @@index([archivedAt])
 }
 
+model FleetTruckProfile {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  documents Json?
+  inventory Json?
+  audit     Json?
+  movements Json?
+  updatedAt DateTime @updatedAt
+}
+
+model FleetAssetProfile {
+  id        String   @id @default(uuid())
+  assetCode String   @unique
+  profile   Json
+  updatedAt DateTime @updatedAt
+}
+
+model FleetLocation {
+  id               String    @id @default(uuid())
+  name             String
+  type             String    @default("YARD")
+  address          String?
+  city             String?
+  state            String?
+  latitude         Decimal?  @db.Decimal(10, 6)
+  longitude        Decimal?  @db.Decimal(10, 6)
+  responsibleName  String?
+  accessHours      String?
+  maxCapacity      Int?
+  bayCount         Int?
+  emergencyContact String?
+  status           String    @default("ACTIVE")
+  notes            String?
+  archivedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([status])
+  @@index([archivedAt])
+  @@index([name])
+}
+
+enum UnaccountedStatus {
+  LOCATING
+  CHARGE_PENDING
+  OVERDUE
+  WRITTEN_OFF
+  RECOVERED
+}
+
+model UnaccountedAsset {
+  id               String            @id @default(uuid())
+  assetLabel       String
+  assetCode        String
+  replacementValue Decimal           @db.Decimal(14, 2)
+  lastTruck        String?
+  lastHolder       String?
+  markedMissingAt  DateTime
+  locateDays       Int               @default(14)
+  status           UnaccountedStatus @default(LOCATING)
+  chargeMethod     String?
+  chargeReason     String?
+  notifyTechnician Boolean           @default(false)
+  chargedAmount    Decimal?          @db.Decimal(14, 2)
+  history          Json?
+  archivedAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([status])
+  @@index([archivedAt])
+  @@index([assetCode])
+}
+
 model CustomerOwnedEquipment {
   id                   String              @id @default(uuid())
   code                 String              @unique

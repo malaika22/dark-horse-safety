@@ -402,6 +402,12 @@ export function InspectionsPage() {
         }
         actions={
           <>
+            <DashboardToolbarButton
+              variant="primary"
+              onClick={() => router.push("/fleet/inspections/new")}
+            >
+              Add Record
+            </DashboardToolbarButton>
             <DashboardSortMenu
               options={SORT_OPTIONS}
               field={sortField}

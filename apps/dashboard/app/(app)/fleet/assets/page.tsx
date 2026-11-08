@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+import { AssetsPage } from "@/features/fleet/assets-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Assets" />;
+  return <AssetsPage />;
 }

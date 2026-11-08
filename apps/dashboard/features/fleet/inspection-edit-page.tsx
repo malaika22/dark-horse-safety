@@ -20,6 +20,8 @@ export function InspectionEditPage() {
   const router = useRouter();
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = React.useState<string | null>(null);
   const [data, setData] = React.useState<FleetInspectionDetail | null>(null);
   const [reason, setReason] = React.useState("");
   const [details, setDetails] = React.useState("");
@@ -61,6 +63,7 @@ export function InspectionEditPage() {
       return;
     }
     setBusy(true);
+    setSaveError(null);
     try {
       const checklistItems = Object.entries(edits).map(([label, v]) => ({
         label,
@@ -76,8 +79,9 @@ export function InspectionEditPage() {
         editedBy: "R. CRAWFORD",
       });
       toastSuccess(res.data.message);
-      router.push(`/fleet/inspections/${data.id}`);
+      setSaveMessage(res.data.message || `${data.code} updated. The original submission stays on the record.`);
     } catch (err) {
+      setSaveError("Couldn't save. Your changes are preserved.");
       toastApiError(err);
     } finally {
       setBusy(false);
@@ -342,6 +346,16 @@ export function InspectionEditPage() {
           </DashboardPanel>
         </div>
       </div>
+
+      {saveMessage ? (
+        <p className="rounded-lg border border-[#2F6B45] bg-[#13281C] px-3 py-2 font-sans text-[12px] uppercase text-[#7DCEA0]">{saveMessage}</p>
+      ) : null}
+      {saveError ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-[#FF4D4D] bg-[#3A1717] px-3 py-2">
+          <p className="font-sans text-[12px] uppercase text-[#FF8A9A]">{saveError}</p>
+          <DashboardToolbarButton disabled={busy || !canSave} onClick={() => void save()}>Retry</DashboardToolbarButton>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#2A2A2A] pt-4">
         <DashboardToolbarButton

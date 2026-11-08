@@ -16,6 +16,7 @@ export interface DashboardStatCellProps {
   metrics?: DashboardStatMetric[];
   action?: string;
   icon?: StatIconName;
+  valueClassName?: string;
   onAction?: () => void;
   className?: string;
 }
@@ -24,16 +25,23 @@ function MetricBlock({
   value,
   meta,
   metaTone = "muted",
+  valueClassName,
 }: {
   value: string;
   meta?: string;
   metaTone?: "muted" | "success";
+  valueClassName?: string;
 }) {
   const showValue = Boolean(value?.trim());
   return (
     <div className="min-w-0">
       {showValue ? (
-        <p className="font-sans text-[24px] font-[590] uppercase leading-none tracking-[-0.02em] text-[#FDFDFF] md:text-[32px]">
+        <p
+          className={cn(
+            "font-sans text-[24px] font-[590] uppercase leading-none tracking-[-0.02em] md:text-[32px]",
+            valueClassName ?? "text-[#FDFDFF]",
+          )}
+        >
           {value}
         </p>
       ) : null}
@@ -62,6 +70,7 @@ export function DashboardStatCell({
   metrics,
   action,
   icon,
+  valueClassName,
   onAction,
   className,
 }: DashboardStatCellProps) {
@@ -111,6 +120,7 @@ export function DashboardStatCell({
               value={item.value}
               meta={item.meta}
               metaTone={item.metaTone}
+              valueClassName={valueClassName}
             />
           ))}
         </div>
