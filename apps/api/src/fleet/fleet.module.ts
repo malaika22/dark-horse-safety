@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AssetsModule } from './assets/assets.module';
+import { FleetSchemaService } from './fleet-schema.service';
 import { CalibrationModule } from './calibration/calibration.module';
 import { CustomerOwnedModule } from './customer-owned/customer-owned.module';
 import { FleetDashboardModule } from './dashboard/fleet-dashboard.module';
@@ -10,6 +11,7 @@ import { TrucksModule } from './trucks/trucks.module';
 import { UnaccountedModule } from './unaccounted/unaccounted.module';
 
 @Module({
+  providers: [FleetSchemaService],
   imports: [
     EquipmentRulesModule,
     InspectionsModule,
