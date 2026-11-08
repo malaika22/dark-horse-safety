@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
+import { AssetsModule } from './assets/assets.module';
 import { CalibrationModule } from './calibration/calibration.module';
 import { CustomerOwnedModule } from './customer-owned/customer-owned.module';
 import { FleetDashboardModule } from './dashboard/fleet-dashboard.module';
 import { EquipmentRulesModule } from './equipment-rules/equipment-rules.module';
 import { InspectionsModule } from './inspections/inspections.module';
 import { RepairRequestsModule } from './repair-requests/repair-requests.module';
+import { TrucksModule } from './trucks/trucks.module';
+import { UnaccountedModule } from './unaccounted/unaccounted.module';
 
 @Module({
   imports: [
@@ -14,6 +17,9 @@ import { RepairRequestsModule } from './repair-requests/repair-requests.module';
     RepairRequestsModule,
     CustomerOwnedModule,
     FleetDashboardModule,
+    TrucksModule,
+    UnaccountedModule,
+    AssetsModule,
   ],
   exports: [
     EquipmentRulesModule,
@@ -22,6 +28,9 @@ import { RepairRequestsModule } from './repair-requests/repair-requests.module';
     RepairRequestsModule,
     CustomerOwnedModule,
     FleetDashboardModule,
+    TrucksModule,
+    UnaccountedModule,
+    AssetsModule,
   ],
 })
 export class FleetModule {}

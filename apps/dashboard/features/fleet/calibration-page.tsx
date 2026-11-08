@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   DashboardBadge,
   DashboardDataTable,
@@ -35,7 +36,7 @@ import {
   type FleetFilterValues,
 } from "./fleet-filters-drawer";
 import { FleetFilteredEmptyState } from "./fleet-empty-state";
-import { fleetBadgeTone } from "./fleet-ui";
+import { downloadCsv, fleetBadgeTone } from "./fleet-ui";
 import {
   OpsLoadFailedState,
   OpsLoadingListState,
@@ -53,6 +54,7 @@ const STATUS_CHIPS = [
 const CAL_STATUSES = ["OVERDUE", "DUE_SOON", "CURRENT", "OUT_OF_SERVICE"];
 
 export function CalibrationPage() {
+  const router = useRouter();
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [kpi, setKpi] = React.useState<FleetKpiCell[]>([]);
@@ -236,26 +238,45 @@ export function CalibrationPage() {
               {
                 id: "open",
                 label: "Open Record",
-                onSelect: () =>
-                  toastSuccess(`Calibration ${row.code} — detail coming soon`),
+                onSelect: () => router.push(`/fleet/calibration/${row.code}`),
               },
               {
                 id: "add",
                 label: "Add Calibration",
                 onSelect: () =>
-                  toastSuccess("Add calibration — modal coming soon"),
+                  router.push(`/fleet/calibration/new?asset=${encodeURIComponent(row.assetCode)}`),
               },
               {
                 id: "asset",
                 label: "View Asset",
-                onSelect: () =>
-                  toastSuccess(`Asset ${row.assetCode} — fleet assets`),
+                onSelect: () => router.push(`/fleet/assets/${row.assetCode}`),
               },
               {
                 id: "cert",
                 label: "Download Certificate",
-                onSelect: () =>
-                  toastSuccess("Certificate download — coming soon"),
+                onSelect: () => {
+                  void fleetApi.getCalibration(row.code).then((res) => {
+                    const item = res.data;
+                    const lines = [
+                      `Calibration ${item.code}`,
+                      `Asset ${item.assetLabel} (${item.assetCode})`,
+                      item.serial ? `Serial ${item.serial}` : null,
+                      item.parentTruck ? `Truck ${item.parentTruck}` : null,
+                      `Result ${item.resultLabel}`,
+                      item.dateLabel ? `Calibrated ${item.dateLabel}` : null,
+                      item.dueLabel ? `Next due ${item.dueLabel}` : null,
+                      item.lot ? `Lot ${item.lot}` : null,
+                      item.technician ? `Technician ${item.technician}` : null,
+                    ].filter(Boolean);
+                    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = `${item.code}.txt`;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  }).catch(toastApiError);
+                },
               },
               {
                 id: "freq",
@@ -393,7 +414,12 @@ export function CalibrationPage() {
                 {
                   id: "csv",
                   label: "Export current view · CSV",
-                  onSelect: () => toastSuccess("Export started"),
+                  onSelect: () =>
+                    downloadCsv(
+                      "calibrations.csv",
+                      ["Code", "Asset", "Serial", "Truck", "Last", "Next due", "Result", "Status"],
+                      rows.map((row) => [row.code, row.assetLabel, row.serial, row.parentTruck, row.dateLabel, row.dueLabel, row.resultLabel, row.statusLabel]),
+                    ),
                 },
               ]}
             />

@@ -1,0 +1,10 @@
+import { Suspense } from "react";
+import { RepairCreatePage } from "@/features/fleet/repair-create-page";
+
+export default function Page() {
+  return (
+    <Suspense fallback={<p className="p-6 font-sans text-[13px] uppercase text-[#959597]">Loading…</p>}>
+      <RepairCreatePage />
+    </Suspense>
+  );
+}

@@ -198,7 +198,20 @@ export const APP_NAV: NavItem[] = [
     icon: "fleet",
     children: [
       { id: "fleet-hub", label: "Fleet Dashboard", href: "/fleet" },
+      { id: "fleet-readiness", label: "Asset Readiness", href: "/fleet/asset-readiness" },
       { id: "fleet-assets", label: "Assets", href: "/fleet/assets" },
+      { id: "fleet-checkout", label: "Checkout", href: "/fleet/checkout" },
+      {
+        id: "fleet-inventory",
+        label: "Inventory / Consumables",
+        href: "/fleet/inventory",
+      },
+      { id: "fleet-trucks", label: "Trucks & Locations", href: "/fleet/trucks" },
+      {
+        id: "fleet-unaccounted",
+        label: "Unaccounted Equipment",
+        href: "/fleet/unaccounted",
+      },
       {
         id: "fleet-inspections",
         label: "Inspections",
@@ -213,6 +226,11 @@ export const APP_NAV: NavItem[] = [
         id: "fleet-repair-requests",
         label: "Repair Requests",
         href: "/fleet/repair-requests",
+      },
+      {
+        id: "fleet-assignments",
+        label: "Asset Assignments",
+        href: "/fleet/checkout",
       },
       {
         id: "fleet-customer-owned",

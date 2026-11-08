@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -12,6 +13,7 @@ import { JwtAuthGuard } from '../../auth/guards/auth.guards';
 import {
   BulkReviewDto,
   CustomerOwnedListQueryDto,
+  SaveCustomerOwnedDto,
 } from './dto/customer-owned.dto';
 import { CustomerOwnedService } from './customer-owned.service';
 
@@ -46,9 +48,21 @@ export class CustomerOwnedController {
     return this.service.bulkMarkReviewed(dto);
   }
 
+  @Post('records')
+  @ApiOperation({ summary: 'Register customer-owned equipment' })
+  create(@Body() dto: SaveCustomerOwnedDto) {
+    return this.service.create(dto);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Customer-owned equipment detail' })
   get(@Param('id') id: string) {
     return this.service.getById(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update customer-owned equipment' })
+  update(@Param('id') id: string, @Body() dto: SaveCustomerOwnedDto) {
+    return this.service.update(id, dto);
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   FleetCalibrationResult,
   FleetCalibrationStatus,
@@ -20,7 +20,24 @@ import {
 import {
   AdjustFrequencyDto,
   CalibrationListQueryDto,
+  SaveCalibrationDto,
 } from './dto/calibration.dto';
+
+type CalibrationExtra = {
+  method?: string;
+  technician?: string;
+  lot?: string;
+  lotExpiry?: string;
+  calType?: string;
+  notes?: string;
+  bumpGas?: string;
+  bumpResponse?: string;
+  bumpResult?: string;
+  certificateUrl?: string;
+  photoUrl?: string;
+  readings?: Array<{ gas: string; reading?: string; expected?: string; result?: string }>;
+  edits?: Array<{ at: string; reason: string }>;
+};
 
 function calibrationStatusTone(status: FleetCalibrationStatus) {
   if (status === 'OVERDUE' || status === 'OUT_OF_SERVICE') return 'danger';
@@ -421,8 +438,7 @@ export class CalibrationService {
     return { data: this.mapRow(row) };
   }
 
-  async getById(id: string) {
-    await this.ensureSeed();
+  private async findRow(id: string) {
     const row = await this.prisma.fleetCalibration.findFirst({
       where: {
         archivedAt: null,
@@ -430,6 +446,263 @@ export class CalibrationService {
       },
     });
     if (!row) throw new NotFoundException('Calibration not found');
-    return { data: this.mapRow(row) };
+    return row;
+  }
+
+  private async extraMap() {
+    const map = new Map<string, CalibrationExtra>();
+    try {
+      await this.prisma.$executeRawUnsafe(
+        `CREATE TABLE IF NOT EXISTS "FleetCalibrationExtra" (
+          "calibrationId" TEXT PRIMARY KEY,
+          extra JSONB NOT NULL,
+          "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+        )`,
+      );
+      const rows = await this.prisma.$queryRawUnsafe<
+        Array<{ calibrationId: string; extra: CalibrationExtra }>
+      >(`SELECT "calibrationId", extra FROM "FleetCalibrationExtra"`);
+      for (const row of rows) map.set(row.calibrationId, row.extra ?? {});
+    } catch {
+      return map;
+    }
+    return map;
+  }
+
+  private async writeExtra(id: string, extra: CalibrationExtra) {
+    await this.extraMap();
+    await this.prisma.$executeRawUnsafe(
+      `INSERT INTO "FleetCalibrationExtra" ("calibrationId", extra, "updatedAt")
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT ("calibrationId") DO UPDATE SET extra = EXCLUDED.extra, "updatedAt" = NOW()`,
+      id,
+      JSON.stringify(extra),
+    );
+  }
+
+  private async sensorsFor(assetCode: string) {
+    try {
+      const rows = await this.prisma.$queryRawUnsafe<Array<{ profile: { sensors?: unknown } }>>(
+        `SELECT profile FROM "FleetAssetProfile" WHERE "assetCode" = $1 LIMIT 1`,
+        assetCode,
+      );
+      const sensors = rows[0]?.profile?.sensors;
+      if (!Array.isArray(sensors)) return [];
+      return sensors
+        .filter((sensor) => sensor && typeof sensor === 'object')
+        .map((sensor) => {
+          const row = sensor as Record<string, unknown>;
+          return {
+            gas: asciiSafe(String(row.gas ?? '')),
+            range: asciiSafe(String(row.range ?? '')),
+            alarmLow: asciiSafe(String(row.alarmLow ?? '')),
+            alarmHigh: asciiSafe(String(row.alarmHigh ?? '')),
+          };
+        })
+        .filter((sensor) => sensor.gas);
+    } catch {
+      return [];
+    }
+  }
+
+  private frequencyLabel(days: number) {
+    if (days === 90) return 'QUARTERLY';
+    if (days === 180) return 'SEMI-ANNUAL';
+    if (days === 365) return 'ANNUAL';
+    return `${days} DAYS`;
+  }
+
+  private async present(row: {
+    id: string;
+    code: string;
+    assetCode: string;
+    assetLabel: string | null;
+    model: string;
+    serial: string | null;
+    parentTruck: string | null;
+    lastCalAt: Date | null;
+    nextDueAt: Date | null;
+    result: FleetCalibrationResult;
+    status: FleetCalibrationStatus;
+    frequencyDays: number;
+  }) {
+    const [all, sameAsset, inspections, sensors, extras] = await Promise.all([
+      this.prisma.fleetCalibration.findMany({
+        where: { archivedAt: null },
+        orderBy: { nextDueAt: 'asc' },
+      }),
+      this.prisma.fleetCalibration.findMany({
+        where: { archivedAt: null, assetCode: row.assetCode, id: { not: row.id } },
+        orderBy: { lastCalAt: 'desc' },
+      }),
+      this.prisma.fleetInspection.findMany({
+        where: { archivedAt: null, assetCode: row.assetCode },
+        orderBy: { inspectedAt: 'desc' },
+        take: 8,
+      }),
+      this.sensorsFor(row.assetCode),
+      this.extraMap(),
+    ]);
+    const extra = extras.get(row.id) ?? {};
+    const index = all.findIndex((item) => item.id === row.id);
+    const previous = sameAsset.find(
+      (item) => item.lastCalAt && row.lastCalAt && item.lastCalAt < row.lastCalAt,
+    ) ?? sameAsset[0] ?? null;
+    const bump = inspections.find((item) => (item.type ?? '').toUpperCase().includes('BUMP'));
+    const linked = inspections.find((item) => item.result === 'FAILED');
+    const daysLeft = row.nextDueAt ? daysUntil(row.nextDueAt, new Date()) : null;
+    return {
+      ...this.mapRow(row),
+      daysLeft,
+      frequencyLabel: this.frequencyLabel(row.frequencyDays),
+      method: extra.method ?? '',
+      technician: extra.technician ?? '',
+      lot: extra.lot ?? '',
+      lotExpiry: extra.lotExpiry ?? '',
+      calType: extra.calType ?? '',
+      notes: extra.notes ?? '',
+      bumpGas: extra.bumpGas ?? '',
+      bumpResponse: extra.bumpResponse ?? '',
+      bumpResult: extra.bumpResult ?? '',
+      certificateUrl: extra.certificateUrl ?? '',
+      photoUrl: extra.photoUrl ?? '',
+      readings: extra.readings ?? [],
+      edits: extra.edits ?? [],
+      sensors,
+      previous: previous
+        ? { code: previous.code, dateLabel: fmtShortDate(previous.lastCalAt), resultLabel: labelOf(previous.result) }
+        : null,
+      bump: bump
+        ? { code: bump.code, dateLabel: fmtShortDate(bump.inspectedAt), resultLabel: labelOf(bump.result) }
+        : null,
+      linkedInspection: linked
+        ? {
+            code: linked.code,
+            dateLabel: fmtShortDate(linked.inspectedAt),
+            resultLabel: labelOf(linked.result),
+            afterCalibration: Boolean(
+              linked.inspectedAt && row.lastCalAt && linked.inspectedAt >= row.lastCalAt,
+            ),
+          }
+        : null,
+      nav: {
+        index: index + 1,
+        total: all.length,
+        prevCode: index > 0 ? all[index - 1]?.code ?? null : null,
+        nextCode: index >= 0 && index < all.length - 1 ? all[index + 1]?.code ?? null : null,
+      },
+    };
+  }
+
+  async create(dto: SaveCalibrationDto) {
+    await this.ensureSeed();
+    const assetCode = asciiSafe(dto.assetCode.trim());
+    if (!assetCode) throw new BadRequestException('Asset is required');
+    const known = await this.prisma.fleetCalibration.findFirst({
+      where: { assetCode, archivedAt: null },
+      orderBy: { lastCalAt: 'desc' },
+    });
+    const lastCalAt = dto.lastCalAt ? new Date(dto.lastCalAt) : new Date();
+    const frequencyDays = dto.frequencyDays ?? known?.frequencyDays ?? 365;
+    const nextDueAt = new Date(lastCalAt.getTime() + frequencyDays * DAY_MS);
+    const days = daysUntil(nextDueAt, new Date()) ?? 0;
+    const rows = await this.prisma.fleetCalibration.findMany({ select: { code: true } });
+    const max = rows.reduce((n, item) => Math.max(n, Number(item.code.replace(/\D/g, '')) || 0), 0);
+    const created = await this.prisma.fleetCalibration.create({
+      data: {
+        code: `CAL-${String(max + 1).padStart(4, '0')}`,
+        assetCode,
+        assetLabel: asciiSafe((dto.assetLabel || known?.assetLabel || assetCode).trim()),
+        model: dto.model ? asciiSafe(dto.model.trim()) : known?.model ?? asciiSafe((dto.assetLabel || assetCode).trim()),
+        serial: dto.serial ? asciiSafe(dto.serial.trim()) : known?.serial ?? null,
+        parentTruck: dto.parentTruck ? asciiSafe(dto.parentTruck.trim()) : known?.parentTruck ?? null,
+        lastCalAt,
+        nextDueAt,
+        frequencyDays,
+        result: dto.result ?? 'PASS',
+        status: days < 0 ? 'OVERDUE' : days <= 30 ? 'DUE_SOON' : 'CURRENT',
+      },
+    });
+    await this.writeExtra(created.id, {
+      method: dto.method ? asciiSafe(dto.method.trim()) : '',
+      technician: dto.technician ? asciiSafe(dto.technician.trim()) : '',
+      lot: dto.lot ? asciiSafe(dto.lot.trim()) : '',
+      lotExpiry: dto.lotExpiry ? dto.lotExpiry.slice(0, 10) : '',
+      calType: dto.calType ? asciiSafe(dto.calType.trim()) : '',
+      notes: dto.notes ? asciiSafe(dto.notes.trim()) : '',
+      bumpGas: dto.bumpGas ? asciiSafe(dto.bumpGas.trim()) : '',
+      bumpResponse: dto.bumpResponse ? asciiSafe(dto.bumpResponse.trim()) : '',
+      bumpResult: dto.bumpResult ? asciiSafe(dto.bumpResult.trim()) : '',
+      certificateUrl: dto.certificateUrl || '',
+      photoUrl: dto.photoUrl || '',
+      readings: (dto.readings ?? []).filter((reading) => reading.gas.trim()).map((reading) => ({
+        gas: asciiSafe(reading.gas.trim()),
+        reading: reading.reading ? asciiSafe(reading.reading.trim()) : '',
+        expected: reading.expected ? asciiSafe(reading.expected.trim()) : '',
+        result: reading.result ? asciiSafe(reading.result.trim()) : '',
+      })),
+      edits: dto.overrideReason?.trim()
+        ? [{ at: new Date().toISOString(), reason: asciiSafe(`RESULT OVERRIDE · ${dto.overrideReason.trim()}`) }]
+        : [],
+    });
+    return { data: await this.present(created) };
+  }
+
+  async update(id: string, dto: SaveCalibrationDto) {
+    await this.ensureSeed();
+    const reason = dto.reason?.trim();
+    if (!reason) throw new BadRequestException('A reason is required to edit a calibration record');
+    const existing = await this.findRow(id);
+    const extras = await this.extraMap();
+    const extra = extras.get(existing.id) ?? {};
+    const frequencyDays = dto.frequencyDays ?? existing.frequencyDays;
+    const lastCalAt = dto.lastCalAt ? new Date(dto.lastCalAt) : existing.lastCalAt;
+    const nextDueAt = lastCalAt ? new Date(lastCalAt.getTime() + frequencyDays * DAY_MS) : existing.nextDueAt;
+    const days = nextDueAt ? daysUntil(nextDueAt, new Date()) : null;
+    const row = await this.prisma.fleetCalibration.update({
+      where: { id: existing.id },
+      data: {
+        assetLabel: dto.assetLabel ? asciiSafe(dto.assetLabel.trim()) : existing.assetLabel,
+        serial: dto.serial ? asciiSafe(dto.serial.trim()) : existing.serial,
+        parentTruck: dto.parentTruck ? asciiSafe(dto.parentTruck.trim()) : existing.parentTruck,
+        result: dto.result ?? existing.result,
+        frequencyDays,
+        lastCalAt,
+        nextDueAt,
+        status:
+          existing.status === 'OUT_OF_SERVICE'
+            ? 'OUT_OF_SERVICE'
+            : days == null
+              ? existing.status
+              : days < 0
+                ? 'OVERDUE'
+                : days <= 30
+                  ? 'DUE_SOON'
+                  : 'CURRENT',
+      },
+    });
+    await this.writeExtra(existing.id, {
+      ...extra,
+      method: dto.method != null ? asciiSafe(dto.method.trim()) : extra.method,
+      technician: dto.technician != null ? asciiSafe(dto.technician.trim()) : extra.technician,
+      lot: dto.lot != null ? asciiSafe(dto.lot.trim()) : extra.lot,
+      calType: dto.calType != null ? asciiSafe(dto.calType.trim()) : extra.calType,
+      readings: dto.readings
+        ? dto.readings.map((reading) => ({
+            gas: asciiSafe(reading.gas.trim()),
+            reading: reading.reading ? asciiSafe(reading.reading.trim()) : '',
+            expected: reading.expected ? asciiSafe(reading.expected.trim()) : '',
+            result: reading.result ? asciiSafe(reading.result.trim()) : '',
+          }))
+        : extra.readings,
+      edits: [{ at: new Date().toISOString(), reason: asciiSafe(reason) }, ...(extra.edits ?? [])],
+    });
+    return { data: await this.present(row) };
+  }
+
+  async getById(id: string) {
+    await this.ensureSeed();
+    const row = await this.findRow(id);
+    return { data: await this.present(row) };
   }
 }

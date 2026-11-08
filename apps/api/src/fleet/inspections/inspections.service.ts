@@ -27,6 +27,7 @@ import {
 import {
   BulkReviewDto,
   CreateCorrectiveActionDto,
+  CreateInspectionRecordDto,
   CreateRepairFromInspectionDto,
   EditInspectionDto,
   InspectionListQueryDto,
@@ -36,9 +37,55 @@ import {
 type ChecklistItem = {
   label: string;
   detail: string;
-  result: 'PASS' | 'FAIL';
+  result: 'PASS' | 'FAIL' | 'N/A';
   note?: string;
+  tag?: string;
 };
+
+const PRE_JOB_CHECKS: Array<{ label: string; tag?: string }> = [
+  { label: 'SENSOR RESPONSE' },
+  { label: 'ALARM TEST' },
+  { label: 'BATTERY LEVEL' },
+  { label: 'CALIBRATION CURRENT' },
+  { label: 'PHYSICAL CONDITION' },
+  { label: 'DISPLAY / SCREEN LEGIBLE', tag: 'PRE-JOB' },
+  { label: 'BUMP TEST CURRENT', tag: 'PRE-JOB' },
+  { label: 'CARRYING CASE / HOLSTER PRESENT', tag: 'PRE-JOB' },
+];
+
+const MONTHLY_CHECKS: Array<{ label: string; tag?: string }> = [
+  ...PRE_JOB_CHECKS,
+  { label: 'ZERO CALIBRATION CHECK', tag: 'MONTHLY' },
+  { label: 'SENSOR CROSS-SENSITIVITY', tag: 'MONTHLY' },
+];
+
+const ANNUAL_CHECKS: Array<{ label: string; tag?: string }> = [
+  ...MONTHLY_CHECKS,
+  { label: 'FULL SENSOR REPLACEMENT CHECK', tag: 'ANNUAL' },
+  { label: 'HOUSING INTEGRITY TEST', tag: 'ANNUAL' },
+];
+
+const POST_INCIDENT_CHECKS: Array<{ label: string; tag?: string }> = [
+  ...ANNUAL_CHECKS,
+  { label: 'DATALOG / EVENT LOG DOWNLOADED', tag: 'POST-INCIDENT' },
+  { label: 'PEAK EXPOSURE READING REVIEWED', tag: 'POST-INCIDENT' },
+];
+
+const FORM_CHECKLISTS: Record<string, Array<{ label: string; tag?: string }>> = {
+  'PRE-JOB': PRE_JOB_CHECKS,
+  MONTHLY: MONTHLY_CHECKS,
+  ANNUAL: ANNUAL_CHECKS,
+  'POST-INCIDENT': POST_INCIDENT_CHECKS,
+  'RE-INSPECTION': PRE_JOB_CHECKS,
+};
+
+const INSPECTION_TYPES = [
+  'MONTHLY',
+  'PRE-JOB',
+  'ANNUAL',
+  'POST-INCIDENT',
+  'RE-INSPECTION',
+];
 
 const DEFAULT_CHECKLIST: Array<{ label: string; passDetail: string; failDetail: string }> = [
   {
@@ -88,13 +135,15 @@ function checklistOf(value: Prisma.JsonValue | null): ChecklistItem[] {
       const row = x as Record<string, unknown>;
       const label = String(row.label ?? '');
       if (!label) return null;
+      const raw = String(row.result ?? 'PASS').toUpperCase();
       const result: ChecklistItem['result'] =
-        String(row.result ?? 'PASS').toUpperCase() === 'FAIL' ? 'FAIL' : 'PASS';
+        raw === 'FAIL' ? 'FAIL' : raw === 'N/A' || raw === 'NA' ? 'N/A' : 'PASS';
       return {
         label,
         detail: String(row.detail ?? ''),
         result,
         note: row.note != null ? String(row.note) : undefined,
+        tag: row.tag != null ? String(row.tag) : undefined,
       };
     })
     .filter((r): r is ChecklistItem => r != null);
@@ -913,6 +962,7 @@ export class InspectionsService {
           nextId,
           orderLabel: 'ORDERED BY DATE - FAILURES FIRST',
         },
+        nextCode: `INS-${String((await this.prisma.fleetInspection.count()) + 1).padStart(4, '0')}`,
         lockedFields: [
           'ASSET ID',
           'SERIAL NUMBER',
@@ -1154,6 +1204,209 @@ export class InspectionsService {
         id: repair.id,
         code: repair.code,
         message: asciiSafe(`${repair.code} CREATED FROM ${inspection.code}`),
+      },
+    };
+  }
+
+  async formOptions() {
+    await this.ensureSeed();
+    const [inspections, failed, employees] = await Promise.all([
+      this.prisma.fleetInspection.findMany({
+        where: { archivedAt: null },
+        select: {
+          assetCode: true,
+          assetLabel: true,
+          serial: true,
+          parentTruck: true,
+          inspectorName: true,
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 200,
+      }),
+      this.prisma.fleetInspection.findMany({
+        where: { archivedAt: null, result: 'FAILED' },
+        orderBy: { inspectedAt: 'desc' },
+        take: 40,
+      }),
+      this.prisma.employee.findMany({
+        where: { archivedAt: null, status: 'ACTIVE' },
+        select: { firstName: true, lastName: true, displayName: true },
+        orderBy: { lastName: 'asc' },
+        take: 80,
+      }),
+    ]);
+
+    const assets = new Map<
+      string,
+      { assetCode: string; assetLabel: string; serial: string | null; parentTruck: string | null }
+    >();
+    const inspectors = new Set<string>();
+    for (const row of inspections) {
+      if (!assets.has(row.assetCode)) {
+        assets.set(row.assetCode, {
+          assetCode: row.assetCode,
+          assetLabel: row.assetLabel,
+          serial: row.serial,
+          parentTruck: row.parentTruck,
+        });
+      }
+      if (row.inspectorName) inspectors.add(row.inspectorName);
+    }
+    for (const employee of employees) {
+      inspectors.add(
+        employee.displayName?.trim() ||
+          shortName(employee.firstName, employee.lastName),
+      );
+    }
+
+    return {
+      data: {
+        assets: [...assets.values()],
+        inspectors: [...inspectors].sort(),
+        types: INSPECTION_TYPES,
+        sources: ['MOBILE_APP', 'WEB'],
+        checklists: FORM_CHECKLISTS,
+        failedInspections: failed.map((row) => {
+          const mapped = this.mapRow(row);
+          return {
+            id: row.id,
+            code: row.code,
+            assetCode: row.assetCode,
+            assetLabel: row.assetLabel,
+            serial: row.serial,
+            parentTruck: row.parentTruck,
+            inspectorName: row.inspectorName,
+            dateLabel: mapped.dateLabel,
+            resultLabel: mapped.resultLabel,
+            failedItems: mapped.checklistItems
+              .filter((item) => item.result === 'FAIL')
+              .map((item) => item.label),
+          };
+        }),
+      },
+    };
+  }
+
+  async createRecord(dto: CreateInspectionRecordDto) {
+    await this.ensureSeed();
+    const inspectedAt = parseDate(dto.inspectedAt);
+    if (!inspectedAt) throw new BadRequestException('Date and time are required');
+    if (!dto.checklistItems?.length) {
+      throw new BadRequestException('Checklist is required');
+    }
+
+    const parent = dto.parentInspectionId
+      ? await this.prisma.fleetInspection.findFirst({
+          where: { id: dto.parentInspectionId, archivedAt: null },
+        })
+      : null;
+    if (dto.parentInspectionId && !parent) {
+      throw new NotFoundException('Parent inspection not found');
+    }
+
+    const known =
+      parent ??
+      (await this.prisma.fleetInspection.findFirst({
+        where: { assetCode: dto.assetCode.trim(), archivedAt: null },
+        orderBy: { updatedAt: 'desc' },
+      }));
+
+    const checklist = dto.checklistItems.map((item) => {
+      const raw = item.result.toUpperCase();
+      const result: ChecklistItem['result'] =
+        raw === 'FAIL' ? 'FAIL' : raw === 'N/A' || raw === 'NA' ? 'N/A' : 'PASS';
+      const note = item.note?.trim() ? asciiSafe(item.note.trim()) : undefined;
+      return {
+        label: asciiSafe(item.label.trim().toUpperCase()),
+        result,
+        note,
+        tag: item.tag ? asciiSafe(item.tag.trim().toUpperCase()) : undefined,
+        detail: note
+          ? note.toUpperCase()
+          : result === 'FAIL'
+            ? 'FAILED'
+            : result === 'N/A'
+              ? 'NOT APPLICABLE'
+              : 'PASSED',
+      };
+    });
+    const failed = checklist.filter((item) => item.result === 'FAIL');
+    const result: FleetInspectionResult = failed.length ? 'FAILED' : 'PASS';
+    const status: FleetInspectionStatus = failed.length ? 'NEEDS_REVIEW' : 'COMPLETE';
+    const count = await this.prisma.fleetInspection.count();
+    const code = `INS-${String(count + 1).padStart(4, '0')}`;
+    const dueAt =
+      dto.reinspectionRequired && dto.reinspectionDueAt
+        ? parseDate(dto.reinspectionDueAt)
+        : null;
+
+    const created = await this.prisma.fleetInspection.create({
+      data: {
+        code,
+        assetCode: asciiSafe((known?.assetCode ?? dto.assetCode).trim().toUpperCase()),
+        assetLabel: asciiSafe(
+          (known?.assetLabel ?? dto.assetLabel ?? dto.assetCode).trim().toUpperCase(),
+        ),
+        parentTruck: known?.parentTruck ?? (dto.parentTruck ? asciiSafe(dto.parentTruck.trim()) : null),
+        serial: known?.serial ?? (dto.serial ? asciiSafe(dto.serial.trim()) : null),
+        inspectorName: asciiSafe(dto.inspectorName.trim().toUpperCase()),
+        inspectedAt,
+        dueAt,
+        reInspectionDueAt: dueAt,
+        parentInspectionId: parent?.id ?? null,
+        result,
+        status,
+        type: dto.type,
+        source: dto.source,
+        findingsSummary: dto.findingsSummary?.trim()
+          ? asciiSafe(dto.findingsSummary.trim())
+          : null,
+        checklistItems: checklist as unknown as Prisma.InputJsonValue,
+        failedItems: failed.map((item) => ({
+          label: item.label,
+          detail: item.detail,
+          failed: true,
+        })) as unknown as Prisma.InputJsonValue,
+        photos: (dto.photoUrls ?? []).map((url) => ({ url })) as unknown as Prisma.InputJsonValue,
+        flags: {
+          outOfService: Boolean(dto.markOutOfService),
+          reinspectionRequired: Boolean(dto.reinspectionRequired),
+          incidentReference: dto.incidentReference
+            ? asciiSafe(dto.incidentReference.trim().toUpperCase())
+            : null,
+          basedOn: parent?.code ?? null,
+        } as unknown as Prisma.InputJsonValue,
+        actionsTaken: [
+          ...(dto.markOutOfService ? ['MARKED OUT OF SERVICE'] : []),
+          ...(dto.reinspectionRequired ? ['RE-INSPECTION REQUIRED'] : []),
+        ] as unknown as Prisma.InputJsonValue,
+        version: 1,
+      },
+    });
+
+    if (parent) {
+      await this.prisma.fleetInspection.update({
+        where: { id: parent.id },
+        data: { reInspectionId: created.id },
+      });
+    }
+
+    let repair: { id: string; code: string } | null = null;
+    if (dto.createRepair && failed.length) {
+      const raised = await this.createRepair(created.id, {
+        issue: dto.findingsSummary?.trim() || undefined,
+        priority: 'HIGH',
+        assignedName: dto.inspectorName,
+      });
+      repair = { id: raised.data.id, code: raised.data.code };
+    }
+
+    const fresh = await this.findInspection(created.id);
+    return {
+      data: {
+        ...this.mapRow(fresh),
+        repair,
+        message: asciiSafe(`${code} SAVED.`),
       },
     };
   }

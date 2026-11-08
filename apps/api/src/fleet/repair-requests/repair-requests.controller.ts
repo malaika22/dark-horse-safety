@@ -12,7 +12,11 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/auth.guards';
 import {
   CancelRepairDto,
+  CreateRepairDto,
   RepairListQueryDto,
+  RepairNoteDto,
+  RepairPartDto,
+  ResolveRepairDto,
   UpdateRepairDto,
 } from './dto/repair-request.dto';
 import { RepairRequestsService } from './repair-requests.service';
@@ -48,6 +52,12 @@ export class RepairRequestsController {
     return this.service.workflow();
   }
 
+  @Post('records')
+  @ApiOperation({ summary: 'Create a repair request' })
+  create(@Body() dto: CreateRepairDto) {
+    return this.service.create(dto);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Repair request detail' })
   get(@Param('id') id: string) {
@@ -67,8 +77,20 @@ export class RepairRequestsController {
   }
 
   @Post(':id/resolve')
-  @ApiOperation({ summary: 'Resolve / close repair request' })
-  resolve(@Param('id') id: string) {
-    return this.service.resolve(id);
+  @ApiOperation({ summary: 'Resolve / close repair request and return the asset' })
+  resolve(@Param('id') id: string, @Body() dto: ResolveRepairDto) {
+    return this.service.resolve(id, dto);
+  }
+
+  @Post(':id/parts')
+  @ApiOperation({ summary: 'Add a part line and mark the request awaiting parts' })
+  addPart(@Param('id') id: string, @Body() dto: RepairPartDto) {
+    return this.service.addPart(id, dto);
+  }
+
+  @Post(':id/notes')
+  @ApiOperation({ summary: 'Add a note to the repair timeline' })
+  addNote(@Param('id') id: string, @Body() dto: RepairNoteDto) {
+    return this.service.addNote(id, dto);
   }
 }

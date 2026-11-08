@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { TimeOffService } from '../hr/time-off/time-off.service';
 import { EditRequestDto, EditRespondDto, EntryNotesDto, TimeOffCreateDto, TimeOffPreviewDto, TimesheetQuery } from './dto/mobile.dto';
 import { MobileContext, dateOnly, isoDate, num } from './mobile-context.service';
 
@@ -18,7 +19,11 @@ type Note = { id: string; text: string; at: string; by?: string };
 
 @Injectable()
 export class MobileTimeService {
-  constructor(private readonly ctx: MobileContext, private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly ctx: MobileContext,
+    private readonly prisma: PrismaService,
+    private readonly timeOff: TimeOffService,
+  ) {}
 
   /** TS-1 */
   async payCycles(userId: string) {
@@ -136,6 +141,7 @@ export class MobileTimeService {
         },
       });
       await this.prisma.timeEntry.update({ where: { id: t.id }, data: { correctionRequested: true } });
+      await this.syncOpenEditFlag(employee.id);
       return { data: { id: row.id, status: row.status } };
     });
   }
@@ -157,6 +163,7 @@ export class MobileTimeService {
         where: { id },
         data: { status: 'PENDING', needsClarification: false, technicianReason: `${r.technicianReason ?? ''}\nReply: ${dto.message}${dto.attachmentUrl ? ` (attachment ${dto.attachmentUrl})` : ''}`.trim() },
       });
+      await this.syncOpenEditFlag(employee.id);
       return { data: { id, status: 'PENDING' } };
     });
   }
@@ -175,38 +182,57 @@ export class MobileTimeService {
     return { data: { items: rows.map((r) => ({ id: r.id, type: r.type, status: r.status, startDate: isoDate(r.startDate), endDate: isoDate(r.endDate), dayCount: r.dayCount, hoursRequested: num(r.hoursRequested), reason: r.reason, adminNote: r.adminNote, requestedAt: r.requestedAt })) } };
   }
 
-  private calc(e: { ptoBalance: unknown; sickBalance: unknown; holidayBalance: unknown }, dto: TimeOffPreviewDto) {
-    const s = dateOnly(new Date(dto.startAt));
-    const en = dateOnly(new Date(dto.endAt));
-    if (en < s) throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'End must not be before start.' });
-    const days = Math.round((en.getTime() - s.getTime()) / 86_400_000) + 1;
-    const hours = dto.partialDay ? dto.partialHours ?? 4 : days * 8;
-    const bal = dto.type === 'PTO' ? num(e.ptoBalance) : dto.type === 'SICK' ? num(e.sickBalance) : dto.type === 'HOLIDAY' ? num(e.holidayBalance) : null;
-    return { s, en, days, hours, bal, after: bal === null ? null : +(bal - hours).toFixed(1) };
+  /** Same flag the HR time-edit list reads. */
+  private async syncOpenEditFlag(employeeId: string) {
+    const open = await this.prisma.timeEditRequest.count({
+      where: { employeeId, status: { in: ['PENDING', 'NEEDS_CLARIFICATION'] } },
+    });
+    await this.prisma.employee.update({ where: { id: employeeId }, data: { hasOpenTimeEdit: open > 0 } });
   }
 
-  /** TO-3 */
+  private portalOff(employeeId: string, dto: TimeOffPreviewDto) {
+    return {
+      employeeId,
+      type: dto.type,
+      startDate: dto.startAt.slice(0, 10),
+      endDate: dto.endAt.slice(0, 10),
+      durationMode: dto.partialDay ? 'PARTIAL' : 'ALL_DAY',
+      partialHours: dto.partialDay ? dto.partialHours ?? 4 : undefined,
+    };
+  }
+
+  /** TO-3. Uses the same balance math as the HR time-off screen. */
   async preview(userId: string, dto: TimeOffPreviewDto) {
     const { employee } = await this.ctx.actor(userId);
-    const c = this.calc(employee, dto);
-    return { data: { dayCount: c.days, hoursRequested: c.hours, balanceBefore: c.bal, balanceAfter: c.after, sufficient: c.after === null || c.after >= 0 } };
+    const preview = await this.timeOff.preview(this.portalOff(employee.id, dto));
+    return {
+      data: {
+        dayCount: preview.data.dayCount,
+        hoursRequested: preview.data.hoursRequested,
+        balanceBefore: preview.data.balanceBefore,
+        balanceAfter: preview.data.balanceAfter,
+        sufficient: !preview.data.insufficient,
+      },
+    };
   }
 
-  /** TO-4 */
+  /** TO-4. Creates the request through the HR time-off service so it shows on the admin portal. */
   async createOff(userId: string, dto: TimeOffCreateDto) {
     const { employee } = await this.ctx.actor(userId);
     return this.ctx.idempotent(userId, dto.clientRequestId, async () => {
-      const c = this.calc(employee, dto);
-      if (c.after !== null && c.after < 0) throw new UnprocessableEntityException({ code: 'INSUFFICIENT_BALANCE', message: 'Not enough balance for this request.' });
-      const row = await this.prisma.timeOffRequest.create({
-        data: {
-          employeeId: employee.id, type: dto.type as never, startDate: c.s, endDate: c.en, startLabel: short(c.s), endLabel: short(c.en),
-          dayCount: c.days, hoursRequested: c.hours, balanceAfter: c.after, durationMode: dto.partialDay ? 'PARTIAL' : 'ALL_DAY',
-          partialHours: dto.partialDay ? c.hours : undefined, reason: dto.reason, requestedLabel: short(new Date()),
-          attachments: dto.signatureUrl ? [{ kind: 'SIGNATURE', url: dto.signatureUrl }] : undefined,
-        },
-      });
-      return { data: { id: row.id, status: row.status } };
+      const body = { ...this.portalOff(employee.id, dto), reason: dto.reason };
+      const preview = await this.timeOff.preview(body);
+      if (preview.data.insufficient) {
+        throw new UnprocessableEntityException({ code: 'INSUFFICIENT_BALANCE', message: 'Not enough balance for this request.' });
+      }
+      const created = await this.timeOff.create(body);
+      if (dto.signatureUrl) {
+        await this.prisma.timeOffRequest.update({
+          where: { id: created.data.id },
+          data: { attachments: [{ kind: 'SIGNATURE', url: dto.signatureUrl }] },
+        });
+      }
+      return { data: { id: created.data.id, status: created.data.status } };
     });
   }
 
