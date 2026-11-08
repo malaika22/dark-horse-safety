@@ -3,6 +3,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { asciiSafe, DAY_MS, fmtShortDate, shortName } from '../common/fleet.util';
 import { loadFleetPlaces, type FleetPlaceCard } from '../trucks/trucks.snapshot';
+import { ensureUnaccountedTable } from '../unaccounted/ensure-unaccounted-table';
 
 export type FleetAssetRow = {
   id: string;
@@ -68,6 +69,7 @@ export class AssetsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async catalog() {
+    await ensureUnaccountedTable(this.prisma);
     const [calibrations, inspections, repairs, missing] = await Promise.all([
       this.prisma.fleetCalibration.findMany({
         where: { archivedAt: null },

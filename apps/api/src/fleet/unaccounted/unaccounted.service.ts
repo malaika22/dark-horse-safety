@@ -6,6 +6,7 @@ import {
 import { Prisma, UnaccountedStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { asciiSafe, DAY_MS, fmtShortDate } from '../common/fleet.util';
+import { ensureUnaccountedTable } from './ensure-unaccounted-table';
 
 function money(value: Prisma.Decimal | number | null | undefined) {
   const amount = Number(value ?? 0);
@@ -26,6 +27,7 @@ export class UnaccountedService {
   constructor(private readonly prisma: PrismaService) {}
 
   private async ensureSeed() {
+    await ensureUnaccountedTable(this.prisma);
     const count = await this.prisma.unaccountedAsset.count();
     if (count > 0) return;
     const now = Date.now();
@@ -213,6 +215,7 @@ export class UnaccountedService {
   }
 
   private async find(id: string) {
+    await ensureUnaccountedTable(this.prisma);
     const row = await this.prisma.unaccountedAsset.findFirst({
       where: { id, archivedAt: null },
     });
