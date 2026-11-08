@@ -3,6 +3,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { asciiSafe, shortName } from '../common/fleet.util';
+import { ensureFleetTables } from '../ensure-fleet-tables';
 import { fleetDetail, loadFleetPlaces, locationData } from './trucks.snapshot';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class TrucksService {
   constructor(private readonly prisma: PrismaService) {}
 
   private async ensureLocations() {
+    await ensureFleetTables(this.prisma);
     const count = await this.prisma.fleetLocation.count();
     if (count > 0) return;
     await this.prisma.fleetLocation.createMany({
@@ -194,6 +196,7 @@ export class TrucksService {
   }
 
   async getLocation(id: string) {
+    await ensureFleetTables(this.prisma);
     const name = asciiSafe(id.replace(/-/g, ' ').toUpperCase());
     const row = await this.prisma.fleetLocation.findFirst({
       where: {
@@ -224,6 +227,7 @@ export class TrucksService {
     },
     id?: string,
   ) {
+    await ensureFleetTables(this.prisma);
     const data = {
       name: asciiSafe(dto.name.trim().toUpperCase()),
       type: asciiSafe(dto.type.trim().toUpperCase()).replace(/\s+/g, '_'),

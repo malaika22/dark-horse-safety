@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { asciiSafe, DAY_MS, fmtShortDate, shortName } from '../common/fleet.util';
+import { ensureFleetTables } from '../ensure-fleet-tables';
 
 export type CardStatus = 'NEED_REVIEW' | 'READY' | 'ACTIVE' | 'IN_REPAIR' | 'AT_CAPACITY';
 
@@ -41,6 +42,7 @@ function clamp(value: number) {
 }
 
 export async function loadFleetPlaces(prisma: PrismaService) {
+  await ensureFleetTables(prisma);
   const [employees, calibrations, inspections, repairs, savedLocations] = await Promise.all([
     prisma.employee.findMany({
       where: { archivedAt: null, status: 'ACTIVE' },
