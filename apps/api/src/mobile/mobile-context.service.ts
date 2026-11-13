@@ -1,9 +1,11 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
-import { Employee, Prisma } from '@prisma/client';
+import { Employee, Prisma, User, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export const MILES_PER_METER = 0.000621371;
@@ -50,43 +52,35 @@ export function num(v: unknown): number {
 export type MobileActor = { userId: string; employee: Employee };
 
 @Injectable()
-export class MobileContext {
+export class MobileContext implements OnModuleInit {
+  private readonly log = new Logger(MobileContext.name);
+
   constructor(readonly prisma: PrismaService) {}
 
+  /** Every technician account gets an employee before mobile routes run. */
+  async onModuleInit() {
+    try {
+      const linked = await this.linkAllTechnicians();
+      if (linked) this.log.log(`Linked ${linked} technician account${linked === 1 ? '' : 's'} to employees`);
+    } catch (error) {
+      this.log.warn(`Technician link skipped: ${(error as Error).message}`);
+    }
+  }
+
   /**
-   * Resolve the signed-in user to the Employee the admin portal already lists.
-   * Matches a stored userId first, then the same email, then a unique first-initial and last name.
-   * The match is saved on Employee.userId so later mobile and portal calls use one person.
+   * Resolve the signed-in user to an Employee.
+   * Technician accounts are linked here as well, so a user created after startup
+   * can call every mobile route.
    */
   async actor(userId: string): Promise<MobileActor> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
     let employee = await this.prisma.employee.findUnique({
       where: { userId },
     });
-    if (!employee) {
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
-      if (user?.email) {
-        employee = await this.prisma.employee.findFirst({
-          where: { email: { equals: user.email, mode: 'insensitive' }, archivedAt: null },
-        });
-      }
-      if (!employee && user?.lastName) {
-        const candidates = await this.prisma.employee.findMany({
-          where: {
-            lastName: { equals: user.lastName, mode: 'insensitive' },
-            archivedAt: null,
-            userId: null,
-          },
-        });
-        const initial = (user.firstName ?? '').trim().charAt(0).toUpperCase();
-        const hits = candidates.filter((row) => row.firstName.trim().charAt(0).toUpperCase() === initial);
-        if (hits.length === 1) employee = hits[0];
-      }
-      if (employee && !employee.userId) {
-        employee = await this.prisma.employee.update({
-          where: { id: employee.id },
-          data: { userId },
-        });
-      }
+    if (user?.role === UserRole.TECHNICIAN) {
+      employee = await this.ensureTechnician(user);
+    } else if (!employee && user) {
+      employee = await this.matchEmployee(user);
     }
     if (!employee || employee.archivedAt) {
       throw new ForbiddenException({
@@ -101,6 +95,111 @@ export class MobileContext {
       });
     }
     return { userId, employee };
+  }
+
+  /** Link every user with the technician role. Returns how many were newly attached. */
+  async linkAllTechnicians() {
+    const users = await this.prisma.user.findMany({ where: { role: UserRole.TECHNICIAN } });
+    let linked = 0;
+    for (const user of users) {
+      const before = await this.prisma.employee.findUnique({ where: { userId: user.id } });
+      await this.ensureTechnician(user);
+      if (!before) linked += 1;
+    }
+    return linked;
+  }
+
+  /** Find or create the employee for this technician and turn mobile access on. */
+  private async ensureTechnician(user: User): Promise<Employee> {
+    const employee = (await this.matchEmployee(user)) ?? (await this.provision(user));
+    if (employee.userId === user.id && employee.mobileAppAccess && !employee.archivedAt) {
+      return employee;
+    }
+    return this.prisma.employee.update({
+      where: { id: employee.id },
+      data: {
+        userId: user.id,
+        mobileAppAccess: true,
+        archivedAt: null,
+        email: employee.email ?? user.email,
+      },
+    });
+  }
+
+  private async matchEmployee(user: User): Promise<Employee | null> {
+    const linked = await this.prisma.employee.findUnique({ where: { userId: user.id } });
+    if (linked) return linked;
+    let employee: Employee | null = null;
+    if (user.email) {
+      const byEmail = await this.prisma.employee.findFirst({
+        where: { email: { equals: user.email, mode: 'insensitive' }, archivedAt: null },
+      });
+      if (byEmail && (!byEmail.userId || byEmail.userId === user.id)) employee = byEmail;
+    }
+    if (!employee && user.lastName) {
+      const candidates = await this.prisma.employee.findMany({
+        where: {
+          lastName: { equals: user.lastName, mode: 'insensitive' },
+          archivedAt: null,
+          userId: null,
+        },
+      });
+      const initial = (user.firstName ?? '').trim().charAt(0).toUpperCase();
+      const hits = candidates.filter((row) => row.firstName.trim().charAt(0).toUpperCase() === initial);
+      if (hits.length === 1) employee = hits[0];
+    }
+    if (employee) {
+      if (employee.userId === user.id) return employee;
+      return this.prisma.employee.update({
+        where: { id: employee.id },
+        data: { userId: user.id, email: employee.email ?? user.email },
+      });
+    }
+    return null;
+  }
+
+  /** Create the employee row this login was missing and attach it to the user. */
+  private async provision(user: User): Promise<Employee> {
+    const firstName = user.firstName?.trim() || 'Field';
+    const lastName = user.lastName?.trim() || 'Technician';
+    const displayName = `${firstName.charAt(0)}. ${lastName}`.trim();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.prisma.employee.create({
+          data: {
+            code: await this.nextEmployeeCode(),
+            firstName,
+            lastName,
+            displayName,
+            roleTitle: 'Field Technician',
+            email: user.email,
+            phone: user.phone,
+            userId: user.id,
+            mobileAppAccess: true,
+            status: 'ACTIVE',
+          },
+        });
+      } catch (error) {
+        const linked = await this.prisma.employee.findUnique({ where: { userId: user.id } });
+        if (linked && !linked.archivedAt) return linked;
+        const retry = error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && attempt < 2;
+        if (!retry) throw error;
+      }
+    }
+    throw new ForbiddenException({
+      code: 'EMPLOYEE_NOT_LINKED',
+      message: 'This account is not linked to an employee record.',
+    });
+  }
+
+  private async nextEmployeeCode() {
+    const rows = await this.prisma.employee.findMany({ select: { code: true } });
+    let max = 1000;
+    for (const row of rows) {
+      const match = /^EMP-(\d+)$/i.exec(row.code);
+      if (match) max = Math.max(max, Number(match[1]));
+    }
+    return `EMP-${max + 1}`;
   }
 
   /**
