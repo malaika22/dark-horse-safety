@@ -1,13 +1,31 @@
 import {
   AccountStatus,
+  AdditionalFormStatus,
+  AdditionalFormUrgency,
+  CloseoutStatus,
   CrmRecordStatus,
   CrmTaskPriority,
+  DispatchAssignmentStatus,
+  DispatchJobType,
   EmployeeStatus,
   EnforcementLevel,
   ExpenseStatus,
+  FleetCalibrationResult,
+  FleetCalibrationStatus,
+  FleetInspectionResult,
+  FleetInspectionStatus,
+  FleetRepairPriority,
+  FleetRepairStatus,
+  FormCorrectionStatus,
+  HrGpsFlagType,
+  OnCallStatus,
+  OnCallZone,
   PayCycleStatus,
   PrismaClient,
+  SafetyFormStatus,
+  SafetySubmissionStatus,
   SalesActivityType,
+  SalesTicketStatus,
   TimeEditRequestStatus,
   TimeEditRequestType,
   TimeEntryCategory,
@@ -15,6 +33,7 @@ import {
   TimeEntryStatus,
   TimeOffStatus,
   TimeOffType,
+  TrainingVerification,
   UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -24,6 +43,729 @@ const prisma = new PrismaClient();
 
 function hashToken(token: string) {
   return createHash('sha256').update(token).digest('hex');
+}
+
+/** Calendar date at UTC midnight, matching MobileContext.dateOnly. */
+function localDay(offset = 0) {
+  const n = new Date();
+  return new Date(Date.UTC(n.getFullYear(), n.getMonth(), n.getDate() + offset));
+}
+
+function isoDay(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Mobile APIs resolve the signed-in user to an Employee (userId, then email).
+ * Seed logins had no employee row, so every mobile call returned employee-not-linked.
+ * This fixture links those accounts and fills the records the mobile screens read.
+ */
+async function seedMobileFixture(passwordHash: string) {
+  const supervisor = await prisma.employee.findUnique({ where: { code: 'EMP-1001' } });
+  const day = localDay(0);
+
+  const tech = await prisma.user.upsert({
+    where: { email: 'tech@darkhorseops.com' },
+    update: {
+      passwordHash,
+      status: AccountStatus.ACTIVE,
+      role: UserRole.TECHNICIAN,
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      phone: '14325551042',
+    },
+    create: {
+      email: 'tech@darkhorseops.com',
+      passwordHash,
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      role: UserRole.TECHNICIAN,
+      status: AccountStatus.ACTIVE,
+      phone: '14325551042',
+    },
+  });
+
+  await prisma.employee.updateMany({
+    where: { userId: tech.id, NOT: { code: 'EMP-1042' } },
+    data: { userId: null },
+  });
+
+  const techEmployee = await prisma.employee.upsert({
+    where: { code: 'EMP-1042' },
+    update: {
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      displayName: 'A. Lovelace',
+      roleTitle: 'Field Technician',
+      status: EmployeeStatus.ACTIVE,
+      email: tech.email,
+      phone: '(432) 555-1042',
+      homeAddress: '410 W Texas Ave, Midland, TX 79701',
+      assignedTruck: 'TRK-42',
+      crew: 'Permian North Crew',
+      supervisorId: supervisor?.id ?? null,
+      mobileAppAccess: true,
+      userId: tech.id,
+      archivedAt: null,
+      hasOpenTimeEdit: true,
+      emergencyContactName: 'Sam Lovelace',
+      emergencyContactPhone: '(432) 555-0199',
+      ppeIssued: ['HARD HAT', 'FR COVERALLS', 'STEEL TOES'],
+      assignedEquipment: ['4-GAS MONITOR', 'H2S MONITOR'],
+      defaultTimeCategory: 'REGULAR',
+      certReminderLeadDays: 30,
+      ptoBalance: 48,
+      ptoAnnual: 160,
+      ptoUsed: 16,
+      sickBalance: 40,
+      sickAnnual: 80,
+      sickUsed: 8,
+    },
+    create: {
+      code: 'EMP-1042',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      displayName: 'A. Lovelace',
+      roleTitle: 'Field Technician',
+      status: EmployeeStatus.ACTIVE,
+      email: tech.email,
+      phone: '(432) 555-1042',
+      homeAddress: '410 W Texas Ave, Midland, TX 79701',
+      hireDate: new Date('2024-03-01T12:00:00.000Z'),
+      employmentType: 'FULL-TIME',
+      payType: 'HOURLY',
+      assignedTruck: 'TRK-42',
+      crew: 'Permian North Crew',
+      supervisorId: supervisor?.id ?? null,
+      mobileAppAccess: true,
+      userId: tech.id,
+      hasOpenTimeEdit: true,
+      emergencyContactName: 'Sam Lovelace',
+      emergencyContactPhone: '(432) 555-0199',
+      ppeIssued: ['HARD HAT', 'FR COVERALLS', 'STEEL TOES'],
+      assignedEquipment: ['4-GAS MONITOR', 'H2S MONITOR'],
+      defaultTimeCategory: 'REGULAR',
+      certReminderLeadDays: 30,
+      ptoBalance: 48,
+      ptoAnnual: 160,
+      ptoUsed: 16,
+      sickBalance: 40,
+      sickAnnual: 80,
+      sickUsed: 8,
+      jobTitle: 'Field Technician',
+      payRate: 32,
+    },
+  });
+
+  const portalLinks: { email: string; code: string; firstName: string; lastName: string; roleTitle: string }[] = [
+    { email: 'admin@darkhorseops.com', code: 'EMP-1090', firstName: 'R.', lastName: 'Crawford', roleTitle: 'Operations Manager' },
+    { email: 'lnguyen@darkhorseops.com', code: 'EMP-1091', firstName: 'L.', lastName: 'Nguyen', roleTitle: 'Supervisor' },
+  ];
+  for (const link of portalLinks) {
+    const account = await prisma.user.findUnique({ where: { email: link.email } });
+    if (!account) continue;
+    await prisma.employee.updateMany({
+      where: { userId: account.id, NOT: { code: link.code } },
+      data: { userId: null },
+    });
+    await prisma.employee.upsert({
+      where: { code: link.code },
+      update: {
+        firstName: link.firstName,
+        lastName: link.lastName,
+        displayName: `${link.firstName} ${link.lastName}`,
+        roleTitle: link.roleTitle,
+        email: link.email,
+        status: EmployeeStatus.ACTIVE,
+        mobileAppAccess: true,
+        userId: account.id,
+        supervisorId: supervisor?.id ?? null,
+        archivedAt: null,
+      },
+      create: {
+        code: link.code,
+        firstName: link.firstName,
+        lastName: link.lastName,
+        displayName: `${link.firstName} ${link.lastName}`,
+        roleTitle: link.roleTitle,
+        email: link.email,
+        status: EmployeeStatus.ACTIVE,
+        mobileAppAccess: true,
+        userId: account.id,
+        supervisorId: supervisor?.id ?? null,
+        assignedTruck: 'TRK-14',
+        crew: 'Permian North Crew',
+      },
+    });
+  }
+
+  const torres = await prisma.user.findUnique({ where: { email: 'mtorres@darkhorseops.com' } });
+  const torresEmployee = await prisma.employee.findUnique({ where: { code: 'EMP-1003' } });
+  if (torres && torresEmployee) {
+    await prisma.employee.updateMany({
+      where: { userId: torres.id, NOT: { id: torresEmployee.id } },
+      data: { userId: null },
+    });
+    await prisma.employee.update({
+      where: { id: torresEmployee.id },
+      data: { userId: torres.id, mobileAppAccess: true, archivedAt: null },
+    });
+  }
+
+  const fieldEmployees = await prisma.employee.findMany({
+    where: { archivedAt: null, email: { not: null }, userId: null },
+  });
+  for (const emp of fieldEmployees) {
+    if (!emp.email) continue;
+    const account = await prisma.user.upsert({
+      where: { email: emp.email },
+      update: {
+        passwordHash,
+        status: AccountStatus.ACTIVE,
+        firstName: emp.firstName,
+        lastName: emp.lastName,
+        role: emp.roleTitle.toLowerCase().includes('lead') ? UserRole.SUPERVISOR : UserRole.TECHNICIAN,
+      },
+      create: {
+        email: emp.email,
+        passwordHash,
+        firstName: emp.firstName,
+        lastName: emp.lastName,
+        role: emp.roleTitle.toLowerCase().includes('lead') ? UserRole.SUPERVISOR : UserRole.TECHNICIAN,
+        status: AccountStatus.ACTIVE,
+      },
+    });
+    await prisma.employee.update({
+      where: { id: emp.id },
+      data: { userId: account.id, mobileAppAccess: true },
+    });
+  }
+
+  const workOrders = await prisma.workOrder.findMany({
+    where: { code: { in: ['WO-46005950', 'WO-46005951', 'WO-46005952', 'WO-46005953'] } },
+    include: { customer: true, location: true },
+  });
+  const wo = Object.fromEntries(workOrders.map((row) => [row.code, row]));
+  const homeLat = wo['WO-46005950']?.location?.latitude ?? 31.9973;
+  const homeLng = wo['WO-46005950']?.location?.longitude ?? -102.0779;
+
+  await prisma.mobileProfile.upsert({
+    where: { userId: tech.id },
+    update: {
+      homeAddress: '410 W Texas Ave, Midland, TX 79701',
+      homeLat,
+      homeLng,
+      homeLocationSetAt: day,
+      notificationsEnabled: true,
+    },
+    create: {
+      userId: tech.id,
+      homeAddress: '410 W Texas Ave, Midland, TX 79701',
+      homeLat,
+      homeLng,
+      homeLocationSetAt: day,
+      notificationsEnabled: true,
+    },
+  });
+
+  const jobCodes = ['WO-46005950', 'WO-46005951', 'WO-46005952', 'WO-46005953'];
+  await prisma.dispatchAssignment.deleteMany({
+    where: {
+      employeeId: techEmployee.id,
+      workOrder: { code: { in: jobCodes } },
+    },
+  });
+  const jobPlan = [
+    { code: 'WO-46005950', offset: 0, status: DispatchAssignmentStatus.ACCEPTED, start: '07:00', end: '15:30' },
+    { code: 'WO-46005951', offset: 1, status: DispatchAssignmentStatus.POSTED, start: '06:30', end: '16:30' },
+    { code: 'WO-46005952', offset: -1, status: DispatchAssignmentStatus.ACCEPTED, start: '08:00', end: '16:00' },
+    { code: 'WO-46005953', offset: -2, status: DispatchAssignmentStatus.ACCEPTED, start: '08:00', end: '17:00' },
+  ];
+  for (const job of jobPlan) {
+    const order = wo[job.code];
+    if (!order) continue;
+    await prisma.dispatchAssignment.create({
+      data: {
+        workOrderId: order.id,
+        employeeId: techEmployee.id,
+        scheduledDate: localDay(job.offset),
+        startTime: job.start,
+        endTime: job.end,
+        jobType: DispatchJobType.VISIT,
+        status: job.status,
+        postedAt: day,
+        acceptedAt: job.status === DispatchAssignmentStatus.ACCEPTED ? day : null,
+      },
+    });
+  }
+
+  const openCycle = await prisma.payCycle.findFirst({
+    where: { startDate: { lte: day }, endDate: { gte: day } },
+  });
+  const cycleLabel = openCycle?.code ?? 'MOBILE';
+  await prisma.timeEntry.deleteMany({
+    where: { employeeId: techEmployee.id, jobSiteLabel: 'MOBILE-SEED' },
+  });
+  const mondayIndex = (day.getUTCDay() + 6) % 7;
+  const entryIds: string[] = [];
+  for (let back = 0; back <= mondayIndex; back += 1) {
+    const workDate = localDay(-back);
+    const order = wo['WO-46005950'];
+    const created = await prisma.timeEntry.create({
+      data: {
+        employeeId: techEmployee.id,
+        workDate,
+        cycleLabel,
+        workOrderShort: 'ST-54321',
+        workOrderCode: order?.code ?? 'WO-46005950',
+        category: back === 0 ? TimeEntryCategory.REGULAR : TimeEntryCategory.REGULAR,
+        clockIn: '07:00',
+        clockOut: '15:30',
+        source: TimeEntrySource.MOBILE,
+        hours: 8.5,
+        workHours: 7.5,
+        travelHours: 1,
+        billable: true,
+        gpsFlagged: back === 1,
+        gpsLabel: back === 1 ? '2MIN' : 'CLEAR',
+        status: TimeEntryStatus.APPROVED,
+        customerName: order?.customer.name ?? 'Permian Basin Energy',
+        jobLocation: order?.location?.name ?? 'Wolfcamp 12-4H',
+        jobSiteLabel: 'MOBILE-SEED',
+        jobType: 'Field Service',
+        jobLat: homeLat,
+        jobLng: homeLng,
+      },
+    });
+    entryIds.push(created.id);
+  }
+
+  await prisma.timeEditRequest.deleteMany({
+    where: { employeeId: techEmployee.id },
+  });
+  if (entryIds[0]) {
+    await prisma.timeEditRequest.create({
+      data: {
+        employeeId: techEmployee.id,
+        timeEntryId: entryIds[0],
+        workDate: day,
+        dateLabel: isoDay(day),
+        cycleLabel,
+        workOrderCode: 'WO-46005950',
+        customerName: wo['WO-46005950']?.customer.name ?? 'Permian Basin Energy',
+        type: TimeEditRequestType.CLOCK_OUT_CHANGE,
+        status: TimeEditRequestStatus.PENDING,
+        deltaHours: 0.5,
+        deltaLabel: '+0.5h',
+        originalClockIn: '07:00',
+        originalClockOut: '15:30',
+        originalHours: 8.5,
+        requestedClockIn: '07:00',
+        requestedClockOut: '16:00',
+        requestedHours: 9,
+        technicianReason: 'Forgot to clock out at the pad gate',
+      },
+    });
+  }
+  if (entryIds[1]) {
+    await prisma.timeEditRequest.create({
+      data: {
+        employeeId: techEmployee.id,
+        timeEntryId: entryIds[1],
+        workDate: localDay(-1),
+        dateLabel: isoDay(localDay(-1)),
+        cycleLabel,
+        workOrderCode: 'WO-46005950',
+        customerName: wo['WO-46005950']?.customer.name ?? 'Permian Basin Energy',
+        type: TimeEditRequestType.CLOCK_IN_CHANGE,
+        status: TimeEditRequestStatus.APPROVED,
+        deltaHours: 0.3,
+        deltaLabel: '+0.3h',
+        originalClockIn: '07:20',
+        originalClockOut: '15:30',
+        requestedClockIn: '07:00',
+        requestedClockOut: '15:30',
+        technicianReason: 'Traffic delay leaving the yard',
+        adminNote: 'Approved. GPS trail matches the yard gate.',
+        resolvedAt: day,
+      },
+    });
+  }
+
+  await prisma.timeOffRequest.deleteMany({
+    where: { employeeId: techEmployee.id },
+  });
+  await prisma.timeOffRequest.create({
+    data: {
+      employeeId: techEmployee.id,
+      type: TimeOffType.PTO,
+      status: TimeOffStatus.PENDING,
+      startDate: localDay(10),
+      endDate: localDay(11),
+      startLabel: isoDay(localDay(10)),
+      endLabel: isoDay(localDay(11)),
+      dayCount: 2,
+      hoursRequested: 16,
+      balanceAfter: 32,
+      coverage: 'COVERED',
+      requestedAt: day,
+      requestedLabel: isoDay(day),
+      reason: 'Family event',
+    },
+  });
+
+  const certs = [
+    { label: 'H2S Awareness', issuingBody: 'SafeLand', expiryAt: new Date(Date.UTC(day.getUTCFullYear() + 1, 5, 1)), verification: TrainingVerification.VERIFIED },
+    { label: 'First Aid / CPR', issuingBody: 'National Safety Council', expiryAt: localDay(20), verification: TrainingVerification.VERIFIED },
+  ];
+  for (const cert of certs) {
+    const existing = await prisma.trainingCertificate.findFirst({
+      where: { employeeId: techEmployee.id, label: cert.label },
+    });
+    if (existing) {
+      await prisma.trainingCertificate.update({ where: { id: existing.id }, data: cert });
+    } else {
+      await prisma.trainingCertificate.create({ data: { employeeId: techEmployee.id, ...cert } });
+    }
+  }
+
+  await prisma.hrGpsFlag.deleteMany({
+    where: { employeeId: techEmployee.id },
+  });
+  await prisma.hrGpsFlag.create({
+    data: {
+      employeeId: techEmployee.id,
+      type: HrGpsFlagType.OUTSIDE_GEOFENCE,
+      eventAt: new Date(),
+      distanceMi: 1.4,
+      geofenceFt: 500,
+      workOrder: 'WO-46005950',
+      customer: wo['WO-46005950']?.customer.name ?? 'Permian Basin Energy',
+      eventType: 'CLOCK-IN',
+      jobLat: homeLat,
+      jobLng: homeLng,
+      clockLat: homeLat + 0.02,
+      clockLng: homeLng + 0.02,
+    },
+  });
+
+  for (const offset of [0, 1]) {
+    const date = localDay(offset);
+    const existing = await prisma.onCallAssignment.findUnique({ where: { date } });
+    const data = {
+      employeeId: offset === 0 ? techEmployee.id : supervisor?.id ?? techEmployee.id,
+      backupId: offset === 0 ? supervisor?.id ?? null : techEmployee.id,
+      zone: offset === 0 ? OnCallZone.NORTH : OnCallZone.CENTRAL,
+      status: OnCallStatus.CONFIRMED,
+      notes: 'Call the supervisor before rolling a unit',
+      published: true,
+    };
+    if (!existing) {
+      await prisma.onCallAssignment.create({ data: { date, ...data } });
+    } else if (existing.notes?.includes('rolling a unit') || existing.employeeId === techEmployee.id || existing.backupId === techEmployee.id) {
+      await prisma.onCallAssignment.update({ where: { id: existing.id }, data });
+    }
+  }
+
+  const formDefinition = [
+    {
+      id: 'sec-1',
+      title: 'Job details',
+      required: true,
+      fields: [
+        { id: 'site', type: 'text', label: 'Site', placeholder: 'Well name', required: true },
+        { id: 'h2s', type: 'boolean', label: 'H2S present', required: true },
+      ],
+    },
+  ];
+  const forms = [
+    { code: 'SF-MOBILE-JSA', title: 'Job Safety Analysis' },
+    { code: 'SF-MOBILE-BBS', title: 'Behavior Based Safety' },
+    { code: 'SF-MOBILE-PERMIT', title: 'Permit to Work' },
+  ];
+  const formRows: Record<string, { id: string; code: string }> = {};
+  for (const form of forms) {
+    const row = await prisma.safetyForm.upsert({
+      where: { code: form.code },
+      update: { title: form.title, status: SafetyFormStatus.ACTIVE, version: 'V1.0', definition: formDefinition },
+      create: { code: form.code, title: form.title, status: SafetyFormStatus.ACTIVE, version: 'V1.0', definition: formDefinition },
+    });
+    formRows[form.code] = row;
+  }
+
+  const jsa = formRows['SF-MOBILE-JSA'];
+  const permit = formRows['SF-MOBILE-PERMIT'];
+  const todayOrder = wo['WO-46005950'];
+  if (jsa && todayOrder) {
+    await prisma.safetyFormSubmission.upsert({
+      where: { code: 'SFS-M-1042' },
+      update: {
+        formId: jsa.id,
+        workOrderId: todayOrder.id,
+        workOrderCode: todayOrder.code,
+        customerName: todayOrder.customer.name,
+        locationLabel: todayOrder.location?.name,
+        status: SafetySubmissionStatus.SUBMITTED,
+        submittedById: techEmployee.id,
+        submittedByName: 'A. Lovelace',
+        values: { site: todayOrder.location?.name ?? 'Wolfcamp 12-4H', h2s: true },
+        submittedAt: day,
+      },
+      create: {
+        code: 'SFS-M-1042',
+        formId: jsa.id,
+        workOrderId: todayOrder.id,
+        workOrderCode: todayOrder.code,
+        customerName: todayOrder.customer.name,
+        locationLabel: todayOrder.location?.name,
+        status: SafetySubmissionStatus.SUBMITTED,
+        submittedById: techEmployee.id,
+        submittedByName: 'A. Lovelace',
+        values: { site: todayOrder.location?.name ?? 'Wolfcamp 12-4H', h2s: true },
+        submittedAt: day,
+      },
+    });
+  }
+  if (permit) {
+    await prisma.safetyFormSubmission.upsert({
+      where: { code: 'SFS-M-1042-DRAFT' },
+      update: {
+        formId: permit.id,
+        status: SafetySubmissionStatus.DRAFT,
+        submittedById: techEmployee.id,
+        submittedByName: 'A. Lovelace',
+        values: { site: '', h2s: false },
+      },
+      create: {
+        code: 'SFS-M-1042-DRAFT',
+        formId: permit.id,
+        status: SafetySubmissionStatus.DRAFT,
+        submittedById: techEmployee.id,
+        submittedByName: 'A. Lovelace',
+        values: { site: '', h2s: false },
+      },
+    });
+  }
+
+  const returnedOrder = wo['WO-46005953'];
+  if (returnedOrder) {
+    await prisma.formCorrectionRequest.upsert({
+      where: { code: 'FCR-M-1042' },
+      update: {
+        formLabel: 'JSA',
+        formTitle: 'Job Safety Analysis',
+        workOrderId: returnedOrder.id,
+        customerName: returnedOrder.customer.name,
+        locationLabel: returnedOrder.location?.name,
+        reasonShort: 'Signature missing',
+        requestedBy: 'J. Martinez',
+        status: FormCorrectionStatus.OPEN,
+        issueFlagged: 'Technician signature was not captured.',
+        correctionInstruction: 'Re-sign the JSA and resubmit.',
+        rule: 'JSA required before closeout',
+        submittedBy: 'A. Lovelace',
+      },
+      create: {
+        code: 'FCR-M-1042',
+        formLabel: 'JSA',
+        formTitle: 'Job Safety Analysis',
+        workOrderId: returnedOrder.id,
+        customerName: returnedOrder.customer.name,
+        locationLabel: returnedOrder.location?.name,
+        reasonShort: 'Signature missing',
+        requestedBy: 'J. Martinez',
+        status: FormCorrectionStatus.OPEN,
+        issueFlagged: 'Technician signature was not captured.',
+        correctionInstruction: 'Re-sign the JSA and resubmit.',
+        rule: 'JSA required before closeout',
+        submittedBy: 'A. Lovelace',
+      },
+    });
+    await prisma.additionalFormRequest.upsert({
+      where: { code: 'AFR-M-1042' },
+      update: {
+        workOrderId: returnedOrder.id,
+        customerName: returnedOrder.customer.name,
+        locationLabel: returnedOrder.location?.name ?? 'Delaware',
+        technicianName: 'A. Lovelace',
+        formRequested: 'Hot Work Permit',
+        reasonShort: 'Hot work started',
+        reason: 'Hot work was required after the JSA.',
+        urgency: AdditionalFormUrgency.HIGH,
+        status: AdditionalFormStatus.NEEDS_INFO,
+        history: [{ when: day.toISOString(), text: 'Reviewer asked for a photo of the permit board.' }],
+        rule: 'Hot work requires a permit',
+      },
+      create: {
+        code: 'AFR-M-1042',
+        workOrderId: returnedOrder.id,
+        customerName: returnedOrder.customer.name,
+        locationLabel: returnedOrder.location?.name ?? 'Delaware',
+        technicianName: 'A. Lovelace',
+        formRequested: 'Hot Work Permit',
+        reasonShort: 'Hot work started',
+        reason: 'Hot work was required after the JSA.',
+        urgency: AdditionalFormUrgency.HIGH,
+        status: AdditionalFormStatus.NEEDS_INFO,
+        history: [{ when: day.toISOString(), text: 'Reviewer asked for a photo of the permit board.' }],
+        rule: 'Hot work requires a permit',
+      },
+    });
+    await prisma.salesTicket.upsert({
+      where: { code: 'ST-M-1042' },
+      update: {
+        workOrderId: returnedOrder.id,
+        customerId: returnedOrder.customerId,
+        employeeId: techEmployee.id,
+        serviceItem: 'H2S site prep',
+        status: SalesTicketStatus.RETURNED,
+        submittedRate: 185,
+        submittedHours: 8,
+        submittedValue: 1480,
+        returnNote: 'Hours do not match the clock record. Please correct.',
+        returnedAt: day,
+      },
+      create: {
+        code: 'ST-M-1042',
+        workOrderId: returnedOrder.id,
+        customerId: returnedOrder.customerId,
+        employeeId: techEmployee.id,
+        serviceItem: 'H2S site prep',
+        status: SalesTicketStatus.RETURNED,
+        submittedRate: 185,
+        submittedHours: 8,
+        submittedValue: 1480,
+        returnNote: 'Hours do not match the clock record. Please correct.',
+        returnedAt: day,
+      },
+    });
+    const ticket = await prisma.salesTicket.findUnique({ where: { code: 'ST-M-1042' } });
+    await prisma.closeoutReview.upsert({
+      where: { workOrderId: returnedOrder.id },
+      update: {
+        customerId: returnedOrder.customerId,
+        submittedById: techEmployee.id,
+        status: CloseoutStatus.RETURNED,
+        locationLabel: returnedOrder.location?.name,
+        decisionNote: 'Closeout returned. Correct the sales ticket and JSA.',
+        decidedAt: day,
+        salesTicketId: ticket?.id,
+      },
+      create: {
+        workOrderId: returnedOrder.id,
+        customerId: returnedOrder.customerId,
+        submittedById: techEmployee.id,
+        status: CloseoutStatus.RETURNED,
+        locationLabel: returnedOrder.location?.name,
+        decisionNote: 'Closeout returned. Correct the sales ticket and JSA.',
+        decidedAt: day,
+        salesTicketId: ticket?.id,
+        serviceDate: localDay(-2),
+      },
+    });
+  }
+
+  await prisma.fleetInspection.upsert({
+    where: { code: 'INS-M-1042' },
+    update: {
+      assetCode: 'GAS-1042',
+      assetLabel: '4-Gas Monitor',
+      parentTruck: 'TRK-42',
+      inspectorName: 'A. Lovelace',
+      inspectedAt: day,
+      result: FleetInspectionResult.PASS,
+      status: FleetInspectionStatus.COMPLETE,
+      type: 'DAILY',
+      source: 'MOBILE_APP',
+    },
+    create: {
+      code: 'INS-M-1042',
+      assetCode: 'GAS-1042',
+      assetLabel: '4-Gas Monitor',
+      parentTruck: 'TRK-42',
+      inspectorName: 'A. Lovelace',
+      inspectedAt: day,
+      result: FleetInspectionResult.PASS,
+      status: FleetInspectionStatus.COMPLETE,
+      type: 'DAILY',
+      source: 'MOBILE_APP',
+    },
+  });
+  await prisma.fleetCalibration.upsert({
+    where: { code: 'CAL-M-1042' },
+    update: {
+      assetCode: 'GAS-1042',
+      assetLabel: '4-Gas Monitor',
+      model: 'GX-3R',
+      parentTruck: 'TRK-42',
+      lastCalAt: day,
+      nextDueAt: localDay(180),
+      result: FleetCalibrationResult.PASS,
+      status: FleetCalibrationStatus.CURRENT,
+    },
+    create: {
+      code: 'CAL-M-1042',
+      assetCode: 'GAS-1042',
+      assetLabel: '4-Gas Monitor',
+      model: 'GX-3R',
+      parentTruck: 'TRK-42',
+      lastCalAt: day,
+      nextDueAt: localDay(180),
+      result: FleetCalibrationResult.PASS,
+      status: FleetCalibrationStatus.CURRENT,
+    },
+  });
+  await prisma.fleetRepairRequest.upsert({
+    where: { code: 'REP-M-1042' },
+    update: {
+      assetCode: 'GAS-1042',
+      assetLabel: '4-Gas Monitor',
+      issue: 'Sensor drift noted on bump test',
+      priority: FleetRepairPriority.MEDIUM,
+      status: FleetRepairStatus.OPEN,
+      parentTruck: 'TRK-42',
+      assignedName: 'A. Lovelace',
+    },
+    create: {
+      code: 'REP-M-1042',
+      assetCode: 'GAS-1042',
+      assetLabel: '4-Gas Monitor',
+      issue: 'Sensor drift noted on bump test',
+      priority: FleetRepairPriority.MEDIUM,
+      status: FleetRepairStatus.OPEN,
+      parentTruck: 'TRK-42',
+      assignedName: 'A. Lovelace',
+    },
+  });
+
+  await prisma.mobileNotification.upsert({
+    where: { userId_dedupeKey: { userId: tech.id, dedupeKey: 'mobile-seed:welcome' } },
+    update: {
+      type: 'NEW_JOB_ASSIGNED',
+      title: 'New job assigned',
+      body: 'WO-46005951 needs your response.',
+      actionLabel: 'Respond',
+      reference: { type: 'JOB', code: 'WO-46005951' },
+      requiresAction: true,
+      resolved: false,
+      readAt: null,
+    },
+    create: {
+      userId: tech.id,
+      dedupeKey: 'mobile-seed:welcome',
+      type: 'NEW_JOB_ASSIGNED',
+      title: 'New job assigned',
+      body: 'WO-46005951 needs your response.',
+      actionLabel: 'Respond',
+      reference: { type: 'JOB', code: 'WO-46005951' },
+      requiresAction: true,
+      resolved: false,
+    },
+  });
+
+  console.log('Mobile seed: tech@darkhorseops.com / Password123! (employee EMP-1042, truck TRK-42)');
+  console.log('Mobile seed: admin, mtorres, and lnguyen are linked to employee records');
+  console.log('Mobile seed: other employees sign in with their @dhs.com email and Password123!');
 }
 
 async function main() {
@@ -4035,6 +4777,8 @@ async function main() {
   console.log(
     `HR employees ${1 + employeeDefs.length}, time entries ${teDefs.length}, time edit requests ${terCount}, time off ${toCount}`,
   );
+
+  await seedMobileFixture(passwordHash);
 }
 
 main()
