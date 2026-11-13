@@ -1,9 +1,11 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
-import { Employee, Prisma, User } from '@prisma/client';
+import { Employee, Prisma, User, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export const MILES_PER_METER = 0.000621371;
@@ -50,22 +52,35 @@ export function num(v: unknown): number {
 export type MobileActor = { userId: string; employee: Employee };
 
 @Injectable()
-export class MobileContext {
+export class MobileContext implements OnModuleInit {
+  private readonly log = new Logger(MobileContext.name);
+
   constructor(readonly prisma: PrismaService) {}
+
+  /** Every technician account gets an employee before mobile routes run. */
+  async onModuleInit() {
+    try {
+      const linked = await this.linkAllTechnicians();
+      if (linked) this.log.log(`Linked ${linked} technician account${linked === 1 ? '' : 's'} to employees`);
+    } catch (error) {
+      this.log.warn(`Technician link skipped: ${(error as Error).message}`);
+    }
+  }
 
   /**
    * Resolve the signed-in user to an Employee.
-   * Matches userId, then email, then a unique first-initial and last name.
-   * When nothing matches, a field-technician row is created and linked so mobile
-   * calls are not rejected for an account HR has not set up yet.
+   * Technician accounts are linked here as well, so a user created after startup
+   * can call every mobile route.
    */
   async actor(userId: string): Promise<MobileActor> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
     let employee = await this.prisma.employee.findUnique({
       where: { userId },
     });
-    if (!employee) {
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
-      employee = user ? await this.matchOrCreate(user) : null;
+    if (user?.role === UserRole.TECHNICIAN) {
+      employee = await this.ensureTechnician(user);
+    } else if (!employee && user) {
+      employee = await this.matchEmployee(user);
     }
     if (!employee || employee.archivedAt) {
       throw new ForbiddenException({
@@ -82,7 +97,38 @@ export class MobileContext {
     return { userId, employee };
   }
 
-  private async matchOrCreate(user: User): Promise<Employee | null> {
+  /** Link every user with the technician role. Returns how many were newly attached. */
+  async linkAllTechnicians() {
+    const users = await this.prisma.user.findMany({ where: { role: UserRole.TECHNICIAN } });
+    let linked = 0;
+    for (const user of users) {
+      const before = await this.prisma.employee.findUnique({ where: { userId: user.id } });
+      await this.ensureTechnician(user);
+      if (!before) linked += 1;
+    }
+    return linked;
+  }
+
+  /** Find or create the employee for this technician and turn mobile access on. */
+  private async ensureTechnician(user: User): Promise<Employee> {
+    const employee = (await this.matchEmployee(user)) ?? (await this.provision(user));
+    if (employee.userId === user.id && employee.mobileAppAccess && !employee.archivedAt) {
+      return employee;
+    }
+    return this.prisma.employee.update({
+      where: { id: employee.id },
+      data: {
+        userId: user.id,
+        mobileAppAccess: true,
+        archivedAt: null,
+        email: employee.email ?? user.email,
+      },
+    });
+  }
+
+  private async matchEmployee(user: User): Promise<Employee | null> {
+    const linked = await this.prisma.employee.findUnique({ where: { userId: user.id } });
+    if (linked) return linked;
     let employee: Employee | null = null;
     if (user.email) {
       const byEmail = await this.prisma.employee.findFirst({
@@ -109,7 +155,7 @@ export class MobileContext {
         data: { userId: user.id, email: employee.email ?? user.email },
       });
     }
-    return this.provision(user);
+    return null;
   }
 
   /** Create the employee row this login was missing and attach it to the user. */
