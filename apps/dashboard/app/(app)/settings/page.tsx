@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+﻿import { SettingsIndexPage } from "@/features/settings/settings-index-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Settings" />;
+  return <SettingsIndexPage />;
 }

@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+﻿import { IntegrationsPage } from "@/features/settings/integrations-page";
 
 export default function Page() {
-  return <ModulePlaceholder title="Integrations" />;
+  return <IntegrationsPage />;
 }

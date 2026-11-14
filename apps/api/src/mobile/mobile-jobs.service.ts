@@ -3,13 +3,14 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloseoutDto, DeclineDto, JobsQuery, NoteDto, SalesTicketDto } from './dto/mobile.dto';
 import { MobileContext, dateOnly, haversineMeters, isoDate, num } from './mobile-context.service';
+import { MobileSettingsLink } from './mobile-settings-link.service';
 
 const include = { workOrder: { include: { customer: true, location: true } } } satisfies Prisma.DispatchAssignmentInclude;
 type Row = Prisma.DispatchAssignmentGetPayload<{ include: typeof include }>;
 
 @Injectable()
 export class MobileJobsService {
-  constructor(private readonly ctx: MobileContext, private readonly prisma: PrismaService) {}
+  constructor(private readonly ctx: MobileContext, private readonly prisma: PrismaService, private readonly link: MobileSettingsLink) {}
 
   private card(a: Row) {
     return {
@@ -124,11 +125,8 @@ export class MobileJobsService {
     return this.prisma.salesTicket.findFirst({ where: { workOrderId, employeeId }, orderBy: { createdAt: 'desc' } });
   }
 
-  private async requiredFormsMissing(workOrderId: string, customerId: string) {
-    const rules = await this.prisma.formRule.findMany({ where: { customerId, status: 'ACTIVE', required: true } });
-    const subs = await this.prisma.safetyFormSubmission.findMany({ where: { workOrderId, status: { in: ['SUBMITTED', 'LOCKED'] } }, include: { form: true } });
-    const done = new Set(subs.flatMap((s) => [s.form.title.toLowerCase(), s.form.code.toLowerCase()]));
-    return rules.filter((r) => !done.has(r.formTemplate.toLowerCase())).map((r) => r.formTemplate);
+  private requiredFormsMissing(workOrderId: string, customerId: string) {
+    return this.link.missingFormNames(workOrderId, customerId);
   }
 
   /** CO-1 */

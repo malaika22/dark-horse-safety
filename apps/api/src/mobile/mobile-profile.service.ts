@@ -7,10 +7,11 @@ import {
   SettingsDto, SupervisorMessageDto, UpdateProfileDto,
 } from './dto/mobile.dto';
 import { MobileContext, dateOnly, isoDate } from './mobile-context.service';
+import { MobileSettingsLink } from './mobile-settings-link.service';
 
 @Injectable()
 export class MobileProfileService {
-  constructor(private readonly ctx: MobileContext, private readonly prisma: PrismaService) {}
+  constructor(private readonly ctx: MobileContext, private readonly prisma: PrismaService, private readonly link: MobileSettingsLink) {}
 
   private async profile(userId: string) {
     return this.prisma.mobileProfile.upsert({
@@ -165,18 +166,20 @@ export class MobileProfileService {
 
   /** DV-1 */
   async registerDevice(userId: string, dto: DeviceDto) {
-    await this.ctx.actor(userId);
+    const { employee } = await this.ctx.actor(userId);
     const row = await this.prisma.mobileDevice.upsert({
       where: { deviceId: dto.deviceId },
       create: { userId, deviceId: dto.deviceId, platform: dto.platform, pushToken: dto.pushToken, appVersion: dto.appVersion, locationPermission: dto.locationPermission, pushEnabled: dto.pushEnabled ?? true },
       update: { userId, platform: dto.platform, pushToken: dto.pushToken, appVersion: dto.appVersion, locationPermission: dto.locationPermission, pushEnabled: dto.pushEnabled, lastSeenAt: new Date() },
     });
+    await this.link.touchDevice(employee, { deviceId: dto.deviceId, platform: dto.platform, appVersion: dto.appVersion });
     return { data: { deviceId: row.deviceId, registered: true } };
   }
 
   /** DV-2 */
   async removeDevice(userId: string, deviceId: string) {
     await this.prisma.mobileDevice.deleteMany({ where: { userId, deviceId } });
+    await this.link.signOutDevice(deviceId);
     return { data: { removed: true } };
   }
 
@@ -186,7 +189,7 @@ export class MobileProfileService {
     const day = dateOnly(date ? new Date(date) : new Date());
     if (Number.isNaN(day.getTime())) throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Invalid date' });
 
-    const [open, assignments, pendingEdits, unread, attention, oncall, pause] = await Promise.all([
+    const [open, assignments, pendingEdits, unread, attention, oncall, pause, sync] = await Promise.all([
       this.prisma.timeEntry.findFirst({ where: { employeeId: e.id, clockOut: null, archivedAt: null }, orderBy: { createdAt: 'desc' } }),
       this.prisma.dispatchAssignment.findMany({
         where: { employeeId: e.id, scheduledDate: day, status: { in: ['POSTED', 'ACCEPTED'] } },
@@ -198,6 +201,7 @@ export class MobileProfileService {
       this.prisma.mobileNotification.count({ where: { userId, requiresAction: true, resolved: false } }),
       this.prisma.onCallAssignment.findFirst({ where: { date: day, OR: [{ employeeId: e.id }, { backupId: e.id }] } }),
       this.prisma.timeEntryPause.findFirst({ where: { employeeId: e.id, endedAt: null } }),
+      this.link.syncSnapshot(e, userId),
     ]);
 
     const mode = open ? 'WORKING' : oncall ? (oncall.employeeId === e.id ? 'ON_CALL' : 'STANDBY') : 'OFF_DUTY';
@@ -225,7 +229,7 @@ export class MobileProfileService {
         attentionCount: attention,
         unreadNotifications: unread,
         pendingEditsCount: pendingEdits,
-        unsyncedCount: 0,
+        unsyncedCount: sync.pendingCount + sync.failedCount,
         nextJob: schedule[0] ?? null,
         schedule,
         onCall: oncall ? { zone: oncall.zone, status: oncall.status, role: oncall.employeeId === e.id ? 'PRIMARY' : 'BACKUP' } : null,
@@ -242,7 +246,19 @@ export class MobileProfileService {
       where: { date: { gte: start, lte: end }, published: true, OR: [{ employeeId: e.id }, { backupId: e.id }] },
       orderBy: { date: 'asc' },
     });
-    return { data: { items: rows.map((r) => ({ id: r.id, date: isoDate(r.date), zone: r.zone, status: r.status, role: r.employeeId === e.id ? 'PRIMARY' : 'BACKUP', notes: r.notes })) } };
+    const settings = await this.link.snapshot();
+    return {
+      data: {
+        rules: settings.onCall,
+        items: rows.map((r) => ({ id: r.id, date: isoDate(r.date), zone: r.zone, status: r.status, role: r.employeeId === e.id ? 'PRIMARY' : 'BACKUP', notes: r.notes })),
+      },
+    };
+  }
+
+  /** Settings the dashboard already saves: on-call, time categories, payroll, notification channels. */
+  async fieldSettings(userId: string) {
+    await this.ctx.actor(userId);
+    return { data: await this.link.snapshot() };
   }
 
   /** OC-2 */

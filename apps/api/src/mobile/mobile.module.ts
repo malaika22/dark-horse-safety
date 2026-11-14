@@ -7,6 +7,7 @@ import { MobileAuthController } from './mobile-auth.controller';
 import { MobileAuthService } from './mobile-auth.service';
 import { MobileClockService } from './mobile-clock.service';
 import { MobileContext } from './mobile-context.service';
+import { MobileSettingsLink } from './mobile-settings-link.service';
 import { MobileFleetController } from './mobile-fleet.controller';
 import { MobileFleetService } from './mobile-fleet.service';
 import { MobileFormsService } from './mobile-forms.service';
@@ -28,7 +29,7 @@ import {
     MobileFleetController,
   ],
   providers: [
-    MailService, MobileContext, MobileAuthService, MobileProfileService, MobileClockService,
+    MailService, MobileSettingsLink, MobileContext, MobileAuthService, MobileProfileService, MobileClockService,
     MobileJobsService, MobileFormsService, MobileTimeService, MobileNotificationsService,
     MobileFleetService,
   ],

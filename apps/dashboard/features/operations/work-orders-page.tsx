@@ -34,6 +34,16 @@ import { CrmListLoadGate } from "@/features/crm/crm-list-skeleton";
 import { OpsWorkOrdersEmptyState } from "@/features/operations/operations-states";
 import { CloseRuleModal, CancelWorkOrderModal } from "@/features/operations/work-order-modals";
 
+const STATUS_API: Record<string, string> = {
+  SCHEDULED: "OPEN",
+  "IN PROGRESS": "IN_PROGRESS",
+  "ON HOLD": "ON_HOLD",
+  CLOSED: "COMPLETE",
+};
+const DATE_CHIPS = ["TODAY", "THIS WEEK", "FUTURE", "MULTI-DAY", "ROLLED OVER"];
+const EXCEPTION_CHIPS = ["MISSING ST", "MISSING FORMS", "UNDERBILLED", "OVERBILLED", "UNASSIGNED", "TIME PENDING", "WO MISMATCH"];
+const STATUS_CHIPS = ["SCHEDULED", "IN PROGRESS", "ON HOLD", "CLOSED"];
+
 const SORT_OPTIONS = [
   { id: "createdAt", label: "Created" },
   { id: "code", label: "WO Number" },
@@ -114,6 +124,13 @@ export function WorkOrdersPage() {
   const [closeId, setCloseId] = React.useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = React.useState(false);
   const [cancelId, setCancelId] = React.useState<string | null>(null);
+  const [filterOpen, setFilterOpen] = React.useState(false);
+  const [opsStatus, setOpsStatus] = React.useState<string[]>([]);
+  const [dates, setDates] = React.useState<string[]>([]);
+  const [exceptions, setExceptions] = React.useState<string[]>([]);
+  const [draftStatus, setDraftStatus] = React.useState<string[]>([]);
+  const [draftDates, setDraftDates] = React.useState<string[]>([]);
+  const [draftExceptions, setDraftExceptions] = React.useState<string[]>([]);
 
   useSetHeaderActions(
     <div className="flex flex-wrap gap-2">
@@ -149,7 +166,11 @@ export function WorkOrdersPage() {
             sort: sortField,
             direction: sortDirection,
             customerId: customerFilter || undefined,
-            status: statusFilter || undefined,
+            status: opsStatus.length
+              ? opsStatus.map((item) => STATUS_API[item]).filter(Boolean).join(",")
+              : statusFilter || undefined,
+            dates: dates.length ? dates.join(",") : undefined,
+            exceptions: exceptions.length ? exceptions.join(",") : undefined,
           }),
           crmApi.workOrdersOpsKpi(),
         ]);
@@ -180,6 +201,9 @@ export function WorkOrdersPage() {
     sortDirection,
     customerFilter,
     statusFilter,
+    opsStatus,
+    dates,
+    exceptions,
     reloadKey,
   ]);
 
@@ -419,7 +443,24 @@ export function WorkOrdersPage() {
           }
           filters={
             <div className="flex flex-wrap items-center gap-2">
-              <DashboardToolbarButton>Filter</DashboardToolbarButton>
+              <div className="relative">
+                <DashboardToolbarButton onClick={() => { setDraftStatus(opsStatus); setDraftDates(dates); setDraftExceptions(exceptions); setFilterOpen(true); }}>
+                  Filter
+                </DashboardToolbarButton>
+                {filterOpen ? (
+                  <WorkOrderFilter
+                    status={draftStatus}
+                    dates={draftDates}
+                    exceptions={draftExceptions}
+                    onStatus={setDraftStatus}
+                    onDates={setDraftDates}
+                    onExceptions={setDraftExceptions}
+                    onClose={() => setFilterOpen(false)}
+                    onClear={() => { setDraftStatus([]); setDraftDates([]); setDraftExceptions([]); }}
+                    onApply={() => { setOpsStatus(draftStatus); setDates(draftDates); setExceptions(draftExceptions); setPage(1); setFilterOpen(false); }}
+                  />
+                ) : null}
+              </div>
               {crossesCount > 0 ? (
                 <span className="inline-flex items-center gap-1 rounded-md border border-[#534A1E] bg-[#352E1B] px-2 py-1 font-sans text-[10px] uppercase text-[#CAC897]">
                   <WarnTriangle /> Crosses Cycle
@@ -589,6 +630,66 @@ function CycleBlock({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function toggleChip(values: string[], value: string) {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+}
+
+function WorkOrderFilter({
+  status,
+  dates,
+  exceptions,
+  onStatus,
+  onDates,
+  onExceptions,
+  onClose,
+  onClear,
+  onApply,
+}: {
+  status: string[];
+  dates: string[];
+  exceptions: string[];
+  onStatus: (values: string[]) => void;
+  onDates: (values: string[]) => void;
+  onExceptions: (values: string[]) => void;
+  onClose: () => void;
+  onClear: () => void;
+  onApply: () => void;
+}) {
+  return (
+    <div className="absolute left-0 top-11 z-30 w-[340px] rounded-2xl border border-white/10 bg-[#2A2A2C] p-4 shadow-xl">
+      <p className="font-sans text-[12px] font-[590] uppercase text-[#FDFDFF]">Filter</p>
+      <ChipGroup label="Operational status" options={STATUS_CHIPS} selected={status} onToggle={(value) => onStatus(toggleChip(status, value))} />
+      <ChipGroup label="Date" options={DATE_CHIPS} selected={dates} onToggle={(value) => onDates(toggleChip(dates, value))} />
+      <ChipGroup label="Exceptions" options={EXCEPTION_CHIPS} selected={exceptions} onToggle={(value) => onExceptions(toggleChip(exceptions, value))} />
+      <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3">
+        <button type="button" onClick={onClear} className="font-sans text-[11px] uppercase text-[#FDFDFF]">Clear</button>
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose} className="font-sans text-[11px] uppercase text-[#959597]">Close</button>
+          <button type="button" onClick={onApply} className="rounded-lg bg-[#3A3A3C] px-3 py-2 font-sans text-[11px] uppercase text-[#FDFDFF]">Apply filter</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChipGroup({ label, options, selected, onToggle }: { label: string; options: string[]; selected: string[]; onToggle: (value: string) => void }) {
+  return (
+    <div className="mt-4">
+      <p className="font-sans text-[10px] uppercase text-[#959597]">{label}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {options.map((option) => {
+          const on = selected.includes(option);
+          return (
+            <button key={option} type="button" onClick={() => onToggle(option)} className={cn("rounded-full px-3 py-1 font-sans text-[10px] uppercase", on ? "bg-white text-black" : "bg-[#1C1C1E] text-[#FDFDFF]")}>
+              {option}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

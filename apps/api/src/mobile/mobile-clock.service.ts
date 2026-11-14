@@ -3,6 +3,7 @@ import { Prisma, TimeEntry, TimeEntryCategory } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClockInDto, GeoDto, GpsExplanationDto, PauseDto, ResumeDto, SyncDto } from './dto/mobile.dto';
 import { MILES_PER_METER, MobileContext, dateOnly, haversineMeters, hhmm, isoDate, num } from './mobile-context.service';
+import { MobileSettingsLink } from './mobile-settings-link.service';
 
 const DEFAULT_RADIUS_FT = 500;
 const FT_PER_M = 3.28084;
@@ -18,7 +19,7 @@ const toMin = (hm: string) => {
 
 @Injectable()
 export class MobileClockService {
-  constructor(private readonly ctx: MobileContext, private readonly prisma: PrismaService) {}
+  constructor(private readonly ctx: MobileContext, private readonly prisma: PrismaService, private readonly link: MobileSettingsLink) {}
 
   private openEntry(employeeId: string) {
     return this.prisma.timeEntry.findFirst({ where: { employeeId, clockOut: null, archivedAt: null }, orderBy: { createdAt: 'desc' } });
@@ -141,6 +142,7 @@ export class MobileClockService {
           actionLabel: 'Explain', reference: { type: 'GPS_FLAG', id: flag.id }, requiresAction: true,
         });
       }
+      await this.link.recordHeartbeat(e);
       return { data: { ...(await this.view(entry)), gpsFlag } };
     });
   }
@@ -180,11 +182,16 @@ export class MobileClockService {
           editHistory: [...((entry.editHistory as unknown[] | null) ?? []), { at: at.toISOString(), what: 'Clocked out (mobile)' }] as Prisma.InputJsonValue,
         },
       });
+      const wo = entry.workOrderCode
+        ? await this.prisma.workOrder.findUnique({ where: { code: entry.workOrderCode } })
+        : null;
+      const formsMissing = wo ? await this.link.missingFormNames(wo.id, wo.customerId) : [];
+      await this.link.recordHeartbeat(e);
       return {
         data: {
           status: 'CLOCKED_OUT', timeEntryId: entry.id, clockOut: out,
           summary: { workMinutes: workMin, breakMinutes: breakMin, pauseMinutes: pauseMin, totalMinutes: total },
-          formsMissing: [],
+          formsMissing,
         },
       };
     });
@@ -236,6 +243,19 @@ export class MobileClockService {
         const r = err instanceof HttpException ? (err.getResponse() as Record<string, unknown>) : {};
         results.push({ clientRequestId: ev.clientRequestId, ok: false, error: { code: r.code ?? 'ERROR', message: r.message ?? 'Failed' } });
       }
+    }
+    const { employee } = await this.ctx.actor(userId);
+    const failed = results.filter((row) => !(row as { ok: boolean }).ok);
+    await this.link.recordHeartbeat(employee);
+    await this.link.recordSyncFailures(employee, failed.map((row) => ({ detail: String((row as { error?: { message?: string } }).error?.message ?? 'Sync failed') })));
+    if (failed.length && await this.link.inAppAllowed('OFFLINE_SYNC_FAILED')) {
+      await this.ctx.notify(userId, {
+        dedupeKey: `sync:${Date.now()}`,
+        type: 'OFFLINE_SYNC_FAILED',
+        title: 'Offline sync failed',
+        body: `${failed.length} event${failed.length === 1 ? '' : 's'} did not sync.`,
+        requiresAction: false,
+      });
     }
     return { data: { results } };
   }
@@ -294,8 +314,7 @@ export class MobileClockService {
 
   /** SYNC-1 */
   async syncStatus(userId: string) {
-    await this.ctx.actor(userId);
-    const failed = await this.prisma.mobileNotification.count({ where: { userId, type: 'OFFLINE_SYNC_FAILED', resolved: false } });
-    return { data: { pendingCount: 0, failedCount: failed, lastSyncedAt: new Date() } };
+    const { employee } = await this.ctx.actor(userId);
+    return { data: await this.link.syncSnapshot(employee, userId) };
   }
 }

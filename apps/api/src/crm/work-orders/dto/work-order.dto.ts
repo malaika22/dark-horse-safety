@@ -32,6 +32,16 @@ export class WorkOrderListQueryDto extends ListQueryDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({ description: 'Comma-separated date chips: TODAY, WEEK, FUTURE, MULTI-DAY, ROLLED OVER' })
+  @IsOptional()
+  @IsString()
+  dates?: string;
+
+  @ApiPropertyOptional({ description: 'Comma-separated exception chips' })
+  @IsOptional()
+  @IsString()
+  exceptions?: string;
 }
 
 export class HoldCancelWorkOrderDto {
