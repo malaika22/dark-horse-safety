@@ -44,7 +44,7 @@ export class MobileSettingsLink {
         where: { id: existing.id },
         data: {
           ...shared,
-          status: existing.failed > 0 ? existing.status : 'CURRENT',
+          status: existing.failed > 0 ? existing.status : 'UP_TO_DATE',
           statusLabel: existing.failed > 0 ? existing.statusLabel : 'UP TO DATE',
           attention: existing.failed > 0,
         },
@@ -57,7 +57,7 @@ export class MobileSettingsLink {
         ...shared,
         code,
         deviceId: device.deviceId,
-        status: 'CURRENT',
+        status: 'UP_TO_DATE',
         statusLabel: 'UP TO DATE',
         attention: false,
         sortOrder: 0,
@@ -76,12 +76,77 @@ export class MobileSettingsLink {
 
   /** A successful clock or sync moves the dashboard "last sync" stamp. */
   async recordHeartbeat(employee: Employee) {
+    if (employee.userId) {
+      await this.prisma.mobileDevice.updateMany({ where: { userId: employee.userId }, data: { lastSeenAt: new Date() } });
+    }
     const rows = await this.devicesFor(employee);
     if (!rows.length) return;
     await this.prisma.fieldDevice.updateMany({
       where: { id: { in: rows.map((row) => row.id) } },
       data: { lastSyncLabel: 'JUST NOW', lastSyncDetail: 'SYNCED FROM THE MOBILE APP', syncAge: 0, connectivity: 'ONLINE', sessionLabel: 'SIGNED IN' },
     });
+  }
+
+  /** Copy a phone's last-seen time onto the dashboard device row. Skips a write when nothing changed. */
+  async mirrorDevice(employee: Employee, device: { deviceId: string; platform: string; appVersion: string | null; lastSeenAt: Date }) {
+    let row = await this.prisma.fieldDevice.findFirst({ where: { deviceId: device.deviceId } });
+    if (!row) {
+      await this.touchDevice(employee, { deviceId: device.deviceId, platform: device.platform, appVersion: device.appVersion ?? undefined });
+      row = await this.prisma.fieldDevice.findFirst({ where: { deviceId: device.deviceId } });
+      if (!row) return false;
+    }
+    const hours = Math.max(0, Math.floor((Date.now() - device.lastSeenAt.getTime()) / 3_600_000));
+    const [failed, queued] = await Promise.all([
+      this.prisma.fieldDeviceQueueItem.count({ where: { deviceId: row.id, status: 'FAILED' } }),
+      this.prisma.fieldDeviceQueueItem.count({ where: { deviceId: row.id, status: 'QUEUED' } }),
+    ]);
+    const offline = hours >= 24;
+    const status = failed > 0 ? 'ITEM_FAILED' : offline ? 'OFFLINE' : 'UP_TO_DATE';
+    const statusLabel = failed > 0 ? 'ITEM FAILED' : offline ? 'NO SYNC 24H' : 'UP TO DATE';
+    const lastSyncLabel = hours <= 0 ? 'JUST NOW' : hours < 24 ? `${hours}H AGO` : `${Math.floor(hours / 24)}D AGO`;
+    const name = this.techName(employee);
+    const version = device.appVersion ?? row.appVersion;
+    const same =
+      row.syncAge === hours &&
+      row.status === status &&
+      row.failed === failed &&
+      row.queued === queued &&
+      row.lastSyncLabel === lastSyncLabel &&
+      row.technician === name &&
+      row.appVersion === version;
+    if (same) return false;
+    await this.prisma.fieldDevice.update({
+      where: { id: row.id },
+      data: {
+        technician: name,
+        truck: employee.assignedTruck ?? row.truck,
+        appVersion: version,
+        platform: device.platform.toUpperCase(),
+        syncAge: hours,
+        failed,
+        queued,
+        status,
+        statusLabel,
+        attention: failed > 0 || offline,
+        lastSyncLabel,
+        lastSyncDetail: 'SYNCED FROM THE MOBILE APP',
+        connectivity: offline ? 'OFFLINE' : 'ONLINE',
+        sessionLabel: offline ? 'SIGNED OUT' : 'SIGNED IN',
+      },
+    });
+    return true;
+  }
+
+  /** Hourly pass: phones seen since `since`. Daily pass: every registered phone. */
+  async mirrorMobileDevices(since?: Date) {
+    const devices = await this.prisma.mobileDevice.findMany(since ? { where: { lastSeenAt: { gte: since } } } : undefined);
+    let mirrored = 0;
+    for (const device of devices) {
+      const employee = await this.prisma.employee.findFirst({ where: { userId: device.userId, archivedAt: null } });
+      if (!employee) continue;
+      if (await this.mirrorDevice(employee, device)) mirrored += 1;
+    }
+    return { seen: devices.length, mirrored };
   }
 
   /** Failed offline events land on the same device queue the dashboard error screen reads. */
@@ -105,8 +170,8 @@ export class MobileSettingsLink {
       where: { id: device.id },
       data: {
         failed,
-        status: 'FAILED',
-        statusLabel: 'SYNC FAILED',
+        status: 'ITEM_FAILED',
+        statusLabel: 'ITEM FAILED',
         attention: true,
         lastSyncLabel: 'JUST NOW',
         lastSyncDetail: 'SYNC FAILED FROM THE MOBILE APP',

@@ -13,6 +13,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ReportsModule } from './reports/reports.module';
 import { SafetyModule } from './safety/safety.module';
 import { SettingsModule } from './settings/settings.module';
+import { DataSyncModule } from './sync/data-sync.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { SettingsModule } from './settings/settings.module';
     SafetyModule,
     SettingsModule,
     MobileModule,
+    DataSyncModule,
   ],
   controllers: [AppController],
   providers: [AppService],

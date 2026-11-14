@@ -33,5 +33,6 @@ import {
     MobileJobsService, MobileFormsService, MobileTimeService, MobileNotificationsService,
     MobileFleetService,
   ],
+  exports: [MobileSettingsLink, MobileContext],
 })
 export class MobileModule {}
