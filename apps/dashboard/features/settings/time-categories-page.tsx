@@ -3,10 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import { cn } from "@dark-horse-safety/ui";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError, toastError, toastSuccess } from "@/lib/toast";
 import { settingsApi, type PayrollRules, type TimeCategory, type TimeCategoryInput } from "@/lib/settings-api";
-import { fieldClass, SettingsPanel } from "./settings-frame";
+import { fieldClass, SettingsPanel, settingsPageClass } from "./settings-frame";
 
 const CODES = ["ADP: REG", "ADP: OT", "ADP: OJT", "ADP: VAC", "ADP: SICK", "ADP: HOL", "ADP: UNP", "ADP: NB"];
 
@@ -19,7 +18,6 @@ const emptyDraft = (): TimeCategoryInput => ({
 });
 
 export function TimeCategoriesPage() {
-  useSetHeaderBreadcrumb("Settings / Time Categories");
   const [items, setItems] = React.useState<TimeCategory[]>([]);
   const [rules, setRules] = React.useState<PayrollRules | null>(null);
   const [editingId, setEditingId] = React.useState<string | null>(null);
@@ -109,8 +107,7 @@ export function TimeCategoriesPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-4 py-6 sm:px-6">
-      <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">Settings / Time Categories</p>
+    <div className={settingsPageClass}>
       {rules ? (
         <SettingsPanel className="flex items-center justify-between gap-4 px-5 py-4">
           <div>

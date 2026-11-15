@@ -1,10 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError, toastError, toastSuccess } from "@/lib/toast";
 import { settingsApi, type AccessRole, type AccessRoleInput } from "@/lib/settings-api";
-import { AccessSectionLinks, fieldClass, labelClass, SettingsPanel } from "./settings-frame";
+import { AccessSectionLinks, fieldClass, labelClass, SettingsPanel, settingsPageClass } from "./settings-frame";
 
 const blank = (): AccessRoleInput => ({
   name: "",
@@ -16,7 +15,6 @@ const blank = (): AccessRoleInput => ({
 });
 
 export function AccessRolesPage() {
-  useSetHeaderBreadcrumb("Settings / Access Control / Roles");
   const [items, setItems] = React.useState<AccessRole[]>([]);
   const [editing, setEditing] = React.useState<AccessRole | null>(null);
   const [creating, setCreating] = React.useState(false);
@@ -66,13 +64,9 @@ export function AccessRolesPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-4 px-4 py-6 sm:px-6">
+    <div className={settingsPageClass}>
       <div className="flex items-end justify-between gap-3">
-        <div>
-          <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">Settings / Access Control / Roles</p>
-          <h1 className="mt-2 font-sans text-[28px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF]">Roles</h1>
-          <AccessSectionLinks current="roles" />
-        </div>
+        <AccessSectionLinks current="roles" />
         <button type="button" onClick={openCreate} className="rounded-lg bg-white px-4 py-2 text-[11px] font-[590] uppercase text-black">New role</button>
       </div>
 

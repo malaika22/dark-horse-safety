@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cn } from "@dark-horse-safety/ui";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
+import { settingsPageClass } from "./settings-frame";
 import { toastApiError } from "@/lib/toast";
 import { settingsApi, type FormLibraryPage } from "@/lib/settings-api";
 
@@ -18,7 +18,6 @@ const TABS = [
 const CHIPS = ["ALL", "FIELD SAFETY", "FLEET & ASSETS", "OPERATIONS", "PURCHASING", "ARCHIVED"];
 
 export function FormLibraryPage() {
-  useSetHeaderBreadcrumb("Settings");
   const router = useRouter();
   const [category, setCategory] = React.useState("ALL");
   const [data, setData] = React.useState<FormLibraryPage | null>(null);
@@ -31,8 +30,7 @@ export function FormLibraryPage() {
   const summary = data?.summary;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-4 px-4 py-6 sm:px-6">
-      <h1 className="font-sans text-[28px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF]">Settings</h1>
+    <div className={settingsPageClass}>
       <section className="rounded-xl border border-white/10 bg-[#1C1C1E] p-4">
         <div className="flex items-center justify-between gap-3">
           <p className="font-sans text-[13px] font-[590] uppercase text-[#FDFDFF]">Form templates</p>

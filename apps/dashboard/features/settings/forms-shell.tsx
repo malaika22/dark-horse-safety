@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cn } from "@dark-horse-safety/ui";
+import { settingsPageClass } from "./settings-frame";
 import { settingsApi, type FormRule } from "@/lib/settings-api";
 import { toastApiError } from "@/lib/toast";
 
@@ -35,12 +36,8 @@ export function FormsShell({ tab, children }: { tab: (typeof TABS)[number]["id"]
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-4 px-4 py-6 sm:px-6">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">Settings</p>
-          <h1 className="mt-2 font-sans text-[28px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF]">Forms</h1>
-        </div>
+    <div className={settingsPageClass}>
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <button type="button" onClick={() => void payrollReport()} className="rounded-lg bg-white px-4 py-2 text-[11px] font-[590] uppercase text-black">Generate payroll report</button>
       </div>
       <div className="flex flex-wrap gap-2">

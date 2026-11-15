@@ -3,13 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { cn } from "@dark-horse-safety/ui";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError, toastError, toastSuccess } from "@/lib/toast";
 import { settingsApi, type SyncIncident } from "@/lib/settings-api";
-import { fieldClass, SettingsPanel } from "./settings-frame";
+import { fieldClass, SettingsPanel, settingsPageClass } from "./settings-frame";
 
 export function MobileSyncErrorPage({ code }: { code: string }) {
-  useSetHeaderBreadcrumb("Settings / Integrations / Mobile Device Sync / Error");
   const [incident, setIncident] = React.useState<SyncIncident | null>(null);
   const [advanced, setAdvanced] = React.useState(false);
   const [reason, setReason] = React.useState("");
@@ -62,13 +60,12 @@ export function MobileSyncErrorPage({ code }: { code: string }) {
   const waiting = incident.retryMode === "WAITING";
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-4 px-4 py-6 sm:px-6">
-      <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">Settings / Integrations / Mobile Device Sync / Error</p>
+    <div className={settingsPageClass}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-sans text-[28px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF]">
-            Mobile sync error · {device.technician} · {device.deviceId}
-          </h1>
+          <p className="font-sans text-[13px] font-[590] uppercase tracking-[-0.02em] text-[#FDFDFF]">
+            {device.technician} · {device.deviceId}
+          </p>
           <p className="mt-2 font-sans text-[11px] uppercase text-[#FFB4B4]">
             <span className="mr-2 rounded-full bg-[#6B2430] px-2 py-1">{incident.discarded ? "DISCARDED" : "FAILED"}</span>
             {incident.occurredLabel} · {incident.statusNote}

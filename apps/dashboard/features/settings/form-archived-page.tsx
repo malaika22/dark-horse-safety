@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { cn } from "@dark-horse-safety/ui";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { settingsApi, type ArchivedForm } from "@/lib/settings-api";
 import { fieldClass, SettingsPanel } from "./settings-frame";
@@ -11,7 +10,6 @@ import { FormsShell } from "./forms-shell";
 const WINDOWS = ["ACTIVE", "CURRENT", "FUTURE"];
 
 export function FormArchivedPage() {
-  useSetHeaderBreadcrumb("Settings / Forms / Archived GoCanvas");
   const [query, setQuery] = React.useState("");
   const [windows, setWindows] = React.useState(WINDOWS);
   const [items, setItems] = React.useState<ArchivedForm[]>([]);

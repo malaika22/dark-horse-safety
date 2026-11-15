@@ -3,10 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import { cn } from "@dark-horse-safety/ui";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { settingsApi, type AccessUser, type AccessUsersPage } from "@/lib/settings-api";
-import { AccessSectionLinks, fieldClass, labelClass, SettingsPanel } from "./settings-frame";
+import { AccessSectionLinks, fieldClass, labelClass, SettingsPanel, settingsPageClass } from "./settings-frame";
 
 const SORTS = [
   { value: "RECENT", label: "Recent" },
@@ -19,7 +18,6 @@ const SORTS = [
 const emptyFilters = { role: "ALL", team: "ALL", status: "ALL", mfa: "ALL", mobile: "ALL" };
 
 export function AccessUsersPage() {
-  useSetHeaderBreadcrumb("Settings / Access Control / Users");
   const [query, setQuery] = React.useState("");
   const [filters, setFilters] = React.useState(emptyFilters);
   const [draft, setDraft] = React.useState(emptyFilters);
@@ -95,13 +93,9 @@ export function AccessUsersPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-4 px-4 py-6 sm:px-6">
+    <div className={settingsPageClass}>
       <div className="flex items-end justify-between gap-3">
-        <div>
-          <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">Settings / Access Control / Users</p>
-          <h1 className="mt-2 font-sans text-[28px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF]">Users</h1>
-          <AccessSectionLinks current="users" />
-        </div>
+        <AccessSectionLinks current="users" />
         <Link href="/settings/access-control/users/invite" className="rounded-lg bg-white px-4 py-2 text-[11px] font-[590] uppercase text-black">Invite user</Link>
       </div>
 

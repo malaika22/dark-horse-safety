@@ -324,13 +324,31 @@ const HEADER_TITLES: { path: string; breadcrumb: string; pageTitle: string | nul
     pageTitle: "Payroll-Ready Report",
   },
   { path: "/reports", breadcrumb: "Report", pageTitle: "Reports Hub" },
-  {
-    path: "/settings/integrations",
-    breadcrumb: "Setting",
-    pageTitle: "Integrations",
-  },
-  { path: "/settings/users", breadcrumb: "Setting", pageTitle: "Users" },
-  { path: "/settings", breadcrumb: "Setting", pageTitle: "Settings" },
+  { path: "/settings/mobile-sync", breadcrumb: "Settings", pageTitle: "Mobile Sync" },
+  { path: "/settings/access-control/users/invite", breadcrumb: "Settings", pageTitle: "Invite User" },
+  { path: "/settings/access-control/users", breadcrumb: "Settings", pageTitle: "Access Control" },
+  { path: "/settings/access-control/roles", breadcrumb: "Settings", pageTitle: "Roles" },
+  { path: "/settings/access-control/teams", breadcrumb: "Settings", pageTitle: "Team Access" },
+  { path: "/settings/access-control/audit", breadcrumb: "Settings", pageTitle: "Audit Log" },
+  { path: "/settings/access-control/preview", breadcrumb: "Settings", pageTitle: "Preview as Role" },
+  { path: "/settings/forms/submissions", breadcrumb: "Settings", pageTitle: "Form Submissions" },
+  { path: "/settings/forms/rules", breadcrumb: "Settings", pageTitle: "Required Form Rules" },
+  { path: "/settings/forms/archived", breadcrumb: "Settings", pageTitle: "Archived Forms" },
+  { path: "/settings/forms/builder", breadcrumb: "Settings", pageTitle: "Form Builder" },
+  { path: "/settings/forms", breadcrumb: "Settings", pageTitle: "Form Library" },
+  { path: "/settings/company-profile", breadcrumb: "Settings", pageTitle: "Company Profile" },
+  { path: "/settings/payroll-rules", breadcrumb: "Settings", pageTitle: "Payroll Rules" },
+  { path: "/settings/time-categories", breadcrumb: "Settings", pageTitle: "Time Categories" },
+  { path: "/settings/business-rules", breadcrumb: "Settings", pageTitle: "Business Rules" },
+  { path: "/settings/override-log", breadcrumb: "Settings", pageTitle: "Override Log" },
+  { path: "/settings/data-retention", breadcrumb: "Settings", pageTitle: "Data Retention" },
+  { path: "/settings/global-defaults", breadcrumb: "Settings", pageTitle: "Global Defaults" },
+  { path: "/settings/notification-recipients", breadcrumb: "Settings", pageTitle: "Notification Recipients" },
+  { path: "/settings/notifications", breadcrumb: "Settings", pageTitle: "Notifications" },
+  { path: "/settings/on-call-rules", breadcrumb: "Settings", pageTitle: "On-Call Rules" },
+  { path: "/settings/integrations", breadcrumb: "Settings", pageTitle: "Integrations" },
+  { path: "/settings/users", breadcrumb: "Settings", pageTitle: "Access Control" },
+  { path: "/settings", breadcrumb: "Settings", pageTitle: null },
 ];
 
 function splitLegacyTitle(title: string): HeaderMeta {
@@ -552,6 +570,14 @@ function headerMetaForPath(pathname: string): HeaderMeta {
   if (assetRecord) {
     const code = decodeURIComponent(assetRecord[1] ?? "").toUpperCase();
     return { breadcrumb: `Fleet & Assets / Assets / ${code}`, pageTitle: null };
+  }
+
+  const editedUser = pathname.match(/^\/settings\/access-control\/users\/([^/]+)$/);
+  if (editedUser && editedUser[1] !== "invite") {
+    return { breadcrumb: "Settings", pageTitle: "Edit User" };
+  }
+  if (/^\/settings\/mobile-sync\/errors\/[^/]+$/.test(pathname)) {
+    return { breadcrumb: "Settings", pageTitle: "Sync Error" };
   }
 
   const exact = HEADER_TITLES.find((entry) => entry.path === pathname);

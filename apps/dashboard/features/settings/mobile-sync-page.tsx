@@ -3,7 +3,6 @@
 import * as React from "react";
 import Link from "next/link";
 import { cn } from "@dark-horse-safety/ui";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import {
   settingsApi,
@@ -11,7 +10,7 @@ import {
   type FieldDevice,
   type MobileSyncPage,
 } from "@/lib/settings-api";
-import { fieldClass, SettingsPanel } from "./settings-frame";
+import { fieldClass, SettingsPanel, settingsPageClass } from "./settings-frame";
 
 const STATUS_OPTIONS = [
   { value: "ALL", label: "All" },
@@ -43,7 +42,6 @@ const STATUS_TONE: Record<string, string> = {
 const emptyFilters = { status: "ALL", crew: "ALL", version: "ALL" };
 
 export function MobileSyncPage() {
-  useSetHeaderBreadcrumb("Settings / Integrations / Mobile Device Sync");
   const [query, setQuery] = React.useState("");
   const [filters, setFilters] = React.useState(emptyFilters);
   const [draft, setDraft] = React.useState(emptyFilters);
@@ -201,12 +199,7 @@ export function MobileSyncPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-4 px-4 py-6 sm:px-6">
-      <div>
-        <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">Settings / Integrations / Mobile Device Sync</p>
-        <h1 className="mt-2 font-sans text-[28px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF]">Mobile device sync</h1>
-      </div>
-
+    <div className={settingsPageClass}>
       {banner && summary && !allClear ? (
         <div className="flex items-start justify-between gap-3 rounded-xl border border-[#6B5420] bg-[#2A2416] px-4 py-3">
           <div>

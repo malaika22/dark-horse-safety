@@ -2,14 +2,12 @@
 
 import * as React from "react";
 import { cn } from "@dark-horse-safety/ui";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { settingsApi, type FormSubmissionsPage } from "@/lib/settings-api";
 import { fieldClass, SettingsPanel } from "./settings-frame";
 import { FormsShell } from "./forms-shell";
 
 export function FormSubmissionsPage() {
-  useSetHeaderBreadcrumb("Settings / Forms / Submissions");
   const [query, setQuery] = React.useState("");
   const [review, setReview] = React.useState("ALL");
   const [data, setData] = React.useState<FormSubmissionsPage | null>(null);

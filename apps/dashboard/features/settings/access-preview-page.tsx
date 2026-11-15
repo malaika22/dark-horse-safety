@@ -3,13 +3,11 @@
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@dark-horse-safety/ui";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError } from "@/lib/toast";
 import { settingsApi, type AccessRole } from "@/lib/settings-api";
-import { SettingsPanel } from "./settings-frame";
+import { SettingsPanel, settingsPageClass } from "./settings-frame";
 
 export function AccessPreviewPage() {
-  useSetHeaderBreadcrumb("Settings / Access Control / Preview as Role");
   const router = useRouter();
   const params = useSearchParams();
   const requested = (params.get("role") || "SUPERVISOR").toUpperCase();
@@ -28,12 +26,8 @@ export function AccessPreviewPage() {
   const role = roles.find((item) => item.name === selected) ?? roles[0];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-4 px-4 py-6 sm:px-6">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">Settings / Access Control / Preview as Role</p>
-          <h1 className="mt-2 font-sans text-[28px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF]">Preview as role</h1>
-        </div>
+    <div className={settingsPageClass}>
+      <div className="flex justify-end">
         <button type="button" onClick={() => router.push("/settings/access-control/users")} className="rounded-lg bg-white px-4 py-2 text-[11px] font-[590] uppercase text-black">Exit preview</button>
       </div>
 

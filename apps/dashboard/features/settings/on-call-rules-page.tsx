@@ -1,10 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { settingsApi, type OnCallRules } from "@/lib/settings-api";
-import { SettingsPanel } from "./settings-frame";
+import { SettingsPanel, settingsPageClass } from "./settings-frame";
 
 const RULES: { key: keyof OnCallRules; label: string }[] = [
   { key: "balanceEvenly", label: "Balance assignments evenly (fairness algorithm)" },
@@ -15,7 +14,6 @@ const RULES: { key: keyof OnCallRules; label: string }[] = [
 ];
 
 export function OnCallRulesPage() {
-  useSetHeaderBreadcrumb("Settings / On-Call Rules");
   const [form, setForm] = React.useState<OnCallRules | null>(null);
 
   React.useEffect(() => {
@@ -36,9 +34,7 @@ export function OnCallRulesPage() {
   if (!form) return null;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-4 px-4 py-6 sm:px-6">
-      <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">Settings / On-Call Rules</p>
-      <h1 className="font-sans text-[28px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF]">On-call rules</h1>
+    <div className={settingsPageClass}>
       <div className="grid gap-3 sm:grid-cols-3">
         <NumberCard label="Max consecutive on-call days" unit="days" value={form.maxConsecutiveDays} onChange={(maxConsecutiveDays) => setForm({ ...form, maxConsecutiveDays })} />
         <NumberCard label="Min rest days between rotations" unit="days" value={form.minRestDays} onChange={(minRestDays) => setForm({ ...form, minRestDays })} />

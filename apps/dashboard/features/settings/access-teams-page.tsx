@@ -2,10 +2,9 @@
 
 import * as React from "react";
 import { cn } from "@dark-horse-safety/ui";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError, toastError, toastSuccess } from "@/lib/toast";
 import { settingsApi, type AccessTeam, type AccessTeamInput, type AccessTeamsPage, type TeamProfile } from "@/lib/settings-api";
-import { AccessSectionLinks, fieldClass, SettingsPanel } from "./settings-frame";
+import { AccessSectionLinks, fieldClass, SettingsPanel, settingsPageClass } from "./settings-frame";
 
 const SORTS = [
   { value: "RECENT", label: "Recent" },
@@ -28,7 +27,6 @@ const blankTeam = (): AccessTeamInput => ({
 });
 
 export function AccessTeamsPage() {
-  useSetHeaderBreadcrumb("Settings / Access Control / Team Access");
   const [query, setQuery] = React.useState("");
   const [filters, setFilters] = React.useState(emptyFilters);
   const [draft, setDraft] = React.useState(emptyFilters);
@@ -116,13 +114,9 @@ export function AccessTeamsPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-4 px-4 py-6 sm:px-6">
+    <div className={settingsPageClass}>
       <div className="flex items-end justify-between gap-3">
-        <div>
-          <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">Settings / Access Control / Team Access</p>
-          <h1 className="mt-2 font-sans text-[28px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF]">Team access</h1>
-          <AccessSectionLinks current="teams" />
-        </div>
+        <AccessSectionLinks current="teams" />
         <button type="button" onClick={() => setAdding(true)} className="rounded-lg bg-white px-4 py-2 text-[11px] font-[590] uppercase text-black">Add team</button>
       </div>
 

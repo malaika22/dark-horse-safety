@@ -46,12 +46,7 @@ export function RecipientsPage() {
   ];
 
   return (
-    <SettingsFrame
-      eyebrow="Settings / Notification Recipients"
-      title="Notification Recipients"
-      description="Route operational alerts to named roles and customer contacts without duplicating notifications."
-      breadcrumb="Settings / Notification Recipients"
-    >
+    <SettingsFrame>
       <SettingsPanel className="p-5">
         <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.12em] text-[#FDFDFF]">Scope · Global defaults</p>
         <p className="mt-2 font-sans text-[13px] text-[#959597]">Customer-specific recipients override these defaults and are shown in the customer record.</p>
