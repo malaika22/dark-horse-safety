@@ -2,15 +2,13 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError, toastError, toastSuccess } from "@/lib/toast";
 import { settingsApi, type FormSection } from "@/lib/settings-api";
-import { fieldClass } from "./settings-frame";
+import { fieldClass, settingsPageClass } from "./settings-frame";
 
 const blankField = (): FormSection["fields"][number] => ({ id: `fld-${Date.now()}`, label: "NEW FIELD", kind: "TEXT", placeholder: "" });
 
 export function FormBuilderPage() {
-  useSetHeaderBreadcrumb("Settings / Forms / Builder");
   const router = useRouter();
   const [title, setTitle] = React.useState("FORM");
   const [sections, setSections] = React.useState<FormSection[]>([]);
@@ -51,7 +49,7 @@ export function FormBuilderPage() {
   if (!ready) return null;
 
   return (
-    <div className="mx-auto flex w-full max-w-[820px] flex-col gap-4 px-4 py-6">
+    <div className={settingsPageClass}>
       <div className="flex items-center justify-between">
         <button type="button" onClick={() => router.push("/settings/forms")} className="rounded-lg border border-white/15 px-3 py-2 text-[11px] uppercase text-[#FDFDFF]">← Cancel</button>
         <button type="button" onClick={() => void generate()} className="rounded-lg bg-white px-4 py-2 text-[11px] font-[590] uppercase text-black">Generate</button>

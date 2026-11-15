@@ -54,12 +54,7 @@ export function GlobalDefaultsPage() {
   if (!form) return null;
 
   return (
-    <SettingsFrame
-      eyebrow="Settings / Global Defaults"
-      title="Global Defaults"
-      description="Fallback values used only when no customer, MSA or job-specific rule applies."
-      breadcrumb="Settings / Global Defaults"
-    >
+    <SettingsFrame>
       {GROUPS.map((group) => (
         <SettingsPanel key={group.title} className="p-5">
           <p className="mb-4 font-sans text-[11px] font-[510] uppercase tracking-[0.12em] text-[#FDFDFF]">{group.title}</p>

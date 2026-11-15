@@ -4,7 +4,9 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@dark-horse-safety/ui";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
+
+/** Same full-width body shell the operations screens use. */
+export const settingsPageClass = "space-y-4 overflow-x-hidden bg-shell p-3 sm:space-y-5 sm:p-6";
 
 const TABS = [
   { href: "/settings/business-rules", label: "Business Rules" },
@@ -14,30 +16,10 @@ const TABS = [
   { href: "/settings/notification-recipients", label: "Recipients" },
 ];
 
-export function SettingsFrame({
-  title,
-  eyebrow,
-  description,
-  breadcrumb,
-  children,
-}: {
-  title: string;
-  eyebrow: string;
-  description?: string;
-  breadcrumb: string;
-  children: ReactNode;
-}) {
+export function SettingsFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  useSetHeaderBreadcrumb(breadcrumb);
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-5 px-4 py-6 sm:px-6">
-      <div>
-        <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">{eyebrow}</p>
-        <h1 className="mt-2 font-sans text-[28px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF]">{title}</h1>
-        {description ? (
-          <p className="mt-2 max-w-3xl font-sans text-[13px] leading-relaxed text-[#959597]">{description}</p>
-        ) : null}
-      </div>
+    <div className={settingsPageClass}>
       <div className="flex gap-6 overflow-x-auto border-b border-white/10">
         {TABS.map((tab) => {
           const active = pathname === tab.href;
@@ -69,7 +51,7 @@ const ACCESS_LINKS = [
 
 export function AccessSectionLinks({ current }: { current: (typeof ACCESS_LINKS)[number]["id"] }) {
   return (
-    <div className="mt-1 flex flex-wrap gap-3">
+    <div className="flex flex-wrap gap-3">
       {ACCESS_LINKS.map((link) => (
         <Link
           key={link.id}

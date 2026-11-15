@@ -3,8 +3,7 @@
 import * as React from "react";
 import { settingsApi, type CompanyProfile } from "@/lib/settings-api";
 import { toastApiError, toastSuccess } from "@/lib/toast";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
-import { fieldClass, labelClass, SettingsPanel } from "./settings-frame";
+import { fieldClass, labelClass, SettingsPanel, settingsPageClass } from "./settings-frame";
 
 const NAICS = [
   "213112 - SUPPORT ACTIVITIES FOR OIL AND GAS OPERATIONS",
@@ -18,7 +17,6 @@ const EXECUTIVES = ["R. CRAWFORD - CEO", "M. TORRES - OPERATIONS"];
 const CONTACTS = ["D. REED - SAFETY", "L. NGUYEN - PAYROLL"];
 
 export function CompanyProfilePage() {
-  useSetHeaderBreadcrumb("Settings / Company Profile");
   const [form, setForm] = React.useState<CompanyProfile | null>(null);
 
   React.useEffect(() => {
@@ -44,9 +42,8 @@ export function CompanyProfilePage() {
   if (!form) return null;
 
   return (
-    <div className="mx-auto w-full max-w-[980px] px-4 py-6 sm:px-6">
-      <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">Settings / Company Profile</p>
-      <SettingsPanel className="mt-4 p-5">
+    <div className={settingsPageClass}>
+      <SettingsPanel className="p-5">
         <div className="mb-5 flex items-center justify-between gap-3">
           <div>
             <p className="font-sans text-[13px] font-[590] uppercase tracking-[0.08em] text-[#FDFDFF]">Company profile</p>

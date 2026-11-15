@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { cn } from "@dark-horse-safety/ui";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError } from "@/lib/toast";
 import { settingsApi, type FormRule } from "@/lib/settings-api";
 import { fieldClass, SettingsPanel } from "./settings-frame";
@@ -11,7 +10,6 @@ import { FormsShell } from "./forms-shell";
 const WINDOWS = ["ACTIVE", "CURRENT", "FUTURE"];
 
 export function FormRulesPage() {
-  useSetHeaderBreadcrumb("Settings / Forms / Required Rules");
   const [query, setQuery] = React.useState("");
   const [windows, setWindows] = React.useState(WINDOWS);
   const [items, setItems] = React.useState<FormRule[]>([]);

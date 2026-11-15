@@ -2,9 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { settingsApi } from "@/lib/settings-api";
-import { SettingsPanel } from "./settings-frame";
+import { SettingsPanel, settingsPageClass } from "./settings-frame";
 
 const SECTIONS: { href: string; title: string; detail: string }[] = [
   { href: "/settings/company-profile", title: "Company Profile", detail: "Legal name, yards, and contact details" },
@@ -31,7 +30,6 @@ const SECTIONS: { href: string; title: string; detail: string }[] = [
 ];
 
 export function SettingsIndexPage() {
-  useSetHeaderBreadcrumb("Settings");
   const [counts, setCounts] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
@@ -84,14 +82,7 @@ export function SettingsIndexPage() {
   }, []);
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-5 px-4 py-6 sm:px-6">
-      <div>
-        <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">Settings</p>
-        <h1 className="mt-2 font-sans text-[28px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF]">Settings</h1>
-        <p className="mt-2 max-w-3xl font-sans text-[13px] leading-relaxed text-[#959597]">
-          Company policy, access, forms, and the connections those screens already save through the API.
-        </p>
-      </div>
+    <div className={settingsPageClass}>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {SECTIONS.map((section) => (
           <Link key={section.href} href={section.href} className="block">

@@ -80,12 +80,7 @@ export function RetentionPage() {
   ];
 
   return (
-    <SettingsFrame
-      eyebrow="Settings / Data Retention Policy"
-      title="Data Retention Policy"
-      description="Configure retention by record class; legal holds suspend deletion."
-      breadcrumb="Settings / Data Retention"
-    >
+    <SettingsFrame>
       <SettingsPanel className="p-5">
         <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.12em] text-[#FDFDFF]">Draft policy · All customers · {status}</p>
         <p className="mt-2 font-sans text-[13px] text-[#959597]">{note}</p>

@@ -2,10 +2,9 @@
 
 import * as React from "react";
 import { cn } from "@dark-horse-safety/ui";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError, toastSuccess } from "@/lib/toast";
 import { settingsApi, type PayrollRules, type PayrollRulesInput } from "@/lib/settings-api";
-import { fieldClass, labelClass, SettingsPanel } from "./settings-frame";
+import { fieldClass, labelClass, SettingsPanel, settingsPageClass } from "./settings-frame";
 
 const CYCLE = ["WEEKLY", "BIWEEKLY", "SEMIMONTHLY"];
 const OT = ["AFTER 8H / DAY", "AFTER 40H / WEEK"];
@@ -32,7 +31,6 @@ function inputOf(rules: PayrollRules): PayrollRulesInput {
 }
 
 export function PayrollRulesPage() {
-  useSetHeaderBreadcrumb("Settings / Payroll Rules");
   const [saved, setSaved] = React.useState<PayrollRules | null>(null);
   const [form, setForm] = React.useState<PayrollRulesInput | null>(null);
 
@@ -75,8 +73,7 @@ export function PayrollRulesPage() {
   if (!form || !saved) return null;
 
   return (
-    <div className="mx-auto flex w-full max-w-[980px] flex-col gap-4 px-4 py-6 pb-24 sm:px-6">
-      <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">Settings / Payroll Rules</p>
+    <div className={`${settingsPageClass} pb-24`}>
 
       <SettingsPanel className="p-5">
         <p className="font-sans text-[13px] font-[590] uppercase tracking-[0.08em] text-[#FDFDFF]">Pay cycle & overtime</p>

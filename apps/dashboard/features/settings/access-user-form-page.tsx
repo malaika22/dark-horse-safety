@@ -2,10 +2,9 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError, toastError, toastSuccess } from "@/lib/toast";
 import { settingsApi, type AccessUserInput } from "@/lib/settings-api";
-import { fieldClass, labelClass, SettingsPanel } from "./settings-frame";
+import { fieldClass, labelClass, SettingsPanel, settingsPageClass } from "./settings-frame";
 
 const ROLES = ["ADMIN", "SUPERVISOR", "TECHNICIAN", "DISPATCHER", "BILLING"];
 const REGIONS = ["MIDLAND", "ODESSA", "PECOS", "HQ"];
@@ -25,7 +24,6 @@ const blank = (): AccessUserInput => ({
 
 export function AccessUserFormPage({ userId }: { userId?: string }) {
   const editing = Boolean(userId);
-  useSetHeaderBreadcrumb(editing ? "Settings / Access Control / Edit User" : "Settings / Access Control / Invite User");
   const router = useRouter();
   const [form, setForm] = React.useState<AccessUserInput>(blank());
   const [teams, setTeams] = React.useState<string[]>(["CREW A"]);
@@ -85,8 +83,7 @@ export function AccessUserFormPage({ userId }: { userId?: string }) {
   if (!ready) return null;
 
   return (
-    <div className="mx-auto flex w-full max-w-[980px] flex-col gap-4 px-4 py-6 sm:px-6">
-      <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">{editing ? "Edit user" : "Invite user"}</p>
+    <div className={settingsPageClass}>
       <button type="button" onClick={() => router.push("/settings/access-control/users")} className="w-fit rounded-lg border border-white/15 px-3 py-2 text-[11px] uppercase text-[#FDFDFF]">← Cancel</button>
       <SettingsPanel className="p-5">
         <p className="font-sans text-[13px] font-[590] uppercase tracking-[0.08em] text-[#FDFDFF]">User details</p>

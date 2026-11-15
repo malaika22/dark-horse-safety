@@ -61,12 +61,7 @@ export function BusinessRulesPage() {
   ];
 
   return (
-    <SettingsFrame
-      eyebrow="Settings / Business Rules"
-      title="Business Rules"
-      description="Global policy and customer-specific rules, with explicit enforcement and override ownership."
-      breadcrumb="Settings / Business Rules"
-    >
+    <SettingsFrame>
       <DashboardStatGrid>
         <DashboardStatRow columns={4}>
           <DashboardStatCell title="Active rules" value={String(summary.activeRules)} />

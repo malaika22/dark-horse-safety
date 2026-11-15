@@ -1,13 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError } from "@/lib/toast";
 import { settingsApi, type NotificationPreference } from "@/lib/settings-api";
-import { SettingsPanel } from "./settings-frame";
+import { SettingsPanel, settingsPageClass } from "./settings-frame";
 
 export function NotificationsPage() {
-  useSetHeaderBreadcrumb("Settings / Notifications");
   const [items, setItems] = React.useState<NotificationPreference[]>([]);
 
   React.useEffect(() => {
@@ -27,8 +25,7 @@ export function NotificationsPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-4 px-4 py-6 sm:px-6">
-      <h1 className="font-sans text-[28px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF]">Settings</h1>
+    <div className={settingsPageClass}>
       <SettingsPanel className="p-4">
         <p className="font-sans text-[13px] font-[590] uppercase text-[#FDFDFF]">Notify me about</p>
         <p className="mt-1 font-sans text-[11px] uppercase text-[#959597]">Choose which events generate an alert and where it&apos;s delivered.</p>

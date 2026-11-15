@@ -2,15 +2,13 @@
 
 import * as React from "react";
 import { cn } from "@dark-horse-safety/ui";
-import { useSetHeaderBreadcrumb } from "@/features/app-shell/header-actions-context";
 import { toastApiError } from "@/lib/toast";
 import { settingsApi, type AccessAuditEvent, type AccessAuditPage } from "@/lib/settings-api";
-import { AccessSectionLinks, fieldClass, labelClass, SettingsPanel } from "./settings-frame";
+import { AccessSectionLinks, fieldClass, labelClass, SettingsPanel, settingsPageClass } from "./settings-frame";
 
 const emptyFilters = { type: "ALL", result: "ALL", severity: "ALL", actor: "ALL", range: "ALL" };
 
 export function AccessAuditPage() {
-  useSetHeaderBreadcrumb("Settings / Access Control / Audit Log");
   const [query, setQuery] = React.useState("");
   const [filters, setFilters] = React.useState(emptyFilters);
   const [draft, setDraft] = React.useState(emptyFilters);
@@ -71,13 +69,9 @@ export function AccessAuditPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-4 px-4 py-6 sm:px-6">
+    <div className={settingsPageClass}>
       <div className="flex items-end justify-between gap-3">
-        <div>
-          <p className="font-sans text-[11px] font-[510] uppercase tracking-[0.14em] text-[#959597]">Settings / Access Control / Audit Log</p>
-          <h1 className="mt-2 font-sans text-[28px] font-[590] uppercase tracking-[-0.03em] text-[#FDFDFF]">Audit log</h1>
-          <AccessSectionLinks current="audit" />
-        </div>
+        <AccessSectionLinks current="audit" />
         <button type="button" onClick={() => void exportCsv()} className="rounded-lg border border-white/15 px-3 py-2 text-[11px] uppercase text-[#FDFDFF]">Export</button>
       </div>
 

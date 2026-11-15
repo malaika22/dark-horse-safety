@@ -51,12 +51,7 @@ export function OverrideLogPage() {
   ];
 
   return (
-    <SettingsFrame
-      eyebrow="Settings / Override Log"
-      title="Override Log"
-      description="Immutable audit trail for approved exceptions to blocking business rules."
-      breadcrumb="Settings / Override Log"
-    >
+    <SettingsFrame>
       <div className="flex flex-col gap-3 sm:flex-row">
         <DashboardSearchInput value={q} onChange={(event) => setQ(event.target.value)} placeholder="Search record, rule or approver" containerClassName="min-w-0 flex-1" />
         <select value={domain} onChange={(event) => setDomain(event.target.value)} className="h-10 rounded-lg border border-white/10 bg-[#2A2A2A] px-3 text-[11px] uppercase text-[#FDFDFF]">
