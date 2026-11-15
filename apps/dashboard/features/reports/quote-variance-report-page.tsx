@@ -14,9 +14,6 @@ import {
   type QuoteVarianceReport,
 } from "@/lib/reports-api";
 import { toastApiError } from "@/lib/toast";
-import {
-  useSetHeaderBreadcrumb,
-} from "@/features/app-shell/header-actions-context";
 import { PayrollPrimaryButton } from "@/features/hr/payroll-resolve-modals";
 import {
   OpsLoadFailedState,
@@ -192,8 +189,6 @@ export function QuoteVarianceReportPage() {
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [reloadKey, setReloadKey] = React.useState(0);
 
-  useSetHeaderBreadcrumb("Report / Quote Variance");
-
   const refresh = React.useCallback(() => setReloadKey((k) => k + 1), []);
 
   React.useEffect(() => {
@@ -270,7 +265,7 @@ export function QuoteVarianceReportPage() {
 
   return (
     <div className="overflow-x-hidden bg-shell p-3 sm:p-6">
-      <div className="mx-auto max-w-6xl rounded-xl border border-[#2D2D30] bg-panel p-4 sm:p-6">
+      <div className="w-full rounded-xl border border-[#2D2D30] bg-panel p-4 sm:p-6">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <DashboardToolbarButton onClick={() => router.push("/reports")}>
             Cancel
@@ -302,10 +297,7 @@ export function QuoteVarianceReportPage() {
                 {report.meta.brand}
               </p>
             </div>
-            <h1 className="font-sans text-[22px] font-[590] uppercase tracking-[-0.02em] text-[#FDFDFF] md:text-[28px]">
-              {report.meta.title}
-            </h1>
-            <p className="mt-2 max-w-xl font-sans text-[11px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
+            <p className="max-w-xl font-sans text-[11px] uppercase leading-relaxed tracking-[-0.02em] text-[#959597]">
               {report.meta.subtitle}
             </p>
           </div>
