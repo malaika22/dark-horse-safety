@@ -156,8 +156,37 @@ export class WorkOrdersService {
     if (query.customerId) and.push({ customerId: query.customerId });
     if (query.locationId) and.push({ locationId: query.locationId });
     if (query.quoteId) and.push({ quoteId: query.quoteId });
-    const status = parseCrmRecordStatus(query.status);
-    if (status) and.push({ status });
+    const statuses = (query.status ?? '')
+      .split(',')
+      .map((value) => parseCrmRecordStatus(value.trim()))
+      .filter((value): value is CrmRecordStatus => Boolean(value));
+    if (statuses.length === 1) and.push({ status: statuses[0] });
+    if (statuses.length > 1) and.push({ status: { in: statuses } });
+    const dates = (query.dates ?? '').split(',').map((value) => value.trim()).filter(Boolean);
+    if (dates.length) {
+      const start = startOfTodayUtc();
+      const end = new Date(start.getTime() + 86_400_000);
+      const weekEnd = new Date(start.getTime() + 7 * 86_400_000);
+      const dateOr: Prisma.WorkOrderWhereInput[] = [];
+      if (dates.includes('TODAY')) dateOr.push({ serviceDate: { gte: start, lt: end } });
+      if (dates.includes('THIS WEEK')) dateOr.push({ serviceDate: { gte: start, lt: weekEnd } });
+      if (dates.includes('FUTURE')) dateOr.push({ serviceDate: { gte: end } });
+      if (dates.includes('MULTI-DAY')) dateOr.push({ AND: [{ scheduledStart: { not: null } }, { scheduledEnd: { not: null } }] });
+      if (dates.includes('ROLLED OVER')) dateOr.push({ serviceDate: { lt: start }, status: { not: CrmRecordStatus.COMPLETE } });
+      if (dateOr.length) and.push({ OR: dateOr });
+    }
+    const exceptions = (query.exceptions ?? '').split(',').map((value) => value.trim()).filter(Boolean);
+    if (exceptions.length) {
+      const exceptionOr: Prisma.WorkOrderWhereInput[] = [];
+      if (exceptions.includes('MISSING ST')) exceptionOr.push({ salesTickets: { none: {} } });
+      if (exceptions.includes('MISSING FORMS')) exceptionOr.push({ formsCompletedAt: null });
+      if (exceptions.includes('UNDERBILLED')) exceptionOr.push({ salesTickets: { some: { status: SalesTicketStatus.UNDER_REVIEW } } });
+      if (exceptions.includes('OVERBILLED')) exceptionOr.push({ salesTickets: { some: { status: SalesTicketStatus.ADJUSTED } } });
+      if (exceptions.includes('UNASSIGNED')) exceptionOr.push({ assignedRepId: null });
+      if (exceptions.includes('TIME PENDING')) exceptionOr.push({ closeoutReviews: { some: { status: CloseoutStatus.PENDING } } });
+      if (exceptions.includes('WO MISMATCH')) exceptionOr.push({ formCorrectionRequests: { some: {} } });
+      if (exceptionOr.length) and.push({ OR: exceptionOr });
+    }
     if (query.q?.trim()) {
       const q = query.q.trim();
       and.push({

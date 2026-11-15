@@ -2638,3 +2638,493 @@ model LocationAccessRequest {
 
   @@index([employeeId])
 }
+
+// ─── Settings — company profile, business rules, retention ──────────────────
+
+model CompanyProfile {
+  id                     String   @id @default("default")
+  companyName            String
+  establishmentName      String
+  streetAddress          String
+  cityStateZip           String
+  phone                  String
+  ein                    String
+  naicsCode              String
+  sicCode                String
+  annualAverageEmployees String
+  totalHoursWorked       String
+  companyExecutive       String
+  recordkeepingContact   String
+  updatedAt              DateTime @updatedAt
+}
+
+model BusinessRule {
+  id               String   @id @default(uuid())
+  code             String   @unique
+  area             String
+  source           String
+  appliesTo        String
+  enforcement      String
+  owner            String
+  status           String
+  statusLabel      String
+  domain           String
+  hardGate         Boolean  @default(false)
+  customerOverride Boolean  @default(false)
+  pendingReview    Boolean  @default(false)
+  sortOrder        Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  @@index([domain])
+  @@index([status])
+  @@index([sortOrder])
+}
+
+model RuleOverride {
+  id             String   @id @default(uuid())
+  code           String   @unique
+  occurredAt     DateTime
+  whenLabel      String
+  ruleDomain     String
+  record         String
+  change         String
+  approvedBy     String
+  status         String
+  statusLabel    String
+  domain         String
+  reason         String
+  requestedBy    String
+  effectiveLabel String
+  note           String
+  createdAt      DateTime @default(now())
+
+  @@index([occurredAt])
+  @@index([domain])
+  @@index([status])
+}
+
+model RetentionPolicy {
+  id        String   @id @default("default")
+  status    String   @default("DRAFT")
+  note      String
+  updatedAt DateTime @updatedAt
+}
+
+model RetentionClass {
+  id             String   @id @default(uuid())
+  code           String   @unique
+  recordClass    String
+  proposedPeriod String
+  afterExpiry    String
+  legalHold      String
+  owner          String
+  locked         Boolean  @default(false)
+  periodTone     String   @default("default")
+  sortOrder      Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  @@index([sortOrder])
+}
+
+model GlobalDefaults {
+  id                    String   @id @default("default")
+  closeoutEscalation    String
+  closeoutOwner         String
+  workStoppedEscalation String
+  workStoppedOwner      String
+  recurringGeneration   String
+  recurringOwner        String
+  payCycle              String
+  payCycleOwner         String
+  poApproval            String
+  poOwner               String
+  missingPoBlock        String
+  missingPoOwner        String
+  requiredForms         String
+  requiredFormsOwner    String
+  geofenceFallback      String
+  geofenceOwner         String
+  msaEnforcement        String
+  msaOwner              String
+  updatedAt             DateTime @updatedAt
+}
+
+model NotificationRecipient {
+  id         String   @id @default(uuid())
+  code       String   @unique
+  event      String
+  primary    String
+  ccEscalate String
+  channel    String
+  trigger    String
+  sortOrder  Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  @@index([sortOrder])
+}
+
+model TimeCategory {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  entryCount  Int      @default(0)
+  paid        Boolean  @default(true)
+  billable    Boolean  @default(false)
+  countsToOt  Boolean  @default(false)
+  payrollCode String
+  sortOrder   Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@index([sortOrder])
+}
+
+model PayrollRules {
+  id                  String   @id @default("default")
+  payCycleLength      String
+  currentCycleStart   String
+  overtimeThreshold   String
+  longShiftFlag       String
+  seventhDayRule      Boolean  @default(true)
+  autoApproveClean    Boolean  @default(false)
+  roundClockEntries   String
+  requireAdminNote    Boolean  @default(false)
+  gracePeriod         String
+  minimumShift        String
+  exportTo            String
+  lastExportLabel     String
+  lastExportDate      String
+  nextCloseLabel      String
+  nextCloseDate       String
+  updatedAt           DateTime @updatedAt
+}
+
+model FieldDevice {
+  id             String                 @id @default(uuid())
+  code           String                 @unique
+  technician     String
+  truck          String
+  status         String
+  statusLabel    String
+  failed         Int                    @default(0)
+  queued         Int                    @default(0)
+  lastSyncLabel  String
+  lastSyncDetail String?
+  appVersion     String
+  versionNote    String?
+  deviceId       String
+  attention      Boolean                @default(false)
+  sortOrder      Int                    @default(0)
+  syncAge        Int                    @default(0)
+  phone          String?
+  email          String?
+  lastLocation   String?
+  crew           String?
+  platform       String?
+  connectivity   String?
+  sessionLabel   String?
+  updatedAt      DateTime               @updatedAt
+  queueItems     FieldDeviceQueueItem[]
+  history        DeviceHistoryEvent[]
+  incidents      SyncIncident[]
+  resets         DeviceReset[]
+
+  @@index([status])
+  @@index([sortOrder])
+  @@index([crew])
+}
+
+model FieldDeviceQueueItem {
+  id           String      @id @default(uuid())
+  deviceId     String
+  device       FieldDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  itemType     String
+  detail       String
+  createdLabel String
+  sizeLabel    String
+  status       String
+  errorLabel   String?
+  errorCode    String?
+  sortOrder    Int         @default(0)
+
+  @@index([deviceId])
+}
+
+model DeviceHistoryEvent {
+  id        String      @id @default(uuid())
+  deviceId  String
+  device    FieldDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  whenLabel String
+  title     String
+  detail    String?
+  status    String
+  sortOrder Int         @default(0)
+
+  @@index([deviceId])
+}
+
+model SyncErrorCase {
+  id        String @id @default(uuid())
+  code      String @unique
+  title     String
+  guidance  String
+  sortOrder Int    @default(0)
+}
+
+model SyncIncident {
+  id            String                @id @default(uuid())
+  code          String                @unique
+  deviceId      String
+  device        FieldDevice           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  message       String
+  occurredLabel String
+  attemptCount  Int
+  statusNote    String
+  retryMode     String
+  workOrder     String
+  workOrderNote String?
+  queuedWith    String
+  deviceLine    String
+  discarded     Boolean               @default(false)
+  discardReason String?
+  items         SyncIncidentItem[]
+  steps         SyncIncidentStep[]
+  attempts      SyncIncidentAttempt[]
+
+  @@index([deviceId])
+}
+
+model SyncIncidentItem {
+  id           String       @id @default(uuid())
+  incidentId   String
+  incident     SyncIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  itemType     String
+  detail       String
+  createdLabel String
+  sizeLabel    String
+  sortOrder    Int          @default(0)
+
+  @@index([incidentId])
+}
+
+model SyncIncidentStep {
+  id         String       @id @default(uuid())
+  incidentId String
+  incident   SyncIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  number     Int
+  text       String
+  done       Boolean      @default(false)
+  sortOrder  Int          @default(0)
+
+  @@index([incidentId])
+}
+
+model SyncIncidentAttempt {
+  id         String       @id @default(uuid())
+  incidentId String
+  incident   SyncIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  timeLabel  String
+  message    String
+  tone       String       @default("default")
+  sortOrder  Int          @default(0)
+
+  @@index([incidentId])
+}
+
+model DeviceReset {
+  id        String      @id @default(uuid())
+  deviceId  String
+  device    FieldDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  reason    String
+  actorName String
+  createdAt DateTime    @default(now())
+
+  @@index([deviceId])
+}
+
+model AccessUser {
+  id              String   @id @default(uuid())
+  code            String   @unique
+  name            String
+  email           String   @unique
+  phone           String
+  role            String
+  team            String
+  region          String
+  lastLoginLabel  String
+  lastLoginDetail String
+  loginAge        Int      @default(0)
+  mobileLabel     String
+  mobileDetail    String
+  mobileEnabled   Boolean  @default(true)
+  mfa             String
+  adminAccess     Boolean  @default(false)
+  inviteStatus    String
+  status          String
+  online          Boolean  @default(false)
+  modules         String
+  sortOrder       Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+  @@index([role])
+  @@index([team])
+}
+
+model AccessTeam {
+  id         String   @id @default(uuid())
+  code       String   @unique
+  name       String
+  lead       String
+  members    Int      @default(0)
+  region     String
+  modules    String
+  dashboards String
+  owner      String
+  access     String
+  status     String   @default("ACTIVE")
+  kind       String
+  sortOrder  Int      @default(0)
+  profile    String   @default("")
+  updatedAt  DateTime @updatedAt
+
+  @@index([region])
+  @@index([access])
+}
+
+model AccessRole {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  name         String
+  description  String
+  modules      String
+  dashboards   String
+  hidden       String
+  accessLabel  String
+  kind         String   @default("SYSTEM")
+  sortOrder    Int      @default(0)
+  updatedAt    DateTime @updatedAt
+}
+
+model AccessAuditEvent {
+  id         String   @id @default(uuid())
+  occurredAt DateTime
+  timeLabel  String
+  actor      String
+  action     String
+  target     String
+  detail     String
+  ip         String
+  method     String
+  type       String
+  result     String
+  severity   String
+  sortOrder  Int      @default(0)
+  drawer     String   @default("")
+
+  @@index([occurredAt])
+  @@index([type])
+  @@index([result])
+  @@index([actor])
+}
+
+model OnCallRules {
+  id                 String   @id @default("default")
+  maxConsecutiveDays Int
+  minRestDays        Int
+  leadHours          Int
+  balanceEvenly      Boolean  @default(false)
+  autoPublish        Boolean  @default(false)
+  requireBackup      Boolean  @default(false)
+  sameZoneSwaps      Boolean  @default(false)
+  notifyBeforeShift  Boolean  @default(false)
+  updatedAt          DateTime @updatedAt
+}
+
+model FormLibraryStat {
+  id               String @id @default("default")
+  submissions      Int
+  missingRequired  Int
+  failedImports    Int
+  pendingReview    Int
+}
+
+model FormTemplate {
+  id          String @id @default(uuid())
+  name        String
+  category    String
+  submissions Int    @default(0)
+  sortOrder   Int    @default(0)
+}
+
+model FormSubmission {
+  id             String @id @default(uuid())
+  submittedLabel String
+  formType       String
+  formNumber     String
+  weather        String
+  customer       String
+  submittedBy    String
+  attachments    Int
+  review         String
+  source         String
+  linked         String
+  sortOrder      Int    @default(0)
+}
+
+model SettingsFormRule {
+  id           String @id @default(uuid())
+  name         String
+  appliesTo    String
+  forms        String
+  payrollBloc  String
+  billing      String
+  active       String
+  updatedLabel String
+  window       String @default("CURRENT")
+  sortOrder    Int    @default(0)
+
+  @@map("SettingsFormRule")
+}
+
+model ArchivedCanvas {
+  id        String  @id @default(uuid())
+  name      String
+  category  String
+  version   String
+  subs      Int
+  lastLabel String
+  reason    String
+  window    String
+  restored  Boolean @default(false)
+  sortOrder Int     @default(0)
+}
+
+model FormDraft {
+  id           String   @id @default("current")
+  title        String
+  sectionsJson String
+  updatedAt    DateTime @updatedAt
+}
+
+model NotificationPreference {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  event     String
+  detail    String   @default("")
+  inApp     Boolean  @default(false)
+  email     Boolean  @default(false)
+  sms       Boolean  @default(false)
+  sortOrder Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model DataIntegration {
+  id          String @id @default(uuid())
+  code        String @unique
+  name        String
+  summary     String
+  badge       String
+  actionLabel String
+  href        String
+  sortOrder   Int    @default(0)
+}

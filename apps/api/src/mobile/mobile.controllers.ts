@@ -136,6 +136,15 @@ export class MobileProfileController {
   })
   homeDash(@CurrentUser() u: AuthUser, @Query('date') date?: string) { return this.s.home(u.id, date); }
 
+  @Get('settings')
+  @MobileOp('Settings shared with the dashboard', {
+    onCall: { maxConsecutiveDays: 5, minRestDays: 2, leadHours: 24 },
+    timeCategories: [{ code: 'REGULAR', name: 'Regular', paid: true, billable: true, countsToOt: true, payrollCode: 'REG' }],
+    payroll: { overtimeThreshold: '40 HOURS', longShiftFlag: '12 HOURS', seventhDayRule: true, roundClockEntries: '15 MIN', gracePeriod: '5 MIN', minimumShift: '2 HOURS', payCycleLength: '14 DAYS' },
+    notifications: [{ code: 'NP-04', event: 'MOBILE SYNC FAILED', inApp: false, email: false, sms: false }],
+  })
+  fieldSettings(@CurrentUser() u: AuthUser) { return this.s.fieldSettings(u.id); }
+
   @Get('on-call')
   @ApiQuery({ name: 'from', required: false, example: '2026-11-01' })
   @ApiQuery({ name: 'to', required: false, example: '2026-11-30' })

@@ -3,13 +3,14 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdditionalFormDto, AdditionalFormRespondDto, CorrectionResubmitDto, FormSubmitDto, FormsQuery } from './dto/mobile.dto';
 import { MobileContext, MobileActor } from './mobile-context.service';
+import { MobileSettingsLink } from './mobile-settings-link.service';
 
 type Hist = { when: string; text: string }[];
 const full = (e: { firstName: string; lastName: string; displayName: string | null }) => e.displayName ?? `${e.firstName} ${e.lastName}`;
 
 @Injectable()
 export class MobileFormsService {
-  constructor(private readonly ctx: MobileContext, private readonly prisma: PrismaService) {}
+  constructor(private readonly ctx: MobileContext, private readonly prisma: PrismaService, private readonly link: MobileSettingsLink) {}
 
   /** FM-1 */
   async list(userId: string, q: FormsQuery) {
@@ -25,11 +26,19 @@ export class MobileFormsService {
     if (q.workOrderId) {
       const wo = await this.prisma.workOrder.findUnique({ where: { id: q.workOrderId } });
       if (wo) {
-        const rules = await this.prisma.formRule.findMany({ where: { customerId: wo.customerId, status: 'ACTIVE', required: true } });
-        for (const r of rules) required.add(r.formTemplate.toLowerCase());
+        const names = await this.link.requiredFormNames(wo.id, wo.customerId);
+        for (const name of names) required.add(name.toLowerCase());
       }
     }
-    const isReq = (f: { title: string; code: string }) => required.has(f.title.toLowerCase()) || required.has(f.code.toLowerCase());
+    const isReq = (f: { title: string; code: string }) => {
+      const title = f.title.toLowerCase();
+      const code = f.code.toLowerCase();
+      if (required.has(title) || required.has(code)) return true;
+      for (const name of required) {
+        if (title.includes(name) || name.includes(title) || code.includes(name)) return true;
+      }
+      return false;
+    };
     const doneIds = new Set(subs.filter((s) => s.status !== 'DRAFT').map((s) => s.formId));
     const draftIds = new Set(subs.filter((s) => s.status === 'DRAFT').map((s) => s.formId));
     const form = (f: (typeof forms)[number]) => ({ formId: f.id, code: f.code, title: f.title, version: f.version, required: isReq(f) });

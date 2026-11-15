@@ -1,5 +1,5 @@
-﻿import { ModulePlaceholder } from "@/features/app-shell/module-placeholder";
+﻿import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <ModulePlaceholder title="Users" />;
+  redirect("/settings/access-control/users");
 }

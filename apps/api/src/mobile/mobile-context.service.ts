@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Employee, Prisma, User, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { MobileSettingsLink } from './mobile-settings-link.service';
 
 export const MILES_PER_METER = 0.000621371;
 
@@ -55,7 +56,7 @@ export type MobileActor = { userId: string; employee: Employee };
 export class MobileContext implements OnModuleInit {
   private readonly log = new Logger(MobileContext.name);
 
-  constructor(readonly prisma: PrismaService) {}
+  constructor(readonly prisma: PrismaService, private readonly link: MobileSettingsLink) {}
 
   /** Every technician account gets an employee before mobile routes run. */
   async onModuleInit() {
@@ -251,6 +252,9 @@ export class MobileContext implements OnModuleInit {
       requiresAction?: boolean;
     },
   ) {
+    const profile = await this.prisma.mobileProfile.findUnique({ where: { userId } });
+    if (profile && !profile.notificationsEnabled) return;
+    if (!(await this.link.inAppAllowed(n.type))) return;
     try {
       await this.prisma.mobileNotification.create({
         data: {

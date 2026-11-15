@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TimeOffService } from '../hr/time-off/time-off.service';
 import { EditRequestDto, EditRespondDto, EntryNotesDto, TimeOffCreateDto, TimeOffPreviewDto, TimesheetQuery } from './dto/mobile.dto';
 import { MobileContext, dateOnly, isoDate, num } from './mobile-context.service';
+import { MobileSettingsLink } from './mobile-settings-link.service';
 
 const EDIT_REASONS = [
   { code: 'FORGOT_CLOCK_IN', label: 'Forgot to clock in' },
@@ -23,6 +24,7 @@ export class MobileTimeService {
     private readonly ctx: MobileContext,
     private readonly prisma: PrismaService,
     private readonly timeOff: TimeOffService,
+    private readonly link: MobileSettingsLink,
   ) {}
 
   /** TS-1 */
@@ -46,10 +48,11 @@ export class MobileTimeService {
   async timesheet(userId: string, q: TimesheetQuery) {
     const { employee: e } = await this.ctx.actor(userId);
     const { from, to } = this.range(q);
-    const [rows, sick, edits] = await Promise.all([
+    const [rows, sick, edits, config] = await Promise.all([
       this.prisma.timeEntry.findMany({ where: { employeeId: e.id, archivedAt: null, workDate: { gte: from, lte: to } }, orderBy: [{ workDate: 'desc' }, { clockIn: 'desc' }] }),
       this.prisma.timeOffRequest.findMany({ where: { employeeId: e.id, type: 'SICK', status: 'APPROVED', archivedAt: null, startDate: { lte: to }, endDate: { gte: from } } }),
       this.prisma.timeEditRequest.findMany({ where: { employeeId: e.id, status: { in: ['PENDING', 'NEEDS_CLARIFICATION'] } }, select: { timeEntryId: true, status: true } }),
+      this.link.snapshot(),
     ]);
     const pending = new Map(edits.map((x) => [x.timeEntryId, x.status]));
     const sum = (f: (r: (typeof rows)[number]) => boolean) => +rows.filter(f).reduce((s, r) => s + num(r.hours), 0).toFixed(1);
@@ -63,6 +66,8 @@ export class MobileTimeService {
           sickHours: +sick.reduce((s, r) => s + num(r.hoursRequested), 0).toFixed(1),
           totalHours: sum(() => true),
         },
+        timeCategories: config.timeCategories,
+        payroll: config.payroll,
         items: rows.map((r) => ({
           id: r.id, workDate: isoDate(r.workDate), clockIn: r.clockIn, clockOut: r.clockOut, hours: num(r.hours), category: r.category,
           workOrderCode: r.workOrderCode, customerName: r.customerName, status: r.status, locked: r.locked, gpsFlagged: r.gpsFlagged,
