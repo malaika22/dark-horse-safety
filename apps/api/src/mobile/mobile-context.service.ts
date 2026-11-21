@@ -6,6 +6,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { Employee, Prisma, User, UserRole } from '@prisma/client';
+import { UploadsService } from '../common/services/uploads.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MobileSettingsLink } from './mobile-settings-link.service';
 
@@ -56,7 +57,31 @@ export type MobileActor = { userId: string; employee: Employee };
 export class MobileContext implements OnModuleInit {
   private readonly log = new Logger(MobileContext.name);
 
-  constructor(readonly prisma: PrismaService, private readonly link: MobileSettingsLink) {}
+  constructor(
+    readonly prisma: PrismaService,
+    private readonly link: MobileSettingsLink,
+    private readonly uploads: UploadsService,
+  ) {}
+
+  /**
+   * A file field can arrive as a URL (already uploaded) or inline as base64.
+   * Inline files are stored under uploads/mobile/<folder>/ and their URL is returned.
+   */
+  async fileUrl(
+    folder: string,
+    url?: string | null,
+    file?: { fileName: string; contentBase64: string } | null,
+  ): Promise<string | undefined> {
+    if (file?.contentBase64) {
+      const saved = await this.uploads.saveBase64({
+        folder: `mobile/${folder}`,
+        fileName: file.fileName,
+        contentBase64: file.contentBase64,
+      });
+      return saved.url;
+    }
+    return url ?? undefined;
+  }
 
   /** Every technician account gets an employee before mobile routes run. */
   async onModuleInit() {

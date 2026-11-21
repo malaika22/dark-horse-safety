@@ -164,9 +164,10 @@ export class MobileTimeService {
     const r = await this.ctx.mustFind(this.prisma.timeEditRequest.findFirst({ where: { id, employeeId: employee.id } }), 'Edit request');
     return this.ctx.idempotent(userId, dto.clientRequestId, async () => {
       if (r.status !== 'NEEDS_CLARIFICATION') throw new ConflictException({ code: 'INVALID_STATE', message: 'No clarification was requested.' });
+      const attachmentUrl = await this.ctx.fileUrl('time-edit', dto.attachmentUrl, dto.attachment);
       await this.prisma.timeEditRequest.update({
         where: { id },
-        data: { status: 'PENDING', needsClarification: false, technicianReason: `${r.technicianReason ?? ''}\nReply: ${dto.message}${dto.attachmentUrl ? ` (attachment ${dto.attachmentUrl})` : ''}`.trim() },
+        data: { status: 'PENDING', needsClarification: false, technicianReason: `${r.technicianReason ?? ''}\nReply: ${dto.message}${attachmentUrl ? ` (attachment ${attachmentUrl})` : ''}`.trim() },
       });
       await this.syncOpenEditFlag(employee.id);
       return { data: { id, status: 'PENDING' } };
@@ -231,10 +232,11 @@ export class MobileTimeService {
         throw new UnprocessableEntityException({ code: 'INSUFFICIENT_BALANCE', message: 'Not enough balance for this request.' });
       }
       const created = await this.timeOff.create(body);
-      if (dto.signatureUrl) {
+      const signatureUrl = await this.ctx.fileUrl('time-off', dto.signatureUrl, dto.signature);
+      if (signatureUrl) {
         await this.prisma.timeOffRequest.update({
           where: { id: created.data.id },
-          data: { attachments: [{ kind: 'SIGNATURE', url: dto.signatureUrl }] },
+          data: { attachments: [{ kind: 'SIGNATURE', url: signatureUrl }] },
         });
       }
       return { data: { id: created.data.id, status: created.data.status } };

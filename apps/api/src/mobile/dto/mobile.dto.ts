@@ -32,6 +32,16 @@ export class PageQuery {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) pageSize?: number;
 }
 
+/** A file sent inline as base64 (raw or data URL). The server stores it and keeps the URL. */
+export class FileInput {
+  @ApiProperty({ example: 'signature.png' })
+  @IsString() @IsNotEmpty() @MaxLength(200) fileName!: string;
+  @ApiPropertyOptional({ example: 'image/png' })
+  @IsOptional() @IsString() @MaxLength(100) mimeType?: string;
+  @ApiProperty({ description: 'Raw base64 or a data URL. About 5 MB at most.' })
+  @IsString() @IsNotEmpty() @MaxLength(7_000_000) contentBase64!: string;
+}
+
 export class OtpRequestDto {
   @ApiProperty({ example: 'tech@example.com', description: 'Email or phone. Phone is matched on digits only.' })
   @IsString() @IsNotEmpty() @MaxLength(255) identifier!: string;
@@ -70,6 +80,8 @@ export class HomeLocationDto {
   @IsNumber() @Min(-180) @Max(180) lng!: number;
 }
 export class HomeLocationChangeDto extends HomeLocationDto {
+  @ApiPropertyOptional({ example: 'a1b2c3', description: 'Makes a double tap safe.' })
+  @IsOptional() @IsString() @MaxLength(100) clientRequestId?: string;
   @ApiPropertyOptional({ example: 'Moved across town' })
   @IsOptional() @IsString() @MaxLength(500) reason?: string;
 }
@@ -145,6 +157,8 @@ export class PauseDto extends Idem {
   @IsOptional() @IsString() @MaxLength(500) note?: string;
   @ApiPropertyOptional({ example: 'https://cdn.example/photo.jpg' })
   @IsOptional() @IsString() @MaxLength(500) photoUrl?: string;
+  @ApiPropertyOptional({ type: () => FileInput, description: 'Send the file inline instead of a URL.' })
+  @IsOptional() @ValidateNested() @Type(() => FileInput) photo?: FileInput;
   @ApiPropertyOptional({ example: '2026-11-07T16:00:00.000Z' })
   @IsOptional() @IsDateString() capturedAt?: string;
 }
@@ -173,6 +187,8 @@ export class GpsExplanationDto extends Idem {
   @IsString() @IsNotEmpty() @MaxLength(500) text!: string;
   @ApiPropertyOptional({ example: 'https://cdn.example/photo.jpg' })
   @IsOptional() @IsString() @MaxLength(500) attachmentUrl?: string;
+  @ApiPropertyOptional({ type: () => FileInput, description: 'Send the file inline instead of a URL.' })
+  @IsOptional() @ValidateNested() @Type(() => FileInput) attachment?: FileInput;
 }
 
 export class JobsQuery extends PageQuery {
@@ -194,6 +210,8 @@ export class CloseoutDto extends Idem {
   @IsOptional() @IsString() @MaxLength(1000) notes?: string;
   @ApiPropertyOptional({ example: 'https://cdn.example/signature.png' })
   @IsOptional() @IsString() @MaxLength(500) signatureUrl?: string;
+  @ApiPropertyOptional({ type: () => FileInput, description: 'Send the file inline instead of a URL.' })
+  @IsOptional() @ValidateNested() @Type(() => FileInput) signature?: FileInput;
 }
 export class SalesLineDto {
   @ApiProperty({ example: 'Technician labor' })
@@ -223,6 +241,8 @@ export class FormSubmitDto extends Idem {
   @IsObject() values!: Record<string, unknown>;
   @ApiPropertyOptional({ example: 'https://cdn.example/signature.png' })
   @IsOptional() @IsString() @MaxLength(500) signatureUrl?: string;
+  @ApiPropertyOptional({ type: () => FileInput, description: 'Send the file inline instead of a URL.' })
+  @IsOptional() @ValidateNested() @Type(() => FileInput) signature?: FileInput;
   @ApiPropertyOptional({ example: '2026-11-07T18:00:00.000Z' })
   @IsOptional() @IsDateString() capturedAt?: string;
   @ApiPropertyOptional({ example: 32.78 })
@@ -249,12 +269,16 @@ export class AdditionalFormDto extends Idem {
   @IsIn(['LOW', 'MEDIUM', 'HIGH', 'HIGH_WORK_STOPPED']) urgency!: string;
   @ApiPropertyOptional({ example: 'https://cdn.example/photo.jpg' })
   @IsOptional() @IsString() @MaxLength(500) photoUrl?: string;
+  @ApiPropertyOptional({ type: () => FileInput, description: 'Send the file inline instead of a URL.' })
+  @IsOptional() @ValidateNested() @Type(() => FileInput) photo?: FileInput;
 }
 export class AdditionalFormRespondDto extends Idem {
   @ApiProperty({ example: 'Vessel is the west separator.' })
   @IsString() @IsNotEmpty() @MaxLength(500) message!: string;
   @ApiPropertyOptional({ example: 'https://cdn.example/photo.jpg' })
   @IsOptional() @IsString() @MaxLength(500) attachmentUrl?: string;
+  @ApiPropertyOptional({ type: () => FileInput, description: 'Send the file inline instead of a URL.' })
+  @IsOptional() @ValidateNested() @Type(() => FileInput) attachment?: FileInput;
 }
 
 export class TimesheetQuery {
@@ -282,6 +306,8 @@ export class EditRespondDto extends Idem {
   @IsString() @IsNotEmpty() @MaxLength(500) message!: string;
   @ApiPropertyOptional({ example: 'https://cdn.example/photo.jpg' })
   @IsOptional() @IsString() @MaxLength(500) attachmentUrl?: string;
+  @ApiPropertyOptional({ type: () => FileInput, description: 'Send the file inline instead of a URL.' })
+  @IsOptional() @ValidateNested() @Type(() => FileInput) attachment?: FileInput;
 }
 export class EntryNotesDto {
   @ApiProperty({ example: 'Waited on crane', description: 'Send an empty string to clear the note.' })
@@ -307,6 +333,8 @@ export class TimeOffCreateDto extends TimeOffPreviewDto {
   @IsOptional() @IsString() @MaxLength(500) reason?: string;
   @ApiPropertyOptional({ example: 'https://cdn.example/signature.png' })
   @IsOptional() @IsString() @MaxLength(500) signatureUrl?: string;
+  @ApiPropertyOptional({ type: () => FileInput, description: 'Send the file inline instead of a URL.' })
+  @IsOptional() @ValidateNested() @Type(() => FileInput) signature?: FileInput;
 }
 
 export class MobileChecklistItemDto {

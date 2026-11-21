@@ -210,7 +210,7 @@ export class MobileClockService {
         throw new ConflictException({ code: 'ALREADY_PAUSED', message: 'Already paused.' });
       }
       const row = await this.prisma.timeEntryPause.create({
-        data: { timeEntryId: entry.id, employeeId: e.id, reason: dto.reason, note: dto.note, photoUrl: dto.photoUrl, startedAt: dto.capturedAt ? new Date(dto.capturedAt) : new Date() },
+        data: { timeEntryId: entry.id, employeeId: e.id, reason: dto.reason, note: dto.note, photoUrl: await this.ctx.fileUrl('pause', dto.photoUrl, dto.photo), startedAt: dto.capturedAt ? new Date(dto.capturedAt) : new Date() },
       });
       return { data: { pauseId: row.id, startedAt: row.startedAt } };
     });
@@ -241,7 +241,11 @@ export class MobileClockService {
         results.push({ clientRequestId: ev.clientRequestId, ok: true });
       } catch (err) {
         const r = err instanceof HttpException ? (err.getResponse() as Record<string, unknown>) : {};
-        results.push({ clientRequestId: ev.clientRequestId, ok: false, error: { code: r.code ?? 'ERROR', message: r.message ?? 'Failed' } });
+        const status = err instanceof HttpException ? err.getStatus() : 500;
+        // Permanent: retrying the same event can never succeed (bad data or a state conflict).
+        // Retryable: server or network trouble, rate limit, or an expired session.
+        const permanent = [400, 403, 404, 409, 422].includes(status);
+        results.push({ clientRequestId: ev.clientRequestId, ok: false, permanent, error: { code: r.code ?? 'ERROR', message: r.message ?? 'Failed', status } });
       }
     }
     const { employee } = await this.ctx.actor(userId);
@@ -265,7 +269,7 @@ export class MobileClockService {
     const { employee: e } = await this.ctx.actor(userId);
     return this.ctx.idempotent(userId, dto.clientRequestId, async () => {
       const flag = await this.ctx.mustFind(this.prisma.hrGpsFlag.findFirst({ where: { id: dto.gpsFlagId, employeeId: e.id } }), 'GPS flag');
-      await this.prisma.hrGpsFlag.update({ where: { id: flag.id }, data: { explanation: dto.text, photoLabel: dto.attachmentUrl ?? flag.photoLabel } });
+      await this.prisma.hrGpsFlag.update({ where: { id: flag.id }, data: { explanation: dto.text, photoLabel: (await this.ctx.fileUrl('gps', dto.attachmentUrl, dto.attachment)) ?? flag.photoLabel } });
       await this.prisma.mobileNotification.updateMany({ where: { userId, dedupeKey: `gps:${flag.id}` }, data: { resolved: true } });
       return { data: { id: flag.id, status: 'EXPLAINED' } };
     });

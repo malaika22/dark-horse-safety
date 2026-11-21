@@ -91,10 +91,33 @@ export class MobileProfileService {
   /** PR-3b */
   async requestHomeChange(userId: string, dto: HomeLocationChangeDto) {
     const { employee } = await this.ctx.actor(userId);
-    const row = await this.prisma.homeLocationChangeRequest.create({
-      data: { userId, employeeId: employee.id, address: dto.address, lat: dto.lat, lng: dto.lng, reason: dto.reason },
+    return this.ctx.idempotent(userId, dto.clientRequestId, async () => {
+      const row = await this.prisma.homeLocationChangeRequest.create({
+        data: { userId, employeeId: employee.id, address: dto.address, lat: dto.lat, lng: dto.lng, reason: dto.reason },
+      });
+      return { data: { id: row.id, status: row.status } };
     });
-    return { data: { id: row.id, status: row.status } };
+  }
+
+  /** PR-3c. Lets the app show a pending address change after a restart. Newest first. */
+  async homeChangeRequests(userId: string) {
+    await this.ctx.actor(userId);
+    const rows = await this.prisma.homeLocationChangeRequest.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 20 });
+    return {
+      data: {
+        items: rows.map((r) => ({
+          id: r.id, status: r.status, createdAt: r.createdAt, reviewer: r.reviewer, decidedAt: r.decidedAt,
+          address: r.address, lat: r.lat, lng: r.lng, reason: r.reason,
+        })),
+      },
+    };
+  }
+
+  /** PR-8b. Lets the app show "Access Request Sent" after a restart. Newest first. */
+  async locationAccessRequests(userId: string) {
+    await this.ctx.actor(userId);
+    const rows = await this.prisma.locationAccessRequest.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 20 });
+    return { data: { items: rows.map((r) => ({ id: r.id, status: r.status, createdAt: r.createdAt, reviewer: r.reviewer, decidedAt: r.decidedAt, note: r.note })) } };
   }
 
   /** PR-4 */

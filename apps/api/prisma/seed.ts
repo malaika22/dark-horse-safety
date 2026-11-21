@@ -37,6 +37,7 @@ import {
   UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { seedMobileDevFixture } from './seed-mobile-dev';
 import { createHash, randomBytes } from 'crypto';
 
 const prisma = new PrismaClient();
@@ -4779,6 +4780,7 @@ async function main() {
   );
 
   await seedMobileFixture(passwordHash);
+  await seedMobileDevFixture(prisma);
 }
 
 main()

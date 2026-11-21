@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { MOBILE_FIELD_TYPES, fileFieldKeys, normalizeDefinition, validateValues } from './mobile-form-schema';
 import { AdditionalFormDto, AdditionalFormRespondDto, CorrectionResubmitDto, FormSubmitDto, FormsQuery } from './dto/mobile.dto';
 import { MobileContext, MobileActor } from './mobile-context.service';
 import { MobileSettingsLink } from './mobile-settings-link.service';
@@ -54,25 +55,53 @@ export class MobileFormsService {
     return { data: { items } };
   }
 
-  /** FM-2 */
+  /**
+   * FM-2. The definition is normalized to a stable shape (schemaVersion 1):
+   * sections[].fields[] with key, label, type, required, order, options, validation, visibleWhen.
+   * `fieldTypes` lists every type the builder can produce.
+   */
   async template(formId: string) {
     const f = await this.ctx.mustFind(this.prisma.safetyForm.findFirst({ where: { OR: [{ id: formId }, { code: formId }], status: 'ACTIVE' } }), 'Form');
-    return { data: { formId: f.id, code: f.code, title: f.title, version: f.version, definition: f.definition } };
+    return { data: { formId: f.id, code: f.code, title: f.title, version: f.version, fieldTypes: MOBILE_FIELD_TYPES, definition: normalizeDefinition(f.definition) } };
   }
 
   private async persist(actor: MobileActor, formId: string, dto: FormSubmitDto, status: 'DRAFT' | 'SUBMITTED') {
     const f = await this.ctx.mustFind(this.prisma.safetyForm.findFirst({ where: { OR: [{ id: formId }, { code: formId }], status: 'ACTIVE' } }), 'Form');
+    const definition = normalizeDefinition(f.definition);
+
+    // Validate by field key. Drafts may be incomplete; submissions may not.
+    const errors = validateValues(definition, dto.values, { draft: status === 'DRAFT' });
+    if (Object.keys(errors).length) {
+      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Some answers need attention.', details: errors });
+    }
+
+    // Inline files (photo, signature, drawing) are stored and replaced by their URL.
+    const values: Record<string, unknown> = { ...dto.values };
+    for (const key of fileFieldKeys(definition)) {
+      const v = values[key];
+      if (v && typeof v === 'object') {
+        const file = v as { fileName?: string; contentBase64?: string };
+        if (file.contentBase64) {
+          values[key] = await this.ctx.fileUrl('forms', undefined, { fileName: file.fileName ?? `${key}.png`, contentBase64: file.contentBase64 });
+        }
+      }
+    }
+
     const wo = dto.workOrderId ? await this.prisma.workOrder.findUnique({ where: { id: dto.workOrderId }, include: { customer: true, location: true } }) : null;
+    const signatureUrl = (await this.ctx.fileUrl('forms', dto.signatureUrl, dto.signature)) ?? null;
     const meta = {
       employee: full(actor.employee),
-      signatureUrl: dto.signatureUrl ?? null,
+      signatureUrl,
       capturedAt: dto.capturedAt ?? new Date().toISOString(),
       gps: dto.lat != null ? { lat: dto.lat, lng: dto.lng } : null,
       source: 'MOBILE',
-    } as Prisma.InputJsonValue;
+      formVersion: f.version,
+      // The definition exactly as it was when this was filled in, so old submissions always display correctly.
+      definition,
+    } as unknown as Prisma.InputJsonValue;
     const base = {
       workOrderId: wo?.id, workOrderCode: wo?.code, customerName: wo?.customer.name, locationLabel: wo?.location?.name,
-      values: dto.values as Prisma.InputJsonValue, meta, status,
+      values: values as Prisma.InputJsonValue, meta, status,
       submittedById: actor.employee.id, submittedByName: full(actor.employee),
       submittedAt: status === 'SUBMITTED' ? new Date() : null,
     };
@@ -80,7 +109,7 @@ export class MobileFormsService {
     const row = draft
       ? await this.prisma.safetyFormSubmission.update({ where: { id: draft.id }, data: base })
       : await this.prisma.safetyFormSubmission.create({ data: { code: `SFS-M-${Date.now().toString(36).toUpperCase()}`, formId: f.id, ...base } });
-    return { data: { submissionId: row.id, code: row.code, status: row.status } };
+    return { data: { submissionId: row.id, code: row.code, status: row.status, formVersion: f.version } };
   }
 
   /** FM-3 */
@@ -94,11 +123,29 @@ export class MobileFormsService {
     return this.ctx.idempotent(userId, dto.clientRequestId, () => this.persist(a, formId, dto, 'SUBMITTED'));
   }
 
-  /** FM-5 */
+  /**
+   * FM-5. Submitted forms return the definition as it was at submission time.
+   * An open draft is kept when the form's version changes: it comes back with the current
+   * definition, `outdated: true`, and `droppedKeys` (answers whose field no longer exists).
+   */
   async submission(userId: string, id: string) {
     const { employee } = await this.ctx.actor(userId);
     const s = await this.ctx.mustFind(this.prisma.safetyFormSubmission.findFirst({ where: { id, submittedById: employee.id }, include: { form: true } }), 'Submission');
-    return { data: { submissionId: s.id, code: s.code, status: s.status, form: { id: s.formId, title: s.form.title, definition: s.form.definition }, values: s.values, meta: s.meta, submittedAt: s.submittedAt } };
+    const meta = (s.meta ?? {}) as { definition?: unknown; formVersion?: string };
+    const current = normalizeDefinition(s.form.definition);
+    const isDraft = s.status === 'DRAFT';
+    const snapshot = !isDraft && meta.definition ? (meta.definition as unknown) : current;
+    const known = new Set(current.sections.flatMap((x) => x.fields.map((f) => f.key)));
+    const droppedKeys = isDraft ? Object.keys((s.values ?? {}) as object).filter((k) => !known.has(k)) : [];
+    return {
+      data: {
+        submissionId: s.id, code: s.code, status: s.status,
+        form: { id: s.formId, title: s.form.title, version: isDraft ? s.form.version : (meta.formVersion ?? s.form.version), definition: snapshot },
+        outdated: isDraft && !!meta.formVersion && meta.formVersion !== s.form.version,
+        droppedKeys,
+        values: s.values, meta: { ...meta, definition: undefined }, submittedAt: s.submittedAt,
+      },
+    };
   }
 
   /** FM-6 */
@@ -133,6 +180,7 @@ export class MobileFormsService {
     return this.ctx.idempotent(userId, dto.clientRequestId, async () => {
       const wo = await this.ctx.mustFind(this.prisma.workOrder.findUnique({ where: { id: dto.workOrderId }, include: { customer: true, location: true } }), 'Work order');
       const stopped = dto.urgency === 'HIGH_WORK_STOPPED';
+      const photoUrl = await this.ctx.fileUrl('scope', dto.photoUrl, dto.photo);
       const now = new Date().toISOString();
       const row = await this.prisma.additionalFormRequest.create({
         data: {
@@ -142,7 +190,7 @@ export class MobileFormsService {
           reasonShort: dto.reason.slice(0, 120), reason: dto.scopeChangeDescription,
           urgency: stopped ? 'HIGH' : (dto.urgency as 'LOW' | 'MEDIUM' | 'HIGH'),
           rule: 'Mobile scope change',
-          history: [{ when: now, text: `Requested by ${full(employee)}${stopped ? ' — WORK STOPPED' : ''}: ${dto.reason}` }, ...(dto.photoUrl ? [{ when: now, text: `Photo: ${dto.photoUrl}` }] : [])] as Prisma.InputJsonValue,
+          history: [{ when: now, text: `Requested by ${full(employee)}${stopped ? ' — WORK STOPPED' : ''}: ${dto.reason}` }, ...(photoUrl ? [{ when: now, text: `Photo: ${photoUrl}` }] : [])] as Prisma.InputJsonValue,
         },
       });
       return { data: { id: row.id, code: row.code, status: row.status } };
@@ -172,7 +220,8 @@ export class MobileFormsService {
     const r = await this.ownRequest(userId, id);
     return this.ctx.idempotent(userId, dto.clientRequestId, async () => {
       if (r.status !== 'NEEDS_INFO') throw new BadRequestException({ code: 'INVALID_STATE', message: 'This request is not waiting for more information.' });
-      const history = [...((r.history as Hist) ?? []), { when: new Date().toISOString(), text: `Technician replied: ${dto.message}${dto.attachmentUrl ? ` (attachment ${dto.attachmentUrl})` : ''}` }];
+      const attachmentUrl = await this.ctx.fileUrl('scope', dto.attachmentUrl, dto.attachment);
+      const history = [...((r.history as Hist) ?? []), { when: new Date().toISOString(), text: `Technician replied: ${dto.message}${attachmentUrl ? ` (attachment ${attachmentUrl})` : ''}` }];
       await this.prisma.additionalFormRequest.update({ where: { id }, data: { status: 'PENDING', history: history as unknown as Prisma.InputJsonValue } });
       await this.prisma.mobileNotification.updateMany({ where: { userId, dedupeKey: `afr:${id}:NEEDS_INFO` }, data: { resolved: true } });
       return { data: { id, status: 'PENDING' } };

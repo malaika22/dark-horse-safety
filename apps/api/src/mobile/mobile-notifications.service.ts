@@ -23,6 +23,13 @@ export class MobileNotificationsService {
       this.prisma.salesTicket.findMany({ where: { employeeId: e.id, status: 'RETURNED' }, take: 50 }),
       this.prisma.closeoutReview.findMany({ where: { submittedById: e.id, status: 'RETURNED' }, include: { workOrder: true }, take: 50 }),
     ]);
+    // Job routes take an assignment id, so every closeout and sales-ticket notification carries one.
+    const woIds = [...new Set([...tickets.map((t) => t.workOrderId), ...closeouts.map((r) => r.workOrderId)].filter((x): x is string => !!x))];
+    const asg = woIds.length
+      ? await this.prisma.dispatchAssignment.findMany({ where: { employeeId: e.id, workOrderId: { in: woIds } }, orderBy: { scheduledDate: 'desc' }, select: { id: true, workOrderId: true } })
+      : [];
+    const asgOf = new Map<string, string>();
+    for (const x of asg) if (!asgOf.has(x.workOrderId)) asgOf.set(x.workOrderId, x.id);
     const c: Cand[] = [];
     for (const j of jobs) {
       if (j.status === 'REASSIGNED') c.push({ key: `job:${j.id}:REASSIGNED`, type: 'JOB_REASSIGNED', title: 'Job reassigned', body: `${j.workOrder.code} was reassigned.`, ref: { type: 'JOB', id: j.id }, action: false, open: false });
@@ -37,12 +44,16 @@ export class MobileNotificationsService {
       c.push({ key: `afr:${r.id}:${r.status}`, type, title: r.status === 'NEEDS_INFO' ? 'More info needed' : `Additional form ${r.status.toLowerCase().replace('_', ' ')}`, body: `${r.formRequested} — ${r.code}`, actionLabel: r.status === 'NEEDS_INFO' ? 'Reply' : undefined, ref: { type: 'ADDITIONAL_FORM_REQUEST', id: r.id }, action: r.status === 'NEEDS_INFO', open: r.status === 'NEEDS_INFO' });
     }
     for (const r of fcr) c.push({ key: `fcr:${r.id}`, type: 'FORM_CORRECTION_REQUESTED', title: 'Form correction requested', body: r.issueFlagged, actionLabel: 'Correct', ref: { type: 'FORM_CORRECTION', id: r.id }, action: true, open: true });
-    for (const t of tickets) c.push({ key: `st:${t.id}:${t.returnedAt?.getTime() ?? 0}`, type: 'SALES_TICKET_NEEDS_CORRECTION', title: 'Sales ticket needs correction', body: t.returnNote ?? t.code, actionLabel: 'Correct', ref: { type: 'SALES_TICKET', id: t.id }, action: true, open: true });
-    for (const r of closeouts) c.push({ key: `co:${r.id}:${r.decidedAt?.getTime() ?? 0}`, type: 'CLOSEOUT_NEEDS_REVIEW', title: 'Closeout needs review', body: r.decisionNote ?? r.workOrder.code, actionLabel: 'Review', ref: { type: 'CLOSEOUT', id: r.workOrderId }, action: true, open: true });
+    for (const t of tickets) c.push({ key: `st:${t.id}:${t.returnedAt?.getTime() ?? 0}`, type: 'SALES_TICKET_NEEDS_CORRECTION', title: 'Sales ticket needs correction', body: t.returnNote ?? t.code, actionLabel: 'Correct', ref: { type: 'SALES_TICKET', id: t.id, workOrderId: t.workOrderId, assignmentId: (t.workOrderId && asgOf.get(t.workOrderId)) || null }, action: true, open: true });
+    for (const r of closeouts) c.push({ key: `co:${r.id}:${r.decidedAt?.getTime() ?? 0}`, type: 'CLOSEOUT_NEEDS_REVIEW', title: 'Closeout needs review', body: r.decisionNote ?? r.workOrder.code, actionLabel: 'Review', ref: { type: 'CLOSEOUT', id: r.workOrderId, workOrderId: r.workOrderId, assignmentId: asgOf.get(r.workOrderId) ?? null }, action: true, open: true });
 
     for (const n of c) {
       await this.ctx.notify(userId, { dedupeKey: n.key, type: n.type, title: n.title, body: n.body, actionLabel: n.actionLabel, reference: n.ref, requiresAction: n.action });
       if (n.action && !n.open) await this.prisma.mobileNotification.updateMany({ where: { userId, dedupeKey: n.key }, data: { resolved: true } });
+      if (n.type === 'CLOSEOUT_NEEDS_REVIEW' || n.type === 'SALES_TICKET_NEEDS_CORRECTION') {
+        // Notifications created before assignmentId existed get it too.
+        await this.prisma.mobileNotification.updateMany({ where: { userId, dedupeKey: n.key }, data: { reference: n.ref as Prisma.InputJsonValue } });
+      }
     }
   }
 

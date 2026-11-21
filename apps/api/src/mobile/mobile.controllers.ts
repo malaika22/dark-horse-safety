@@ -77,8 +77,14 @@ export class MobileProfileController {
   home(@CurrentUser() u: AuthUser, @Body() d: D.HomeLocationDto) { return this.s.setHome(u.id, d); }
 
   @Post('me/home-location/change-requests')
-  @MobileOp('PR-3b Request home location change', { id: 'uuid', status: 'PENDING' })
+  @MobileOp('PR-3b Request home location change. Send clientRequestId so a double tap creates one request.', { id: 'uuid', status: 'PENDING_REVIEW' })
   homeReq(@CurrentUser() u: AuthUser, @Body() d: D.HomeLocationChangeDto) { return this.s.requestHomeChange(u.id, d); }
+
+  @Get('me/home-location/change-requests')
+  @MobileOp('PR-3c My home location change requests (newest first). Status is PENDING_REVIEW, APPROVED or REJECTED.', {
+    items: [{ id: 'uuid', status: 'PENDING_REVIEW', createdAt: '2026-11-07T14:22:00.000Z', reviewer: null, decidedAt: null, address: '9 Oak Ave, Midland, TX', lat: 32.0, lng: -102.1, reason: 'Moved' }],
+  })
+  homeReqs(@CurrentUser() u: AuthUser) { return this.s.homeChangeRequests(u.id); }
 
   @Post('me/change-password')
   @HttpCode(200)
@@ -104,8 +110,14 @@ export class MobileProfileController {
   set(@CurrentUser() u: AuthUser, @Body() d: D.SettingsDto) { return this.s.settings(u.id, d); }
 
   @Post('me/location-access-requests')
-  @MobileOp('PR-8 Ask supervisor for location access', { id: 'uuid', status: 'PENDING' })
+  @MobileOp('PR-8 Ask supervisor for location access. Status starts as SENT.', { id: 'uuid', status: 'SENT' })
   loc(@CurrentUser() u: AuthUser, @Body() d: D.NoteDto) { return this.s.locationAccess(u.id, d); }
+
+  @Get('me/location-access-requests')
+  @MobileOp('PR-8b My location access requests (newest first). Status is SENT, APPROVED or DENIED.', {
+    items: [{ id: 'uuid', status: 'SENT', createdAt: '2026-11-07T14:22:00.000Z', reviewer: null, decidedAt: null, note: 'Location is off on my phone' }],
+  })
+  locs(@CurrentUser() u: AuthUser) { return this.s.locationAccessRequests(u.id); }
 
   @Post('supervisor/messages')
   @MobileOp('MSG-1 Message supervisor', { id: 'uuid', sentAt: '2026-11-07T14:22:00.000Z' })

@@ -65,13 +65,15 @@ export class MobileJobsService {
     const loc = a.workOrder.location;
     const dist = profile?.homeLat != null && loc?.latitude != null && loc.longitude != null
       ? Math.round(haversineMeters(profile.homeLat, profile.homeLng!, loc.latitude, loc.longitude)) : null;
+    const parsedRadius = parseFloat(loc?.geofenceRadius ?? '');
+    const geoFt = Number.isFinite(parsedRadius) && parsedRadius > 0 ? parsedRadius : 500;
     const expired = a.status === 'POSTED' && a.scheduledDate < dateOnly(new Date());
     return {
       data: {
         ...this.card(a),
         outcome: expired ? 'EXPIRED' : a.status === 'ACCEPTED' ? 'ACCEPTED' : a.status === 'DECLINED' ? 'DECLINED' : a.status === 'REASSIGNED' ? 'REASSIGNED' : null,
         notes: a.notes ?? a.workOrder.notes,
-        site: loc ? { name: loc.name, county: loc.county, state: loc.state, lat: loc.latitude, lng: loc.longitude, accessNotes: loc.accessNotes, musterPoint: loc.musterPoint, siteContact: loc.siteContact } : null,
+        site: loc ? { name: loc.name, county: loc.county, state: loc.state, lat: loc.latitude, lng: loc.longitude, geofenceRadiusFeet: geoFt, geofenceRadiusMeters: Math.round(geoFt / 3.28084), gpsRequired: loc.gpsRequired, accessNotes: loc.accessNotes, musterPoint: loc.musterPoint, siteContact: loc.siteContact } : null,
         h2sRequired: /h2s/i.test(`${a.workOrder.title ?? ''} ${a.notes ?? ''}`),
         certificationWarning: a.conflictKind === 'CERT' ? a.conflictLabel : null,
         distanceFromHomeMeters: dist,
@@ -163,6 +165,7 @@ export class MobileJobsService {
       if (!summary.canSubmit) {
         throw new UnprocessableEntityException({ code: 'CLOSEOUT_INCOMPLETE', message: 'Closeout has blocking items.', details: { items: summary.flaggedItems } });
       }
+      const signatureUrl = await this.ctx.fileUrl('closeout', dto.signatureUrl, dto.signature);
       const ticket = await this.ticketFor(a.workOrderId, employee.id);
       const data = {
         customerId: a.workOrder.customerId,
@@ -173,7 +176,7 @@ export class MobileJobsService {
         decisionNote: dto.notes,
         salesTicketId: ticket?.id,
         salesTotal: ticket ? ticket.submittedValue : undefined,
-        photos: dto.signatureUrl ? [{ label: 'Signature', locked: true, url: dto.signatureUrl }] : undefined,
+        photos: signatureUrl ? [{ label: 'Signature', locked: true, url: signatureUrl }] : undefined,
       };
       const review = await this.prisma.closeoutReview.upsert({
         where: { workOrderId: a.workOrderId },
